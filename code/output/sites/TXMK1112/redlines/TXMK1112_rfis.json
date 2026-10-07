@@ -1,0 +1,14 @@
+[
+  {
+    "rfi_id": "RFI-E597BBDF8E26",
+    "site_id": "TXMK1112",
+    "to_party": "ERICSSON",
+    "subject": "TXMK1112: Unrecorded antenna at Gamma position 3",
+    "question": "The drone survey found SBNHH at Gamma position 3, which is not on the RFDS or the CD. Please confirm it should be removed (or reused).",
+    "proposed_answer": "Remove; removal line added to the BOM.",
+    "disc_ids": [
+      "DSC-FAE2FB1B41FB"
+    ],
+    "status": "DRAFT"
+  }
+]

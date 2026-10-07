@@ -1,0 +1,89 @@
+{
+  "site_id": "TXAD0405",
+  "synthetic": true,
+  "survey_vendor": "SkyLine Aerial Surveys (synthetic)",
+  "flight_date": "2026-08-21",
+  "aircraft": "DJI Matrice 350 RTK (representative)",
+  "lidar_sensor": "Zenmuse L2 (representative)",
+  "site_lat": 32.9587,
+  "site_lon": -96.8295,
+  "coordinate_system": "Local ENU in metres. Origin = structure centreline at grade (rooftop: building centre at street grade). +X east, +Y north, +Z up. Azimuth = clockwise from +Y.",
+  "point_cloud": {
+    "file": "TXAD0405_pointcloud.laz",
+    "points": 270959,
+    "format": "LAS 1.4 point format 7 (XYZ, RGB, intensity, classification, GPS time)",
+    "classification": {
+      "1": "Unclassified",
+      "2": "Ground",
+      "6": "Building",
+      "14": "Guy wire",
+      "15": "Tower structure",
+      "64": "Antenna / AAU",
+      "65": "Remote radio",
+      "66": "Mount / pipe / sled",
+      "67": "Cable",
+      "68": "Equipment cabinet"
+    }
+  },
+  "imagery": [
+    {
+      "file": "TXAD0405_ortho_stitched.jpg",
+      "type": "Orthomosaic (stitched, nadir)",
+      "gsd_cm": 8.9
+    },
+    {
+      "file": "TXAD0405_sector_alpha.jpg",
+      "type": "Oblique sector view (Alpha)",
+      "camera_xyz_m": [
+        34.0,
+        0.0,
+        36.29
+      ],
+      "look_at_m": [
+        11.0,
+        0.0,
+        20.29
+      ],
+      "fov_deg": 38
+    },
+    {
+      "file": "TXAD0405_sector_beta.jpg",
+      "type": "Oblique sector view (Beta)",
+      "camera_xyz_m": [
+        -34.0,
+        -0.0,
+        36.29
+      ],
+      "look_at_m": [
+        -11.0,
+        -0.0,
+        20.29
+      ],
+      "fov_deg": 38
+    },
+    {
+      "file": "TXAD0405_elevation_full.jpg",
+      "type": "Full-structure elevation",
+      "camera_xyz_m": [
+        55,
+        -55,
+        11.4
+      ],
+      "look_at_m": [
+        0,
+        0,
+        10.36
+      ],
+      "fov_deg": 60
+    }
+  ],
+  "video": {
+    "file": "TXAD0405_orbit.mp4",
+    "fps": 12,
+    "seconds": 6,
+    "resolution": "960x544",
+    "path": "Orbit, rising"
+  },
+  "vendor_measurements": null,
+  "note": "Survey captures the site AS FOUND before construction. Imagery and video are renders of the point cloud; equipment labels are not legible."
+}

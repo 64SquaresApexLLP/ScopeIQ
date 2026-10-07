@@ -1,0 +1,11 @@
+Id,Name,Site__c,Project_Type__c,Scoping_Service_Line__c,Scoping_Assigned_Date__c,BOM_Status__c,Current_BOM_Rev__c,CX_Service_Provider__c,Scoping_Complete_Forecast__c,Scoping_Complete_Actual__c,FBA_Date__c
+a0P6Tb3K75tGdJgAAA,TXDA1024-T1-2026,a0S5QDfOr57vgSPAAA,5G C-band add,Site Build BOM Scoping,2026-09-14,REV 0 - Preliminary,REV 0,Prairie Tower Services (synthetic),2026-10-05,,
+a0PmlMUgfv2EyBpAAA,TXFW2217-T1-2026,a0S0rxUghLTWci8AAA,5G C-band add,Site Build BOM Scoping,2026-09-14,REV 0 - Preliminary,REV 0,Brazos Wireless Construction (synthetic),2026-10-05,,
+a0POfdrVS8pPWVvAAA,TXPL0588-T2-2026,a0Ssw8h8Smxyba6AAA,n41 add + low-band refresh,Network Deployment Scoping,2026-09-15,REV 0 - Preliminary,REV 0,Prairie Tower Services (synthetic),2026-10-06,,
+a0PLyJSuSFYCb4IAAA,TXIR1340-T1-2026,a0SpuTHrN5rUB2WAAA,5G C-band add,Site Build BOM Scoping,2026-09-14,REV 0 - Preliminary,REV 0,Brazos Wireless Construction (synthetic),2026-10-05,,
+a0Pl6vfRUJFM8czAAA,TXGR0719-T3-2026,a0SKak0QAVsY4ybAAA,Full site modernization,Site Build BOM Scoping,2026-09-15,REV 0 - Preliminary,REV 0,Redline Constructors (synthetic),2026-10-06,,
+a0P2SJLnJiWv7wJAAA,TXDE0831-T2-2026,a0Sy7Vx1aGLS6onAAA,n41 add + low-band refresh,Network Deployment Scoping,2026-09-15,REV 0 - Preliminary,REV 0,Redline Constructors (synthetic),2026-10-06,,
+a0PcmPZ3sBi4GVaAAA,TXRI0906-T1-2026,a0S5wRy83TE5k2HAAA,5G C-band add + new sector,Site Build BOM Scoping,2026-09-17,REV 0 - Preliminary,REV 0,Prairie Tower Services (synthetic),2026-10-08,,
+a0P8MCgSgKc6B27AAA,TXMK1112-T3-2026,a0SVoGI9G562iy5AAA,Full site modernization,Site Build BOM Scoping,2026-09-16,REV 0 - Preliminary,REV 0,Brazos Wireless Construction (synthetic),2026-10-07,,
+a0PFwEmjAsFH97eAAA,TXAD0405-T2-2026,a0SQJBxTqg3nmg0AAA,n41 add + low-band refresh,Network Deployment Scoping,2026-09-15,REV 0 - Preliminary,REV 0,Redline Constructors (synthetic),2026-10-06,,
+a0Pn40cNAmISCfHAAA,TXCA0977-T1-2026,a0SkYUhU2kihZmoAAA,5G C-band add,Site Build BOM Scoping,2026-09-15,REV 0 - Preliminary,REV 0,Prairie Tower Services (synthetic),2026-10-06,,

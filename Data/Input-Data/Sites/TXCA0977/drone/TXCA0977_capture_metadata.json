@@ -1,0 +1,104 @@
+{
+  "site_id": "TXCA0977",
+  "synthetic": true,
+  "survey_vendor": "SkyLine Aerial Surveys (synthetic)",
+  "flight_date": "2026-08-22",
+  "aircraft": "DJI Matrice 350 RTK (representative)",
+  "lidar_sensor": "Zenmuse L2 (representative)",
+  "site_lat": 32.9537,
+  "site_lon": -96.8903,
+  "coordinate_system": "Local ENU in metres. Origin = structure centreline at grade (rooftop: building centre at street grade). +X east, +Y north, +Z up. Azimuth = clockwise from +Y.",
+  "point_cloud": {
+    "file": "TXCA0977_pointcloud.laz",
+    "points": 174403,
+    "format": "LAS 1.4 point format 7 (XYZ, RGB, intensity, classification, GPS time)",
+    "classification": {
+      "1": "Unclassified",
+      "2": "Ground",
+      "6": "Building",
+      "14": "Guy wire",
+      "15": "Tower structure",
+      "64": "Antenna / AAU",
+      "65": "Remote radio",
+      "66": "Mount / pipe / sled",
+      "67": "Cable",
+      "68": "Equipment cabinet"
+    }
+  },
+  "imagery": [
+    {
+      "file": "TXCA0977_ortho_stitched.jpg",
+      "type": "Orthomosaic (stitched, nadir)",
+      "gsd_cm": 8.9
+    },
+    {
+      "file": "TXCA0977_sector_alpha.jpg",
+      "type": "Oblique sector view (Alpha)",
+      "camera_xyz_m": [
+        12.73,
+        12.73,
+        33.53
+      ],
+      "look_at_m": [
+        0,
+        0,
+        30.53
+      ],
+      "fov_deg": 38
+    },
+    {
+      "file": "TXCA0977_sector_beta.jpg",
+      "type": "Oblique sector view (Beta)",
+      "camera_xyz_m": [
+        4.66,
+        -17.39,
+        33.53
+      ],
+      "look_at_m": [
+        0,
+        0,
+        30.53
+      ],
+      "fov_deg": 38
+    },
+    {
+      "file": "TXCA0977_sector_gamma.jpg",
+      "type": "Oblique sector view (Gamma)",
+      "camera_xyz_m": [
+        -17.39,
+        4.66,
+        33.53
+      ],
+      "look_at_m": [
+        0,
+        0,
+        30.53
+      ],
+      "fov_deg": 38
+    },
+    {
+      "file": "TXCA0977_elevation_full.jpg",
+      "type": "Full-structure elevation",
+      "camera_xyz_m": [
+        55,
+        -55,
+        18.44
+      ],
+      "look_at_m": [
+        0,
+        0,
+        16.76
+      ],
+      "fov_deg": 60
+    }
+  ],
+  "video": {
+    "file": "TXCA0977_orbit.mp4",
+    "fps": 12,
+    "seconds": 6,
+    "resolution": "960x544",
+    "path": "Orbit, rising"
+  },
+  "vendor_measurements": null,
+  "note": "Survey captures the site AS FOUND before construction. Imagery and video are renders of the point cloud; equipment labels are not legible."
+}

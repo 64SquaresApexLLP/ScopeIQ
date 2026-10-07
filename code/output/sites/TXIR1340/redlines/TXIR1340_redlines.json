@@ -1,0 +1,14 @@
+[
+  {
+    "redline_id": "RDL-8FEAC3C7D3D7",
+    "site_id": "TXIR1340",
+    "doc_type": "CD",
+    "doc_revision": "REV 1",
+    "sheet": "A-2",
+    "disc_id": "DSC-B5BDB3BC44AA",
+    "markup": "REVISE RAD CENTER OF EXISTING ANTENNAS 135 FT -> 130.7/130.8/130.9/131.2/131.4 FT (MEASURED).",
+    "change_from": "[135.0]",
+    "change_to": "[130.7, 130.8, 130.9, 131.2, 131.4]",
+    "status": "DRAFT"
+  }
+]

@@ -1,0 +1,26 @@
+[
+  {
+    "redline_id": "RDL-414314B5058F",
+    "site_id": "TXCA0977",
+    "doc_type": "CD",
+    "doc_revision": "REV 1",
+    "sheet": "A-3",
+    "disc_id": "DSC-B0892B7F9B39",
+    "markup": "ADD MOUNT REINFORCEMENT PER MA-TXCA0977-R0: ALPHA MRK x1. ADD TO T-1 SCOPE OF WORK.",
+    "change_from": "not shown",
+    "change_to": "ALPHA MRK x1",
+    "status": "DRAFT"
+  },
+  {
+    "redline_id": "RDL-C0B6A87FA0A9",
+    "site_id": "TXCA0977",
+    "doc_type": "CD",
+    "doc_revision": "REV 1",
+    "sheet": "A-4",
+    "disc_id": "DSC-BCDF44AF6EA7",
+    "markup": "REVISE CABLE SCHEDULE HORIZ RUN 45 FT -> 18 FT (MEASURED). RECOMPUTE REQ'D LENGTH AND SPECIFIED TRUNK.",
+    "change_from": "45 ft",
+    "change_to": "18 ft",
+    "status": "DRAFT"
+  }
+]

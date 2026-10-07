@@ -1,0 +1,122 @@
+[
+  {
+    "disc_id": "DSC-0AD487559AC5",
+    "site_id": "TXGR0719",
+    "rule_id": "EXT-01",
+    "family": "EXTRACTION",
+    "severity": "MEDIUM",
+    "outcome": "REVIEW",
+    "title": "3 value(s) need review in TXGR0719_vendor_measurements.csv",
+    "description": "Read below the confidence threshold or not matched to the catalog: FIELD:B2:passive=APXVSPP18-C-A20 (0.79); FIELD:A1:radio=RRUS 11 B12 (0.78); FIELD:B1:radio=RRUS 11 B12 (0.80)",
+    "sector": null,
+    "position": null,
+    "expected": null,
+    "found": [
+      {
+        "field": "FIELD:B2:passive",
+        "value": "APXVSPP18-C-A20",
+        "confidence": 0.786,
+        "page": "OBJ-011"
+      },
+      {
+        "field": "FIELD:A1:radio",
+        "value": "RRUS 11 B12",
+        "confidence": 0.775,
+        "page": "OBJ-003"
+      },
+      {
+        "field": "FIELD:B1:radio",
+        "value": "RRUS 11 B12",
+        "confidence": 0.798,
+        "page": "OBJ-009"
+      }
+    ],
+    "governing": "",
+    "sources": [
+      "DRONE_VENDOR"
+    ],
+    "target_doc": "ANY",
+    "target_sheet": "",
+    "bom_impact": "",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 0.775
+  },
+  {
+    "disc_id": "DSC-F5CF41DE18F0",
+    "site_id": "TXGR0719",
+    "rule_id": "SA-01",
+    "family": "STRUCTURAL",
+    "severity": "CRITICAL",
+    "outcome": "ESCALATE",
+    "title": "Structure fails SA at 103%",
+    "description": "SA-TXGR0719-R0: FAIL, controlling member at 103%. Structural modification design is needed before any new loading; this is outside BOM scope and is escalated (EHS alert + hold).",
+    "sector": null,
+    "position": null,
+    "expected": "<= 100%",
+    "found": "103%",
+    "governing": "SA",
+    "sources": [
+      "MA_SA R0 2 SA"
+    ],
+    "target_doc": "MA_SA",
+    "target_sheet": "",
+    "bom_impact": "None (flag); site requirements add an SA-FAIL hold",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-A7926718A9E6",
+    "site_id": "TXGR0719",
+    "rule_id": "RFC-02",
+    "family": "RFDS_VS_CD",
+    "severity": "HIGH",
+    "outcome": "RFI",
+    "title": "Beta Radio 4460 B2 B66 on RFDS, not on CD",
+    "description": "RFDS R3 has new Radio 4460 B2 B66 at Beta position 1; the CD omits it. RFDS governs: the BOM includes it and its dependent package; raise an RFI and redline CD A-3/A-4.",
+    "sector": "B",
+    "position": 1,
+    "expected": "R4460",
+    "found": null,
+    "governing": "RFDS",
+    "sources": [
+      "RFDS R3 Final Config",
+      "CD REV 1 A-3/A-4"
+    ],
+    "target_doc": "CD",
+    "target_sheet": "A-3",
+    "bom_impact": "+1 R4460 and dependent package",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-E2E9CBE1E920",
+    "site_id": "TXGR0719",
+    "rule_id": "FLD-06",
+    "family": "CD_VS_FIELD",
+    "severity": "MEDIUM",
+    "outcome": "REDLINE",
+    "title": "Cable route measured 80 ft, CD 40 ft",
+    "description": "Drone survey measures the cabinet-to-structure route at 79.5 ft; the CD A-4 cable schedule uses 40 ft (tolerance 10 ft). Trunk length is recomputed from the measured route; redline CD A-4.",
+    "sector": null,
+    "position": null,
+    "expected": 40.0,
+    "found": 79.5,
+    "governing": "FIELD",
+    "sources": [
+      "CD REV 1 A-4 cable schedule",
+      "Drone survey (vendor measurements)"
+    ],
+    "target_doc": "CD",
+    "target_sheet": "A-4",
+    "bom_impact": "Trunk length step and hangers recomputed",
+    "evidence": [
+      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXGR0719\\TXGR0719_f000.jpg",
+      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXGR0719\\TXGR0719_f003.jpg"
+    ],
+    "status": "OPEN",
+    "confidence": 1.0
+  }
+]

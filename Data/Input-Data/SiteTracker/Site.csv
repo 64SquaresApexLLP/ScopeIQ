@@ -1,0 +1,11 @@
+Id,Name,Site_Name__c,Market__c,Customer__c,Street__c,City__c,State__c,Zip__c,Latitude__c,Longitude__c,Structure_Type__c,Structure_Height_ft__c,Structure_Owner__c,Site_Status__c
+a0S5QDfOr57vgSPAAA,TXDA1024,Lakewood Heights,DFW,CARRIER-A,6120 Abrams Rd (synthetic),Dallas,TX,75214,32.8341,-96.7512,Monopole,150,Lonestar Tower Partners,On Air
+a0S0rxUghLTWci8AAA,TXFW2217,Fossil Creek,DFW,CARRIER-A,3900 Basswood Blvd (synthetic),Fort Worth,TX,76137,32.8733,-97.3065,Self-support tower,180,Trinity Structures,On Air
+a0Ssw8h8Smxyba6AAA,TXPL0588,Legacy Drive,DFW,CARRIER-A,5800 Tennyson Pkwy (synthetic),Plano,TX,75024,33.0768,-96.821,Monopole,125,Lonestar Tower Partners,On Air
+a0SpuTHrN5rUB2WAAA,TXIR1340,Valley Ranch,DFW,CARRIER-A,9100 N MacArthur Blvd (synthetic),Irving,TX,75063,32.9234,-96.9587,Monopole,140,BluePeak Towers,On Air
+a0SKak0QAVsY4ybAAA,TXGR0719,Arbor Bend,DFW,CARRIER-A,2400 S Great Southwest Pkwy (synthetic),Grand Prairie,TX,75052,32.7092,-97.0143,Self-support tower,195,Trinity Structures,On Air
+a0Sy7Vx1aGLS6onAAA,TXDE0831,Hickory Flats,DFW,CARRIER-A,4500 Teasley Ln (synthetic),Denton,TX,76210,33.158,-97.0877,Guyed tower,220,BluePeak Towers,On Air
+a0S5wRy83TE5k2HAAA,TXRI0906,Collins Tower,DFW,CARRIER-A,1300 E Collins Blvd (synthetic),Richardson,TX,75080,32.9857,-96.7108,Rooftop,85,Collins Tower LLC (building owner),On Air
+a0SVoGI9G562iy5AAA,TXMK1112,Lake Forest,DFW,CARRIER-A,3300 Lake Forest Dr (synthetic),McKinney,TX,75071,33.2178,-96.6743,Monopole,165,Lonestar Tower Partners,On Air
+a0SQJBxTqg3nmg0AAA,TXAD0405,Uptown Plaza,DFW,CARRIER-A,15600 Dallas Pkwy (synthetic),Addison,TX,75001,32.9587,-96.8295,Rooftop,60,Uptown Plaza Holdings (building owner),On Air
+a0SkYUhU2kihZmoAAA,TXCA0977,Carrollton Station,DFW,CARRIER-A,1900 E Belt Line Rd (synthetic),Carrollton,TX,75006,32.9537,-96.8903,Monopole,110,BluePeak Towers,On Air

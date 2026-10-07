@@ -1,0 +1,9 @@
+RULE_ID,PRIORITY,STRUCTURE_TYPE,MIN_HEIGHT_FT,MAX_HEIGHT_FT,MIN_NEW_LOAD_LB,REQUIRES_AAU,ACCESS_METHOD,CRANE_DAYS,MANLIFT_DAYS,RIGGING_CLASS,EHS_ALERT,DESCRIPTION,VERSION,EFFECTIVE_FROM,EFFECTIVE_TO
+REQ-ROOF-01,10,Rooftop,0,999,0,Y,CRANE,1,0,II,Rooftop hoist over occupied building - crane lift plan and street closure permit,Rooftop with new AAUs: crane lift to roof,1,2026-01-01,
+REQ-ROOF-02,20,Rooftop,0,999,0,N,STAIR_HOIST,0,0,I,,Rooftop without heavy equipment: hoist through building,1,2026-01-01,
+REQ-GUY-01,10,Guyed tower,0,999,0,*,CLIMB_GIN_POLE,0,0,IV,Guyed structure - guy wire clearance and gin pole engineering,Guyed towers: climb with gin pole; Class IV rigging,1,2026-01-01,
+REQ-TWR-01,30,*,150,999,300,*,CRANE,2,0,III,,Tall structure with heavy new load: crane,1,2026-01-01,
+REQ-TWR-02,40,*,100,149.99,300,*,CRANE,1,0,II,,Medium structure with heavy new load: crane,1,2026-01-01,
+REQ-TWR-03,50,*,0,99.99,0,*,MANLIFT,0,2,I,,Short structure: man-lift,1,2026-01-01,
+REQ-TWR-04,90,*,0,999,0,*,CLIMB,0,0,II,,Default: tower climb,1,2026-01-01,
+REQ-SA-FAIL,1,*,0,999,0,*,HOLD,0,0,,Structure fails SA - do not load until structural modification design is complete,Escalation rule (applied in addition),1,2026-01-01,

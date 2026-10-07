@@ -1,0 +1,26 @@
+[
+  {
+    "redline_id": "RDL-BB71C2EF5D7E",
+    "site_id": "TXGR0719",
+    "doc_type": "CD",
+    "doc_revision": "REV 1",
+    "sheet": "A-3",
+    "disc_id": "DSC-A7926718A9E6",
+    "markup": "ADD (P) RADIO 4460 B2 B66 AT BETA POS 1 PER RFDS R3; UPDATE A-4 SCHEDULE AND T-1 SCOPE.",
+    "change_from": "not shown",
+    "change_to": "(P) R4460",
+    "status": "DRAFT"
+  },
+  {
+    "redline_id": "RDL-46D65AB2EB96",
+    "site_id": "TXGR0719",
+    "doc_type": "CD",
+    "doc_revision": "REV 1",
+    "sheet": "A-4",
+    "disc_id": "DSC-E2E9CBE1E920",
+    "markup": "REVISE CABLE SCHEDULE HORIZ RUN 40 FT -> 80 FT (MEASURED). RECOMPUTE REQ'D LENGTH AND SPECIFIED TRUNK.",
+    "change_from": "40 ft",
+    "change_to": "80 ft",
+    "status": "DRAFT"
+  }
+]

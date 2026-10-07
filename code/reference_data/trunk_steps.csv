@@ -1,0 +1,7 @@
+STEP_FT,CATALOG_KEY,RULE_TEXT,VERSION,EFFECTIVE_FROM,EFFECTIVE_TO
+100,HYB100,Required length = 1.10 x (vertical + horizontal run); next catalog step at or above,1,2026-01-01,
+150,HYB150,Required length = 1.10 x (vertical + horizontal run); next catalog step at or above,1,2026-01-01,
+200,HYB200,Required length = 1.10 x (vertical + horizontal run); next catalog step at or above,1,2026-01-01,
+250,HYB250,Required length = 1.10 x (vertical + horizontal run); next catalog step at or above,1,2026-01-01,
+300,HYB300,Required length = 1.10 x (vertical + horizontal run); next catalog step at or above,1,2026-01-01,
+350,HYB350,Required length = 1.10 x (vertical + horizontal run); next catalog step at or above,1,2026-01-01,

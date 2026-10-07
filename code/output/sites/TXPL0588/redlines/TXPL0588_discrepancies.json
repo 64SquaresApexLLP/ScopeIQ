@@ -1,0 +1,176 @@
+[
+  {
+    "disc_id": "DSC-84A1DA690CEE",
+    "site_id": "TXPL0588",
+    "rule_id": "EXT-01",
+    "family": "EXTRACTION",
+    "severity": "MEDIUM",
+    "outcome": "REVIEW",
+    "title": "2 value(s) need review in TXPL0588_vendor_measurements.csv",
+    "description": "Read below the confidence threshold or not matched to the catalog: FIELD:A2:radio=Radio 2217 B66A (0.79); FIELD:C2:radio=Radio 2217 B66A (0.79)",
+    "sector": null,
+    "position": null,
+    "expected": null,
+    "found": [
+      {
+        "field": "FIELD:A2:radio",
+        "value": "Radio 2217 B66A",
+        "confidence": 0.785,
+        "page": "OBJ-007"
+      },
+      {
+        "field": "FIELD:C2:radio",
+        "value": "Radio 2217 B66A",
+        "confidence": 0.789,
+        "page": "OBJ-022"
+      }
+    ],
+    "governing": "",
+    "sources": [
+      "DRONE_VENDOR"
+    ],
+    "target_doc": "ANY",
+    "target_sheet": "",
+    "bom_impact": "",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 0.785
+  },
+  {
+    "disc_id": "DSC-0C6EF257FBA2",
+    "site_id": "TXPL0588",
+    "rule_id": "MNT-01",
+    "family": "MOUNT",
+    "severity": "HIGH",
+    "outcome": "REDLINE",
+    "title": "MA modifications not shown on CD",
+    "description": "MA-TXPL0588-R0 passes only with modifications (Alpha MRK x1, Beta MRK x1, Gamma MRK x1); the CD does not show them. Redline CD A-3 and add the kits to the BOM.",
+    "sector": null,
+    "position": null,
+    "expected": [
+      {
+        "sector": "A",
+        "kit_key": "MRK",
+        "qty": 1,
+        "text": "Install mount reinforcement kit (MRK-12) per detail S-2"
+      },
+      {
+        "sector": "B",
+        "kit_key": "MRK",
+        "qty": 1,
+        "text": "Install mount reinforcement kit (MRK-12) per detail S-2"
+      },
+      {
+        "sector": "C",
+        "kit_key": "MRK",
+        "qty": 1,
+        "text": "Install mount reinforcement kit (MRK-12) per detail S-2"
+      }
+    ],
+    "found": null,
+    "governing": "MA",
+    "sources": [
+      "MA_SA R0 1 MA",
+      "CD REV 1 A-3"
+    ],
+    "target_doc": "CD",
+    "target_sheet": "A-3",
+    "bom_impact": "+3 MRK",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-72E4285C94EB",
+    "site_id": "TXPL0588",
+    "rule_id": "FLD-01",
+    "family": "CD_VS_FIELD",
+    "severity": "HIGH",
+    "outcome": "RFI",
+    "title": "Unrecorded radio at Gamma position 1",
+    "description": "Drone survey finds a radio (RRUS 11 B12, 84% confidence) at Gamma position 1 that neither the CD nor the RFDS records. Raise an RFI; it is not in the final design, so the BOM adds a removal line.",
+    "sector": "C",
+    "position": 1,
+    "expected": null,
+    "found": "RRUS11",
+    "governing": "FIELD",
+    "sources": [
+      "Drone survey (vendor measurements)",
+      "CD REV 1 A-3",
+      "RFDS R3"
+    ],
+    "target_doc": "CD",
+    "target_sheet": "A-3",
+    "bom_impact": "+1 Remove RRUS11",
+    "evidence": [
+      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXPL0588\\TXPL0588_f039.jpg",
+      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXPL0588\\TXPL0588_f042.jpg",
+      "OBJ-019"
+    ],
+    "status": "OPEN",
+    "confidence": 0.845
+  },
+  {
+    "disc_id": "DSC-FAC03F98DEFF",
+    "site_id": "TXPL0588",
+    "rule_id": "BOM-02",
+    "family": "REV0_BOM",
+    "severity": "MEDIUM",
+    "outcome": "BOM_CHANGE",
+    "title": "RFJ-43-6 quantity differs (Alpha, Beta, Gamma)",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha RFJ-43-6 (R-RAD-06): REV 0 2 vs rules 4; Beta RFJ-43-6 (R-RAD-06): REV 0 2 vs rules 4; Gamma RFJ-43-6 (R-RAD-06): REV 0 2 vs rules 4. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": null,
+    "position": null,
+    "expected": [
+      {
+        "sector": "A",
+        "part": "RFJ6",
+        "qty": 4.0,
+        "rule": "R-RAD-06"
+      },
+      {
+        "sector": "B",
+        "part": "RFJ6",
+        "qty": 4.0,
+        "rule": "R-RAD-06"
+      },
+      {
+        "sector": "C",
+        "part": "RFJ6",
+        "qty": 4.0,
+        "rule": "R-RAD-06"
+      }
+    ],
+    "found": [
+      {
+        "sector": "A",
+        "part": "RFJ6",
+        "qty": 2.0,
+        "rule": "R-RAD-06"
+      },
+      {
+        "sector": "B",
+        "part": "RFJ6",
+        "qty": 2.0,
+        "rule": "R-RAD-06"
+      },
+      {
+        "sector": "C",
+        "part": "RFJ6",
+        "qty": 2.0,
+        "rule": "R-RAD-06"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "+6 RFJ6",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  }
+]

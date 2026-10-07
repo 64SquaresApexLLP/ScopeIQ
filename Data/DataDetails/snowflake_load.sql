@@ -1,0 +1,39 @@
+-- Stage the synthetic POC pack in Snowflake. Run as a role that can create a database and stage.
+CREATE DATABASE IF NOT EXISTS SCOPING_POC;
+CREATE SCHEMA IF NOT EXISTS SCOPING_POC.RAW;
+USE SCHEMA SCOPING_POC.RAW;
+
+-- 1. One internal stage for every file, with a directory table so each file is queryable by path.
+CREATE STAGE IF NOT EXISTS SITE_DOCS
+  DIRECTORY = (ENABLE = TRUE)
+  ENCRYPTION = (TYPE = 'SNOWFLAKE_SSE');   -- server-side encryption lets AI_PARSE_DOCUMENT read staged PDFs
+
+-- 2. Upload the unzipped folder with the Snowflake CLI, keeping the folder layout
+--    (sites/<SITE_ID>/<rfds|cds|drone|ma_sa|bom>/..., reference/, sitetracker/):
+--      snow stage copy ./Ericsson_Scoping_POC_Synthetic_Data @SCOPING_POC.RAW.SITE_DOCS --recursive
+ALTER STAGE SITE_DOCS REFRESH;
+
+-- 3. File registry: site ID and document type derived from the file name.
+CREATE OR REPLACE VIEW FILE_REGISTRY AS
+SELECT RELATIVE_PATH,
+       IFF(STARTSWITH(RELATIVE_PATH, 'sites/'), SPLIT_PART(RELATIVE_PATH, '/', 2), NULL) AS SITE_ID,
+       IFF(STARTSWITH(RELATIVE_PATH, 'sites/'), SPLIT_PART(RELATIVE_PATH, '/', 3), SPLIT_PART(RELATIVE_PATH, '/', 1)) AS DOC_FOLDER,
+       SIZE, LAST_MODIFIED, FILE_URL
+FROM DIRECTORY(@SITE_DOCS);
+
+-- 4. Sitetracker CSV exports into tables.
+CREATE OR REPLACE FILE FORMAT CSV_HDR TYPE = CSV PARSE_HEADER = TRUE FIELD_OPTIONALLY_ENCLOSED_BY = '"';
+CREATE OR REPLACE TABLE ST_SITE      USING TEMPLATE (SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*)) FROM TABLE(INFER_SCHEMA(LOCATION=>'@SITE_DOCS/sitetracker/Site.csv',      FILE_FORMAT=>'CSV_HDR')));
+CREATE OR REPLACE TABLE ST_PROJECT   USING TEMPLATE (SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*)) FROM TABLE(INFER_SCHEMA(LOCATION=>'@SITE_DOCS/sitetracker/Project.csv',   FILE_FORMAT=>'CSV_HDR')));
+CREATE OR REPLACE TABLE ST_MILESTONE USING TEMPLATE (SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*)) FROM TABLE(INFER_SCHEMA(LOCATION=>'@SITE_DOCS/sitetracker/Milestone.csv', FILE_FORMAT=>'CSV_HDR')));
+CREATE OR REPLACE TABLE ST_DOCUMENT  USING TEMPLATE (SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*)) FROM TABLE(INFER_SCHEMA(LOCATION=>'@SITE_DOCS/sitetracker/Document.csv',  FILE_FORMAT=>'CSV_HDR')));
+COPY INTO ST_SITE      FROM @SITE_DOCS/sitetracker/Site.csv      FILE_FORMAT=(FORMAT_NAME='CSV_HDR') MATCH_BY_COLUMN_NAME=CASE_INSENSITIVE;
+COPY INTO ST_PROJECT   FROM @SITE_DOCS/sitetracker/Project.csv   FILE_FORMAT=(FORMAT_NAME='CSV_HDR') MATCH_BY_COLUMN_NAME=CASE_INSENSITIVE;
+COPY INTO ST_MILESTONE FROM @SITE_DOCS/sitetracker/Milestone.csv FILE_FORMAT=(FORMAT_NAME='CSV_HDR') MATCH_BY_COLUMN_NAME=CASE_INSENSITIVE;
+COPY INTO ST_DOCUMENT  FROM @SITE_DOCS/sitetracker/Document.csv  FILE_FORMAT=(FORMAT_NAME='CSV_HDR') MATCH_BY_COLUMN_NAME=CASE_INSENSITIVE;
+
+-- 5. Smoke test: layout-aware parse of one PDF RFDS.
+SELECT AI_PARSE_DOCUMENT(TO_FILE('@SITE_DOCS', 'sites/TXMK1112/rfds/TXMK1112_RFDS_R3.pdf'), {'mode': 'LAYOUT'}) AS PARSED;
+
+-- XLSX (RFDS, catalog, rules, REV 0 BOM), DXF and LAZ are read with Snowpark Python
+-- (openpyxl, ezdxf, laspy) or a Snowpark Container Services job; see the POC plan.

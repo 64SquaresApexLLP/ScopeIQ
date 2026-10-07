@@ -1,0 +1,12 @@
+PARAM,VALUE,UOM,DESCRIPTION,VERSION,EFFECTIVE_FROM,EFFECTIVE_TO
+base_days,1.0,days,Mobilisation and site setup,1,2026-01-01,
+per_major_install,0.25,days,Each antenna/AAU/radio install,1,2026-01-01,
+per_major_removal,0.12,days,Each removal,1,2026-01-01,
+per_trunk,0.75,days,Each hybrid trunk run,1,2026-01-01,
+per_frame_or_sled,0.5,days,Each new sector frame or roof sled,1,2026-01-01,
+per_mrk,0.25,days,Each mount reinforcement kit,1,2026-01-01,
+crane_day,1.0,days,Each crane day,1,2026-01-01,
+integration_days,1.0,days,Commissioning and integration,1,2026-01-01,
+weather_contingency_pct,15,pct,Added on top for weather,1,2026-01-01,
+sa_fail_hold_days,20,days,Added when the structure fails SA (modification design and install),1,2026-01-01,
+default_device_weight_lb,60,lb,Illustrative weight per new antenna/AAU/radio when the catalog has no weight (drives crane rules),1,2026-01-01,

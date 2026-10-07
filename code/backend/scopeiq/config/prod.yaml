@@ -1,0 +1,19 @@
+# PROD: minimal logging, enough to debug. WARNING and above everywhere, plus INFO for the
+# pipeline milestones and request summaries (logger names listed in info_loggers).
+# Every record still carries correlation_id, site_id and user so a failure can be traced end to end.
+logging:
+  level: WARNING
+  format: json
+  console: true
+  file: true
+  db_sink_level: WARNING
+  log_payloads: false
+  log_sql: false
+  mask_pii: true
+  sample_debug_rate: 0.0
+  info_loggers: ["scopeiq.pipeline", "scopeiq.api.access", "scopeiq.audit"]
+api:
+  cors_origins: []
+database:
+  snowflake:
+    database: SCOPEIQ_PROD

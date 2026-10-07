@@ -1,0 +1,112 @@
+[
+  {
+    "disc_id": "DSC-253FA08F9F4D",
+    "site_id": "TXDE0831",
+    "rule_id": "EXT-01",
+    "family": "EXTRACTION",
+    "severity": "MEDIUM",
+    "outcome": "REVIEW",
+    "title": "3 value(s) need review in TXDE0831_pointcloud.laz",
+    "description": "Read below the confidence threshold or not matched to the catalog: FIELD:A2:radio=Radio 2217 B66A (0.77); FIELD:B2:radio=Radio 2217 B66A (0.76); FIELD:C2:radio=Radio 2217 B66A (0.78)",
+    "sector": null,
+    "position": null,
+    "expected": null,
+    "found": [
+      {
+        "field": "FIELD:A2:radio",
+        "value": "Radio 2217 B66A",
+        "confidence": 0.769,
+        "page": "PC-009"
+      },
+      {
+        "field": "FIELD:B2:radio",
+        "value": "Radio 2217 B66A",
+        "confidence": 0.759,
+        "page": "PC-012"
+      },
+      {
+        "field": "FIELD:C2:radio",
+        "value": "Radio 2217 B66A",
+        "confidence": 0.78,
+        "page": "PC-015"
+      }
+    ],
+    "governing": "",
+    "sources": [
+      "DRONE_POINTCLOUD"
+    ],
+    "target_doc": "ANY",
+    "target_sheet": "",
+    "bom_impact": "",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 0.759
+  },
+  {
+    "disc_id": "DSC-88C905A9A044",
+    "site_id": "TXDE0831",
+    "rule_id": "FLD-04",
+    "family": "CD_VS_FIELD",
+    "severity": "MEDIUM",
+    "outcome": "RFI",
+    "title": "Alpha measured at 348 deg, CD 0 deg",
+    "description": "Drone survey measures Alpha antennas facing 348 deg; the CD shows 0 deg (12 deg off, tolerance 5). Design azimuth is 0 deg: raise an RFI and add the re-orientation to the scope of work.",
+    "sector": "A",
+    "position": null,
+    "expected": 0.0,
+    "found": 347.6,
+    "governing": "RFDS",
+    "sources": [
+      "CD REV 1 A-3",
+      "Drone survey (point cloud)"
+    ],
+    "target_doc": "CD",
+    "target_sheet": "A-3",
+    "bom_impact": "None (service: re-orient sector)",
+    "evidence": [
+      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXDE0831\\TXDE0831_f012.jpg",
+      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXDE0831\\TXDE0831_f015.jpg"
+    ],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-0F91F0ABE0B2",
+    "site_id": "TXDE0831",
+    "rule_id": "BOM-02",
+    "family": "REV0_BOM",
+    "severity": "MEDIUM",
+    "outcome": "BOM_CHANGE",
+    "title": "SNAP-3S quantity differs (Site)",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Site SNAP-3S (R-TRK-04): REV 0 84 vs rules 100. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": "SITE",
+    "position": null,
+    "expected": [
+      {
+        "sector": "SITE",
+        "part": "HANGER",
+        "qty": 100.0,
+        "rule": "R-TRK-04"
+      }
+    ],
+    "found": [
+      {
+        "sector": "SITE",
+        "part": "HANGER",
+        "qty": 84.0,
+        "rule": "R-TRK-04"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "+16 HANGER",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  }
+]

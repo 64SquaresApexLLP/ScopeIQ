@@ -1,0 +1,14 @@
+[
+  {
+    "rfi_id": "RFI-8FEAC3C7D3D7",
+    "site_id": "TXIR1340",
+    "to_party": "AE_ENGINEER",
+    "subject": "TXIR1340: Existing antennas measured 4 ft lower than drawn",
+    "question": "Existing antennas measure [130.7, 130.8, 130.9, 131.2, 131.4] ft rad center vs [135.0] ft on the CD/RFDS. Please confirm and revise the elevation.",
+    "proposed_answer": "Revise CD A-2 to measured rad centers.",
+    "disc_ids": [
+      "DSC-B5BDB3BC44AA"
+    ],
+    "status": "DRAFT"
+  }
+]

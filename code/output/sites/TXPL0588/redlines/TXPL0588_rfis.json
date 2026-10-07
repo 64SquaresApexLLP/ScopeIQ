@@ -1,0 +1,14 @@
+[
+  {
+    "rfi_id": "RFI-3C54B69AF582",
+    "site_id": "TXPL0588",
+    "to_party": "ERICSSON",
+    "subject": "TXPL0588: Unrecorded radio at Gamma position 1",
+    "question": "The drone survey found RRUS11 at Gamma position 1, which is not on the RFDS or the CD. Please confirm it should be removed (or reused).",
+    "proposed_answer": "Remove; removal line added to the BOM.",
+    "disc_ids": [
+      "DSC-72E4285C94EB"
+    ],
+    "status": "DRAFT"
+  }
+]

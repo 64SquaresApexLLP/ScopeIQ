@@ -1,0 +1,26 @@
+[
+  {
+    "redline_id": "RDL-0F201CAD0FD8",
+    "site_id": "TXPL0588",
+    "doc_type": "CD",
+    "doc_revision": "REV 1",
+    "sheet": "A-3",
+    "disc_id": "DSC-0C6EF257FBA2",
+    "markup": "ADD MOUNT REINFORCEMENT PER MA-TXPL0588-R0: ALPHA MRK x1, BETA MRK x1, GAMMA MRK x1. ADD TO T-1 SCOPE OF WORK.",
+    "change_from": "not shown",
+    "change_to": "ALPHA MRK x1, BETA MRK x1, GAMMA MRK x1",
+    "status": "DRAFT"
+  },
+  {
+    "redline_id": "RDL-3C54B69AF582",
+    "site_id": "TXPL0588",
+    "doc_type": "CD",
+    "doc_revision": "REV 1",
+    "sheet": "A-3",
+    "disc_id": "DSC-72E4285C94EB",
+    "markup": "ADD UNRECORDED (E) RRUS 11 B12 AT GAMMA POS 1 TO EXISTING INVENTORY AND MARK (R) REMOVE.",
+    "change_from": "not shown",
+    "change_to": "(E)/(R) RRUS11",
+    "status": "DRAFT"
+  }
+]

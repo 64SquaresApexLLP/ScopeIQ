@@ -1,0 +1,31 @@
+You are a solution architect and senior developer that have to design and build a application that is required to assist in BOM Scoping, Site Design Scoping and Network Deployment scoping process. Condensed definition is provided in the Condensed-Scope-Definition.xlsx
+
+Key things to consider while designing:
+1) Access and only read information available inside the folder ScopeIQ-POC
+2) the ScopeIQ_Internal_Team_Guide.docx provide the information and context on the process and how the process work.
+3) In the folder ScopeIQ-POC\Data\Input-Data\Sites there is site related data for individual sites. Following is the explanation of the folders inside it:
+	- drone: this folder contains the metadata of the files available in the subfolder imagery which contains the various image files. there is a video subfolder too which contains the actual drone footage. Code should try to use 		the drone footage and take various frames for analysis.
+	- cds: contains the construction drawing that is sent out as CD Package
+	- ma_sas: Contains the mount and structural analysis of the site.
+	- rfds: contains the initial rf design which is designed by engineer. 
+4) To better relate to the folder you can review the image on Page-6 with title "Figure 3. How the documents depend on each other" in the ScopeIQ_Internal_Team_Guide.docx
+5) In the folder ScopeIQ-POC\Data\Input-Data\SiteTracker there are document.csv, milestones.csv, project.csv and site.csv which contains the data about each site. This data mimicks the data coming from Sitetracker application which is frequently used for storing data about sites in telecom  companies for project management.
+6) folder ScopeIQ-POC\Data\DataDetails contains the following:
+	- guidance and code to generate the data in snowflake
+	- Snowflake objects creation script
+	- README.md contains the details along with the exception scenarios that are seeded in the data so that your application can detect the same.
+7) folder ScopeIQ-POC\Data\Reference-Data contains the BOM rules and material catalog that needs to be used while developing BOM with all the details of equipment.
+8) In the document ScopeIQ_Internal_Team_Guide.docx section 6 to Section -11 tells about the details of how this application should work along with workflows and will form the core logic of the application.
+
+What is the output that is expected:
+1) Revised code files that needs to be executed on Snowflake to create the data base objects and data. There should be a detailed document of the same for execution.
+2) Front end in react native to track the discrepancies and redlining along with workflows which mimics different user logins and tracks status.
+3) Appropriate user personas and tables to track the workflow.
+4) Creation of modular libraries that are used for all the reference data and business rules.
+5) Input screens for the users to upload all the aritefacts present in the Sites folder. It is an option.
+6) stored redlines of the existing sites available in the sites folder.
+7) Detailed md file for installation of all the software and DB components.
+8) Front end and Database should interact using API's that are modular.
+9) ensure maximum reusability of common components like auditing, log writing and error management.
+10) for Log writing use the Debug and logging features and ensure that it is controlled through external parameters like Dev, test and Prod. For ex in Dev it should have extensive logging but in Prod there should be enough logging for Debugging only.
+11) Put all the new generated code in the folder ScopeIQ-POC\code

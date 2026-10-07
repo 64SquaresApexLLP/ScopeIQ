@@ -1,0 +1,25 @@
+# Snowpark Container Services job spec: runs the full pipeline (including Tesseract OCR for scanned CDs) against Snowflake.
+# Build & push (from code/):   docker build -f backend/Dockerfile -t <repo_url>/scopeiq:latest .   &&  docker push <repo_url>/scopeiq:latest
+# Run:  EXECUTE JOB SERVICE IN COMPUTE POOL SCOPEIQ_POOL NAME = APP.SCOPEIQ_PIPELINE_JOB
+#         FROM @RAW.SCOPEIQ_CODE SPECIFICATION_FILE = 'pipeline_job.yaml';
+spec:
+  containers:
+    - name: pipeline
+      image: /scopeiq_dev/app/images/scopeiq:latest
+      command: ["python", "scripts/run_pipeline.py", "--backend", "snowflake"]
+      env:
+        SCOPEIQ_ENV: dev
+        SCOPEIQ__DATABASE__SNOWFLAKE__AUTHENTICATOR: oauth     # SPCS injects a session token at /snowflake/session/token
+        SCOPEIQ__PATHS__SITES_DIR: /data/Input-Data/Sites
+        SCOPEIQ__PATHS__SITETRACKER_DIR: /data/Input-Data/SiteTracker
+        SCOPEIQ__PATHS__OUTPUT_DIR: /output
+      volumeMounts:
+        - name: docs
+          mountPath: /data
+        - name: output
+          mountPath: /output
+  volumes:
+    - name: docs
+      source: "@RAW.SITE_DOCS"
+    - name: output
+      source: "@RAW.SCOPEIQ_OUTPUT"

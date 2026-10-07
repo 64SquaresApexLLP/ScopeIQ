@@ -1,0 +1,11 @@
+# TEST: INFO logging with SQL traced so QA can reproduce issues; payloads off.
+logging:
+  level: INFO
+  format: json
+  db_sink_level: INFO
+  log_payloads: false
+  log_sql: true
+  mask_pii: true
+database:
+  snowflake:
+    database: SCOPEIQ_TEST

@@ -1,0 +1,3 @@
+rfi_id,site_id,to_party,subject,question,proposed_answer,disc_ids,status
+RFI-42B038AB07B9,TXGR0719,ERICSSON,TXGR0719: Structure fails SA at 103%,"SA-TXGR0719-R0: FAIL, controlling member at 103%. Structural modification design is needed before any new loading; this is outside BOM scope and is escalated (EHS alert + hold).",None (flag); site requirements add an SA-FAIL hold,"[""DSC-F5CF41DE18F0""]",DRAFT
+RFI-BB71C2EF5D7E,TXGR0719,ERICSSON,"TXGR0719: Beta Radio 4460 B2 B66 on RFDS, not on CD",RFDS R3 has new Radio 4460 B2 B66 at Beta position 1; the CD omits it. RFDS governs: the BOM includes it and its dependent package; raise an RFI and redline CD A-3/A-4.,+1 R4460 and dependent package,"[""DSC-A7926718A9E6""]",DRAFT

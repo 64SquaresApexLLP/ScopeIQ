@@ -1,0 +1,105 @@
+[
+  {
+    "disc_id": "DSC-995D3F7F6C4A",
+    "site_id": "TXCA0977",
+    "rule_id": "EXT-01",
+    "family": "EXTRACTION",
+    "severity": "MEDIUM",
+    "outcome": "REVIEW",
+    "title": "3 value(s) need review in TXCA0977_pointcloud.laz",
+    "description": "Read below the confidence threshold or not matched to the catalog: FIELD:A2:radio=Radio 2217 B66A (0.76); FIELD:B2:radio=Radio 2217 B66A (0.77); FIELD:C2:radio=Radio 2217 B66A (0.77)",
+    "sector": null,
+    "position": null,
+    "expected": null,
+    "found": [
+      {
+        "field": "FIELD:A2:radio",
+        "value": "Radio 2217 B66A",
+        "confidence": 0.759,
+        "page": "PC-009"
+      },
+      {
+        "field": "FIELD:B2:radio",
+        "value": "Radio 2217 B66A",
+        "confidence": 0.769,
+        "page": "PC-012"
+      },
+      {
+        "field": "FIELD:C2:radio",
+        "value": "Radio 2217 B66A",
+        "confidence": 0.766,
+        "page": "PC-015"
+      }
+    ],
+    "governing": "",
+    "sources": [
+      "DRONE_POINTCLOUD"
+    ],
+    "target_doc": "ANY",
+    "target_sheet": "",
+    "bom_impact": "",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 0.759
+  },
+  {
+    "disc_id": "DSC-B0892B7F9B39",
+    "site_id": "TXCA0977",
+    "rule_id": "MNT-01",
+    "family": "MOUNT",
+    "severity": "HIGH",
+    "outcome": "REDLINE",
+    "title": "MA modifications not shown on CD",
+    "description": "MA-TXCA0977-R0 passes only with modifications (Alpha MRK x1); the CD does not show them. Redline CD A-3 and add the kits to the BOM.",
+    "sector": null,
+    "position": null,
+    "expected": [
+      {
+        "sector": "A",
+        "kit_key": "MRK",
+        "qty": 1,
+        "text": "Install mount reinforcement kit (MRK-12) per detail S-2"
+      }
+    ],
+    "found": null,
+    "governing": "MA",
+    "sources": [
+      "MA_SA R0 1 MA",
+      "CD REV 1 A-3"
+    ],
+    "target_doc": "CD",
+    "target_sheet": "A-3",
+    "bom_impact": "+1 MRK",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-BCDF44AF6EA7",
+    "site_id": "TXCA0977",
+    "rule_id": "FLD-06",
+    "family": "CD_VS_FIELD",
+    "severity": "MEDIUM",
+    "outcome": "REDLINE",
+    "title": "Cable route measured 18 ft, CD 45 ft",
+    "description": "Drone survey measures the cabinet-to-structure route at 18.2 ft; the CD A-4 cable schedule uses 45 ft (tolerance 10 ft). Trunk length is recomputed from the measured route; redline CD A-4.",
+    "sector": null,
+    "position": null,
+    "expected": 45.0,
+    "found": 18.2,
+    "governing": "FIELD",
+    "sources": [
+      "CD REV 1 A-4 cable schedule",
+      "Drone survey (point cloud)"
+    ],
+    "target_doc": "CD",
+    "target_sheet": "A-4",
+    "bom_impact": "Trunk length step and hangers recomputed",
+    "evidence": [
+      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXCA0977\\TXCA0977_f003.jpg",
+      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXCA0977\\TXCA0977_f006.jpg"
+    ],
+    "status": "OPEN",
+    "confidence": 1.0
+  }
+]

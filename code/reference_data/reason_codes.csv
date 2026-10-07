@@ -1,0 +1,20 @@
+REASON_CODE,CATEGORY,DESCRIPTION,FAULT_PARTY,APPLIES_TO
+RC-DOC-CONFLICT,Discrepancy,Documents conflict; following the governing document (RFDS governs RF),A&E,DISCREPANCY;BOM_LINE
+RC-FIELD-COND,Discrepancy,Field condition differs from drawings (drone evidence),A&E,DISCREPANCY;BOM_LINE
+RC-MA-REQ,Discrepancy,Mount/structural analysis requirement,A&E,DISCREPANCY;BOM_LINE
+RC-REV0-ERR,BOM,Ericsson REV 0 tool error corrected,ERICSSON,BOM_LINE
+RC-RULE-APPLIED,BOM,Line produced by kitting rules,NONE,BOM_LINE
+RC-SCOPER-CORR,BOM,Scoper correction of generated line,INNOSQUARES,BOM_LINE
+RC-SP-REQUEST,Handshake,CX SP change request accepted,SP,BOM_LINE;BOM_REVISION
+RC-MAT-AVAIL,Rework,Material availability substitution,ERICSSON,BOM_REVISION
+RC-GC-CHANGE,Rework,General contractor / SP change after FBA,SP,BOM_REVISION
+RC-RAPID-RESP,Rework,Rapid response rework,ERICSSON,BOM_REVISION
+RC-OWN-ERROR,Rework,Rework caused by our own error (no charge),INNOSQUARES,BOM_REVISION;BOM_LINE
+RC-FALSE-POS,Discrepancy,Not a real discrepancy (false positive),NONE,DISCREPANCY
+RC-DUPLICATE,Discrepancy,Duplicate of another discrepancy,NONE,DISCREPANCY
+RC-ACCEPT-RISK,Discrepancy,Accepted by Ericsson without change,ERICSSON,DISCREPANCY
+RC-AE-REVISED,Redline,A&E issued a corrected revision,A&E,REDLINE;DISCREPANCY
+RC-AE-REJECTED,Redline,A&E rejected the redline with justification,A&E,REDLINE
+RC-RFI-ANSWERED,RFI,Ericsson answered the RFI,ERICSSON,RFI;DISCREPANCY
+RC-DATA-FIX,Admin,Reference data correction,NONE,REFERENCE
+RC-OTHER,General,Other (comment required),NONE,ALL

@@ -1,0 +1,14 @@
+[
+  {
+    "rfi_id": "RFI-A839108B2CE1",
+    "site_id": "TXFW2217",
+    "to_party": "ERICSSON",
+    "subject": "TXFW2217: Alpha azimuth RFDS 30 vs CD 20",
+    "question": "RFDS R3 sets Alpha to 30 deg; the CD (and field) show 20 deg. Please confirm the re-orientation is intended.",
+    "proposed_answer": "Confirm 30 deg per RFDS; CD to be redlined and re-orientation added to SoW.",
+    "disc_ids": [
+      "DSC-C6623AE55EB8"
+    ],
+    "status": "DRAFT"
+  }
+]

@@ -1,0 +1,2 @@
+rfi_id,site_id,to_party,subject,question,proposed_answer,disc_ids,status
+RFI-E597BBDF8E26,TXMK1112,ERICSSON,TXMK1112: Unrecorded antenna at Gamma position 3,"The drone survey found SBNHH at Gamma position 3, which is not on the RFDS or the CD. Please confirm it should be removed (or reused).",Remove; removal line added to the BOM.,"[""DSC-FAE2FB1B41FB""]",DRAFT

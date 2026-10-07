@@ -1,0 +1,134 @@
+Id,Project__c,Document_Type__c,Title,File_Path__c,File_Format__c,Revision__c,Uploaded_Date__c
+069EpEtNgAM1LSmAAA,a0P6Tb3K75tGdJgAAA,RFDS,TXDA1024_RFDS_R3.xlsx,sites/TXDA1024/rfds/TXDA1024_RFDS_R3.xlsx,XLSX (template v2),R3,2026-07-30
+0693ZqvXiNwkEbzAAA,a0P6Tb3K75tGdJgAAA,Construction Drawings,TXDA1024_CD_REV1.pdf,sites/TXDA1024/cds/TXDA1024_CD_REV1.pdf,"PDF (vector, CAD-exported)",REV 1,2026-08-20
+069XyuQnHPBzXC9AAA,a0P6Tb3K75tGdJgAAA,Construction Drawings,TXDA1024_CD_REV1.dxf,sites/TXDA1024/cds/TXDA1024_CD_REV1.dxf,DXF (AutoCAD R2018),REV 1,2026-08-20
+0697oq7sUPYhVFtAAA,a0P6Tb3K75tGdJgAAA,MA/SA,TXDA1024_MA_SA_R0.pdf,sites/TXDA1024/ma_sa/TXDA1024_MA_SA_R0.pdf,PDF,R0,2026-08-27
+069qI97IUqnOx7hAAA,a0P6Tb3K75tGdJgAAA,BOM REV 0,TXDA1024_BOM_REV0_preliminary.xlsx,sites/TXDA1024/bom/TXDA1024_BOM_REV0_preliminary.xlsx,XLSX,REV 0,2026-09-04
+069DmizfbPrhNkkAAA,a0P6Tb3K75tGdJgAAA,Drone Survey - Point Cloud,TXDA1024_pointcloud.laz,sites/TXDA1024/drone/TXDA1024_pointcloud.laz,"LAZ (LAS 1.4, PDRF 7)",,2026-08-11
+069EYHbqU7BdsQeAAA,a0P6Tb3K75tGdJgAAA,Drone Survey - Imagery,TXDA1024_ortho_stitched.jpg,sites/TXDA1024/drone/imagery/TXDA1024_ortho_stitched.jpg,JPG,,2026-08-11
+069UhnD8kefosynAAA,a0P6Tb3K75tGdJgAAA,Drone Survey - Imagery,TXDA1024_sector_alpha.jpg,sites/TXDA1024/drone/imagery/TXDA1024_sector_alpha.jpg,JPG,,2026-08-11
+069ygGYwD5Fkm8PAAA,a0P6Tb3K75tGdJgAAA,Drone Survey - Imagery,TXDA1024_sector_beta.jpg,sites/TXDA1024/drone/imagery/TXDA1024_sector_beta.jpg,JPG,,2026-08-11
+069fOci4eJL1B5uAAA,a0P6Tb3K75tGdJgAAA,Drone Survey - Imagery,TXDA1024_sector_gamma.jpg,sites/TXDA1024/drone/imagery/TXDA1024_sector_gamma.jpg,JPG,,2026-08-11
+069CIeuQDQUga6SAAA,a0P6Tb3K75tGdJgAAA,Drone Survey - Imagery,TXDA1024_elevation_full.jpg,sites/TXDA1024/drone/imagery/TXDA1024_elevation_full.jpg,JPG,,2026-08-11
+069IiEYHTboDp5RAAA,a0P6Tb3K75tGdJgAAA,Drone Survey - Video,TXDA1024_orbit.mp4,sites/TXDA1024/drone/video/TXDA1024_orbit.mp4,MP4 (H.264),,2026-08-11
+069YaZ1V4BIeAaDAAA,a0P6Tb3K75tGdJgAAA,Drone Survey - Metadata,TXDA1024_capture_metadata.json,sites/TXDA1024/drone/TXDA1024_capture_metadata.json,JSON,,2026-08-11
+0690vBmp0V3DsxmAAA,a0P6Tb3K75tGdJgAAA,Drone Survey - Vendor Measurements,TXDA1024_vendor_measurements.csv,sites/TXDA1024/drone/TXDA1024_vendor_measurements.csv,CSV,,2026-08-11
+069RqeQJySjZi33AAA,a0PmlMUgfv2EyBpAAA,RFDS,TXFW2217_RFDS_R3.xlsx,sites/TXFW2217/rfds/TXFW2217_RFDS_R3.xlsx,XLSX (template v2),R3,2026-07-31
+069rKyR2dQiIg8xAAA,a0PmlMUgfv2EyBpAAA,Construction Drawings,TXFW2217_CD_REV1.pdf,sites/TXFW2217/cds/TXFW2217_CD_REV1.pdf,"PDF (vector, CAD-exported)",REV 1,2026-08-21
+0691qQ9z7BSjt00AAA,a0PmlMUgfv2EyBpAAA,Construction Drawings,TXFW2217_CD_REV1.dxf,sites/TXFW2217/cds/TXFW2217_CD_REV1.dxf,DXF (AutoCAD R2018),REV 1,2026-08-21
+069WdZu1m5nu6YuAAA,a0PmlMUgfv2EyBpAAA,MA/SA,TXFW2217_MA_SA_R0.pdf,sites/TXFW2217/ma_sa/TXFW2217_MA_SA_R0.pdf,PDF,R0,2026-08-28
+069ksiWOJ6ylZvdAAA,a0PmlMUgfv2EyBpAAA,BOM REV 0,TXFW2217_BOM_REV0_preliminary.xlsx,sites/TXFW2217/bom/TXFW2217_BOM_REV0_preliminary.xlsx,XLSX,REV 0,2026-09-05
+069U2PCVfsiZxvFAAA,a0PmlMUgfv2EyBpAAA,Drone Survey - Point Cloud,TXFW2217_pointcloud.laz,sites/TXFW2217/drone/TXFW2217_pointcloud.laz,"LAZ (LAS 1.4, PDRF 7)",,2026-08-12
+069iAX5lFiaPhfpAAA,a0PmlMUgfv2EyBpAAA,Drone Survey - Imagery,TXFW2217_ortho_stitched.jpg,sites/TXFW2217/drone/imagery/TXFW2217_ortho_stitched.jpg,JPG,,2026-08-12
+0699nOWT9irvdF2AAA,a0PmlMUgfv2EyBpAAA,Drone Survey - Imagery,TXFW2217_sector_alpha.jpg,sites/TXFW2217/drone/imagery/TXFW2217_sector_alpha.jpg,JPG,,2026-08-12
+06973uHMsgcwKOLAAA,a0PmlMUgfv2EyBpAAA,Drone Survey - Imagery,TXFW2217_sector_beta.jpg,sites/TXFW2217/drone/imagery/TXFW2217_sector_beta.jpg,JPG,,2026-08-12
+069Vmc6JECHEqjPAAA,a0PmlMUgfv2EyBpAAA,Drone Survey - Imagery,TXFW2217_sector_gamma.jpg,sites/TXFW2217/drone/imagery/TXFW2217_sector_gamma.jpg,JPG,,2026-08-12
+069UVung2UxHahaAAA,a0PmlMUgfv2EyBpAAA,Drone Survey - Imagery,TXFW2217_elevation_full.jpg,sites/TXFW2217/drone/imagery/TXFW2217_elevation_full.jpg,JPG,,2026-08-12
+0692oJw9ZwoIo1pAAA,a0PmlMUgfv2EyBpAAA,Drone Survey - Video,TXFW2217_orbit.mp4,sites/TXFW2217/drone/video/TXFW2217_orbit.mp4,MP4 (H.264),,2026-08-12
+069ardXSQFjTnmmAAA,a0PmlMUgfv2EyBpAAA,Drone Survey - Metadata,TXFW2217_capture_metadata.json,sites/TXFW2217/drone/TXFW2217_capture_metadata.json,JSON,,2026-08-12
+069WGMuB59Fe0V8AAA,a0PmlMUgfv2EyBpAAA,Drone Survey - Vendor Measurements,TXFW2217_vendor_measurements.csv,sites/TXFW2217/drone/TXFW2217_vendor_measurements.csv,CSV,,2026-08-12
+069DwTcQZBjSUZpAAA,a0POfdrVS8pPWVvAAA,RFDS,TXPL0588_RFDS_R3.xlsx,sites/TXPL0588/rfds/TXPL0588_RFDS_R3.xlsx,XLSX (template v2),R3,2026-08-01
+069aJtv6iW7JzpbAAA,a0POfdrVS8pPWVvAAA,Construction Drawings,TXPL0588_CD_REV1.pdf,sites/TXPL0588/cds/TXPL0588_CD_REV1.pdf,"PDF (vector, CAD-exported)",REV 1,2026-08-22
+069BhpQcZKXiffAAAA,a0POfdrVS8pPWVvAAA,Construction Drawings,TXPL0588_CD_REV1.dxf,sites/TXPL0588/cds/TXPL0588_CD_REV1.dxf,DXF (AutoCAD R2018),REV 1,2026-08-22
+069ZnmjmyV35DiPAAA,a0POfdrVS8pPWVvAAA,MA/SA,TXPL0588_MA_SA_R0.pdf,sites/TXPL0588/ma_sa/TXPL0588_MA_SA_R0.pdf,PDF,R0,2026-08-29
+069sSSM5mA8E7DlAAA,a0POfdrVS8pPWVvAAA,BOM REV 0,TXPL0588_BOM_REV0_preliminary.xlsx,sites/TXPL0588/bom/TXPL0588_BOM_REV0_preliminary.xlsx,XLSX,REV 0,2026-09-06
+0698Yi0TMNDX1FWAAA,a0POfdrVS8pPWVvAAA,Drone Survey - Point Cloud,TXPL0588_pointcloud.laz,sites/TXPL0588/drone/TXPL0588_pointcloud.laz,"LAZ (LAS 1.4, PDRF 7)",,2026-08-13
+069Iwy6bk38ANVsAAA,a0POfdrVS8pPWVvAAA,Drone Survey - Imagery,TXPL0588_ortho_stitched.jpg,sites/TXPL0588/drone/imagery/TXPL0588_ortho_stitched.jpg,JPG,,2026-08-13
+069UDZPRq2glmu2AAA,a0POfdrVS8pPWVvAAA,Drone Survey - Imagery,TXPL0588_sector_alpha.jpg,sites/TXPL0588/drone/imagery/TXPL0588_sector_alpha.jpg,JPG,,2026-08-13
+069e3yOc74F73ztAAA,a0POfdrVS8pPWVvAAA,Drone Survey - Imagery,TXPL0588_sector_beta.jpg,sites/TXPL0588/drone/imagery/TXPL0588_sector_beta.jpg,JPG,,2026-08-13
+069t6Iqceh9SFIEAAA,a0POfdrVS8pPWVvAAA,Drone Survey - Imagery,TXPL0588_sector_gamma.jpg,sites/TXPL0588/drone/imagery/TXPL0588_sector_gamma.jpg,JPG,,2026-08-13
+069UAL3alzhLkshAAA,a0POfdrVS8pPWVvAAA,Drone Survey - Imagery,TXPL0588_elevation_full.jpg,sites/TXPL0588/drone/imagery/TXPL0588_elevation_full.jpg,JPG,,2026-08-13
+0693hClfUQmwuCcAAA,a0POfdrVS8pPWVvAAA,Drone Survey - Video,TXPL0588_orbit.mp4,sites/TXPL0588/drone/video/TXPL0588_orbit.mp4,MP4 (H.264),,2026-08-13
+069iqbX473Ygwh3AAA,a0POfdrVS8pPWVvAAA,Drone Survey - Metadata,TXPL0588_capture_metadata.json,sites/TXPL0588/drone/TXPL0588_capture_metadata.json,JSON,,2026-08-13
+069yUJBD6kqgdmnAAA,a0POfdrVS8pPWVvAAA,Drone Survey - Vendor Measurements,TXPL0588_vendor_measurements.csv,sites/TXPL0588/drone/TXPL0588_vendor_measurements.csv,CSV,,2026-08-13
+069yUM8qCDm2t3GAAA,a0PLyJSuSFYCb4IAAA,RFDS,TXIR1340_RFDS_R3.xlsx,sites/TXIR1340/rfds/TXIR1340_RFDS_R3.xlsx,XLSX (template v2),R3,2026-08-02
+069RiLq9APhjOA3AAA,a0PLyJSuSFYCb4IAAA,Construction Drawings,TXIR1340_CD_REV1.pdf,sites/TXIR1340/cds/TXIR1340_CD_REV1.pdf,"PDF (vector, CAD-exported)",REV 1,2026-08-23
+069lUz3mqvku7oIAAA,a0PLyJSuSFYCb4IAAA,MA/SA,TXIR1340_MA_SA_R0.pdf,sites/TXIR1340/ma_sa/TXIR1340_MA_SA_R0.pdf,PDF,R0,2026-08-30
+069YqxbdbVaZ3XpAAA,a0PLyJSuSFYCb4IAAA,BOM REV 0,TXIR1340_BOM_REV0_preliminary.xlsx,sites/TXIR1340/bom/TXIR1340_BOM_REV0_preliminary.xlsx,XLSX,REV 0,2026-09-07
+069LVnam8yvYVSzAAA,a0PLyJSuSFYCb4IAAA,Drone Survey - Point Cloud,TXIR1340_pointcloud.laz,sites/TXIR1340/drone/TXIR1340_pointcloud.laz,"LAZ (LAS 1.4, PDRF 7)",,2026-08-14
+0698lsIQMLN3PZvAAA,a0PLyJSuSFYCb4IAAA,Drone Survey - Imagery,TXIR1340_ortho_stitched.jpg,sites/TXIR1340/drone/imagery/TXIR1340_ortho_stitched.jpg,JPG,,2026-08-14
+069pS7CmaRZhk0iAAA,a0PLyJSuSFYCb4IAAA,Drone Survey - Imagery,TXIR1340_sector_alpha.jpg,sites/TXIR1340/drone/imagery/TXIR1340_sector_alpha.jpg,JPG,,2026-08-14
+069UGSt1i1rB4rvAAA,a0PLyJSuSFYCb4IAAA,Drone Survey - Imagery,TXIR1340_sector_beta.jpg,sites/TXIR1340/drone/imagery/TXIR1340_sector_beta.jpg,JPG,,2026-08-14
+069icsqxl95YvikAAA,a0PLyJSuSFYCb4IAAA,Drone Survey - Imagery,TXIR1340_sector_gamma.jpg,sites/TXIR1340/drone/imagery/TXIR1340_sector_gamma.jpg,JPG,,2026-08-14
+069CsRbjNWCR5pwAAA,a0PLyJSuSFYCb4IAAA,Drone Survey - Imagery,TXIR1340_elevation_full.jpg,sites/TXIR1340/drone/imagery/TXIR1340_elevation_full.jpg,JPG,,2026-08-14
+069VwssGltG5i7hAAA,a0PLyJSuSFYCb4IAAA,Drone Survey - Video,TXIR1340_orbit.mp4,sites/TXIR1340/drone/video/TXIR1340_orbit.mp4,MP4 (H.264),,2026-08-14
+0699e4EJBy7LtsyAAA,a0PLyJSuSFYCb4IAAA,Drone Survey - Metadata,TXIR1340_capture_metadata.json,sites/TXIR1340/drone/TXIR1340_capture_metadata.json,JSON,,2026-08-14
+069YtVIelUwJMdLAAA,a0PLyJSuSFYCb4IAAA,Drone Survey - Vendor Measurements,TXIR1340_vendor_measurements.csv,sites/TXIR1340/drone/TXIR1340_vendor_measurements.csv,CSV,,2026-08-14
+0696X6nc9w9CJ4VAAA,a0Pl6vfRUJFM8czAAA,RFDS,TXGR0719_RFDS_R3.xlsx,sites/TXGR0719/rfds/TXGR0719_RFDS_R3.xlsx,XLSX (template v3),R3,2026-08-03
+06953ltRb0CR5jrAAA,a0Pl6vfRUJFM8czAAA,Construction Drawings,TXGR0719_CD_REV1.pdf,sites/TXGR0719/cds/TXGR0719_CD_REV1.pdf,"PDF (vector, CAD-exported)",REV 1,2026-08-24
+069lSWvQEJadpykAAA,a0Pl6vfRUJFM8czAAA,Construction Drawings,TXGR0719_CD_REV1.dxf,sites/TXGR0719/cds/TXGR0719_CD_REV1.dxf,DXF (AutoCAD R2018),REV 1,2026-08-24
+0694XXeeQvStf7eAAA,a0Pl6vfRUJFM8czAAA,MA/SA,TXGR0719_MA_SA_R0.pdf,sites/TXGR0719/ma_sa/TXGR0719_MA_SA_R0.pdf,PDF,R0,2026-08-31
+0691C3GTRIkGV5NAAA,a0Pl6vfRUJFM8czAAA,BOM REV 0,TXGR0719_BOM_REV0_preliminary.xlsx,sites/TXGR0719/bom/TXGR0719_BOM_REV0_preliminary.xlsx,XLSX,REV 0,2026-09-08
+0695X2G4DLfrALzAAA,a0Pl6vfRUJFM8czAAA,Drone Survey - Point Cloud,TXGR0719_pointcloud.laz,sites/TXGR0719/drone/TXGR0719_pointcloud.laz,"LAZ (LAS 1.4, PDRF 7)",,2026-08-15
+069HFBKXUAmQJsOAAA,a0Pl6vfRUJFM8czAAA,Drone Survey - Imagery,TXGR0719_ortho_stitched.jpg,sites/TXGR0719/drone/imagery/TXGR0719_ortho_stitched.jpg,JPG,,2026-08-15
+069CdzGmdm672weAAA,a0Pl6vfRUJFM8czAAA,Drone Survey - Imagery,TXGR0719_sector_alpha.jpg,sites/TXGR0719/drone/imagery/TXGR0719_sector_alpha.jpg,JPG,,2026-08-15
+0693Qm7sfYnGOAhAAA,a0Pl6vfRUJFM8czAAA,Drone Survey - Imagery,TXGR0719_sector_beta.jpg,sites/TXGR0719/drone/imagery/TXGR0719_sector_beta.jpg,JPG,,2026-08-15
+069OCmwGsYB8MDCAAA,a0Pl6vfRUJFM8czAAA,Drone Survey - Imagery,TXGR0719_sector_gamma.jpg,sites/TXGR0719/drone/imagery/TXGR0719_sector_gamma.jpg,JPG,,2026-08-15
+0697qi0KEtXSp95AAA,a0Pl6vfRUJFM8czAAA,Drone Survey - Imagery,TXGR0719_elevation_full.jpg,sites/TXGR0719/drone/imagery/TXGR0719_elevation_full.jpg,JPG,,2026-08-15
+069TkTHuomlOSKVAAA,a0Pl6vfRUJFM8czAAA,Drone Survey - Video,TXGR0719_orbit.mp4,sites/TXGR0719/drone/video/TXGR0719_orbit.mp4,MP4 (H.264),,2026-08-15
+069Jw5tEVfvCeXlAAA,a0Pl6vfRUJFM8czAAA,Drone Survey - Metadata,TXGR0719_capture_metadata.json,sites/TXGR0719/drone/TXGR0719_capture_metadata.json,JSON,,2026-08-15
+069NhneUgcFG3qPAAA,a0Pl6vfRUJFM8czAAA,Drone Survey - Vendor Measurements,TXGR0719_vendor_measurements.csv,sites/TXGR0719/drone/TXGR0719_vendor_measurements.csv,CSV,,2026-08-15
+069IEQ2KLHHhVQlAAA,a0P2SJLnJiWv7wJAAA,RFDS,TXDE0831_RFDS_R3.xlsx,sites/TXDE0831/rfds/TXDE0831_RFDS_R3.xlsx,XLSX (template v3),R3,2026-08-06
+069lYvs7AhTBvAaAAA,a0P2SJLnJiWv7wJAAA,Construction Drawings,TXDE0831_CD_REV1.pdf,sites/TXDE0831/cds/TXDE0831_CD_REV1.pdf,"PDF (vector, CAD-exported)",REV 1,2026-08-27
+069QTSZTesKn22EAAA,a0P2SJLnJiWv7wJAAA,Construction Drawings,TXDE0831_CD_REV1.dxf,sites/TXDE0831/cds/TXDE0831_CD_REV1.dxf,DXF (AutoCAD R2018),REV 1,2026-08-27
+069coywMi29xonlAAA,a0P2SJLnJiWv7wJAAA,MA/SA,TXDE0831_MA_SA_R0.pdf,sites/TXDE0831/ma_sa/TXDE0831_MA_SA_R0.pdf,PDF,R0,2026-09-03
+069ig74n8nyJ9QuAAA,a0P2SJLnJiWv7wJAAA,BOM REV 0,TXDE0831_BOM_REV0_preliminary.xlsx,sites/TXDE0831/bom/TXDE0831_BOM_REV0_preliminary.xlsx,XLSX,REV 0,2026-09-11
+069l4VFj7JA7SeVAAA,a0P2SJLnJiWv7wJAAA,Drone Survey - Point Cloud,TXDE0831_pointcloud.laz,sites/TXDE0831/drone/TXDE0831_pointcloud.laz,"LAZ (LAS 1.4, PDRF 7)",,2026-08-18
+069DNfXeoCwAwiTAAA,a0P2SJLnJiWv7wJAAA,Drone Survey - Imagery,TXDE0831_ortho_stitched.jpg,sites/TXDE0831/drone/imagery/TXDE0831_ortho_stitched.jpg,JPG,,2026-08-18
+069EEogQYk6Y1soAAA,a0P2SJLnJiWv7wJAAA,Drone Survey - Imagery,TXDE0831_sector_alpha.jpg,sites/TXDE0831/drone/imagery/TXDE0831_sector_alpha.jpg,JPG,,2026-08-18
+0698i3nl0g8AmtTAAA,a0P2SJLnJiWv7wJAAA,Drone Survey - Imagery,TXDE0831_sector_beta.jpg,sites/TXDE0831/drone/imagery/TXDE0831_sector_beta.jpg,JPG,,2026-08-18
+069KA1Z2ZdsfYr4AAA,a0P2SJLnJiWv7wJAAA,Drone Survey - Imagery,TXDE0831_sector_gamma.jpg,sites/TXDE0831/drone/imagery/TXDE0831_sector_gamma.jpg,JPG,,2026-08-18
+069znXGY52VaV3YAAA,a0P2SJLnJiWv7wJAAA,Drone Survey - Imagery,TXDE0831_elevation_full.jpg,sites/TXDE0831/drone/imagery/TXDE0831_elevation_full.jpg,JPG,,2026-08-18
+069xFUOi7rQ4Xj7AAA,a0P2SJLnJiWv7wJAAA,Drone Survey - Video,TXDE0831_orbit.mp4,sites/TXDE0831/drone/video/TXDE0831_orbit.mp4,MP4 (H.264),,2026-08-18
+069rkxzxRHKurTpAAA,a0P2SJLnJiWv7wJAAA,Drone Survey - Metadata,TXDE0831_capture_metadata.json,sites/TXDE0831/drone/TXDE0831_capture_metadata.json,JSON,,2026-08-18
+069NXp2kFp2OxEJAAA,a0PcmPZ3sBi4GVaAAA,RFDS,TXRI0906_RFDS_R3.xlsx,sites/TXRI0906/rfds/TXRI0906_RFDS_R3.xlsx,XLSX (template v3),R3,2026-08-07
+069u31IlpWULhybAAA,a0PcmPZ3sBi4GVaAAA,Construction Drawings,TXRI0906_CD_REV1.pdf,sites/TXRI0906/cds/TXRI0906_CD_REV1.pdf,"PDF (vector, CAD-exported)",REV 1,2026-08-28
+069stLs9D7fNo4yAAA,a0PcmPZ3sBi4GVaAAA,Construction Drawings,TXRI0906_CD_REV1.dxf,sites/TXRI0906/cds/TXRI0906_CD_REV1.dxf,DXF (AutoCAD R2018),REV 1,2026-08-28
+069Ie5TZALtjEtMAAA,a0PcmPZ3sBi4GVaAAA,MA/SA,TXRI0906_MA_SA_R0.pdf,sites/TXRI0906/ma_sa/TXRI0906_MA_SA_R0.pdf,PDF,R0,2026-09-04
+069Q1YVxkzXeLCzAAA,a0PcmPZ3sBi4GVaAAA,BOM REV 0,TXRI0906_BOM_REV0_preliminary.xlsx,sites/TXRI0906/bom/TXRI0906_BOM_REV0_preliminary.xlsx,XLSX,REV 0,2026-09-12
+069URD5A5bIucMWAAA,a0PcmPZ3sBi4GVaAAA,Drone Survey - Point Cloud,TXRI0906_pointcloud.laz,sites/TXRI0906/drone/TXRI0906_pointcloud.laz,"LAZ (LAS 1.4, PDRF 7)",,2026-08-19
+069E7SwcDiLbApcAAA,a0PcmPZ3sBi4GVaAAA,Drone Survey - Imagery,TXRI0906_ortho_stitched.jpg,sites/TXRI0906/drone/imagery/TXRI0906_ortho_stitched.jpg,JPG,,2026-08-19
+0698NrtwiG6NSjWAAA,a0PcmPZ3sBi4GVaAAA,Drone Survey - Imagery,TXRI0906_sector_alpha.jpg,sites/TXRI0906/drone/imagery/TXRI0906_sector_alpha.jpg,JPG,,2026-08-19
+0691IEs0gsqgaxLAAA,a0PcmPZ3sBi4GVaAAA,Drone Survey - Imagery,TXRI0906_sector_beta.jpg,sites/TXRI0906/drone/imagery/TXRI0906_sector_beta.jpg,JPG,,2026-08-19
+069sRvYMFPPJtLWAAA,a0PcmPZ3sBi4GVaAAA,Drone Survey - Imagery,TXRI0906_sector_gamma.jpg,sites/TXRI0906/drone/imagery/TXRI0906_sector_gamma.jpg,JPG,,2026-08-19
+069dG5AMFcKXlsMAAA,a0PcmPZ3sBi4GVaAAA,Drone Survey - Imagery,TXRI0906_sector_delta.jpg,sites/TXRI0906/drone/imagery/TXRI0906_sector_delta.jpg,JPG,,2026-08-19
+069CqzI8bPVd8J9AAA,a0PcmPZ3sBi4GVaAAA,Drone Survey - Imagery,TXRI0906_elevation_full.jpg,sites/TXRI0906/drone/imagery/TXRI0906_elevation_full.jpg,JPG,,2026-08-19
+06973uIEVcDELxHAAA,a0PcmPZ3sBi4GVaAAA,Drone Survey - Video,TXRI0906_orbit.mp4,sites/TXRI0906/drone/video/TXRI0906_orbit.mp4,MP4 (H.264),,2026-08-19
+069f5HFeOaDG6JfAAA,a0PcmPZ3sBi4GVaAAA,Drone Survey - Metadata,TXRI0906_capture_metadata.json,sites/TXRI0906/drone/TXRI0906_capture_metadata.json,JSON,,2026-08-19
+069B5FbuRNuKCCgAAA,a0P8MCgSgKc6B27AAA,RFDS,TXMK1112_RFDS_R3.pdf,sites/TXMK1112/rfds/TXMK1112_RFDS_R3.pdf,PDF,R3,2026-08-08
+069wNkXG37RuLEhAAA,a0P8MCgSgKc6B27AAA,Construction Drawings,TXMK1112_CD_REV1.pdf,sites/TXMK1112/cds/TXMK1112_CD_REV1.pdf,"PDF (vector, CAD-exported)",REV 1,2026-08-29
+0695ZTQJB63w2xYAAA,a0P8MCgSgKc6B27AAA,Construction Drawings,TXMK1112_CD_REV1.dxf,sites/TXMK1112/cds/TXMK1112_CD_REV1.dxf,DXF (AutoCAD R2018),REV 1,2026-08-29
+069rX0oXhJj5NhcAAA,a0P8MCgSgKc6B27AAA,MA/SA,TXMK1112_MA_SA_R0.pdf,sites/TXMK1112/ma_sa/TXMK1112_MA_SA_R0.pdf,PDF,R0,2026-09-05
+069IFHxaFNrrexyAAA,a0P8MCgSgKc6B27AAA,BOM REV 0,TXMK1112_BOM_REV0_preliminary.xlsx,sites/TXMK1112/bom/TXMK1112_BOM_REV0_preliminary.xlsx,XLSX,REV 0,2026-09-13
+069L9ASETB6wC7RAAA,a0P8MCgSgKc6B27AAA,Drone Survey - Point Cloud,TXMK1112_pointcloud.laz,sites/TXMK1112/drone/TXMK1112_pointcloud.laz,"LAZ (LAS 1.4, PDRF 7)",,2026-08-20
+069X5VfkSDZYCNFAAA,a0P8MCgSgKc6B27AAA,Drone Survey - Imagery,TXMK1112_ortho_stitched.jpg,sites/TXMK1112/drone/imagery/TXMK1112_ortho_stitched.jpg,JPG,,2026-08-20
+069oOfiirZ6Bo8MAAA,a0P8MCgSgKc6B27AAA,Drone Survey - Imagery,TXMK1112_sector_alpha.jpg,sites/TXMK1112/drone/imagery/TXMK1112_sector_alpha.jpg,JPG,,2026-08-20
+069hTtR93gT4NXzAAA,a0P8MCgSgKc6B27AAA,Drone Survey - Imagery,TXMK1112_sector_beta.jpg,sites/TXMK1112/drone/imagery/TXMK1112_sector_beta.jpg,JPG,,2026-08-20
+069eNCbQLBGquLgAAA,a0P8MCgSgKc6B27AAA,Drone Survey - Imagery,TXMK1112_sector_gamma.jpg,sites/TXMK1112/drone/imagery/TXMK1112_sector_gamma.jpg,JPG,,2026-08-20
+069U8UgrcJjNj2dAAA,a0P8MCgSgKc6B27AAA,Drone Survey - Imagery,TXMK1112_elevation_full.jpg,sites/TXMK1112/drone/imagery/TXMK1112_elevation_full.jpg,JPG,,2026-08-20
+069MBWy5LqfCDZrAAA,a0P8MCgSgKc6B27AAA,Drone Survey - Video,TXMK1112_orbit.mp4,sites/TXMK1112/drone/video/TXMK1112_orbit.mp4,MP4 (H.264),,2026-08-20
+069gAYx5OEVoMeMAAA,a0P8MCgSgKc6B27AAA,Drone Survey - Metadata,TXMK1112_capture_metadata.json,sites/TXMK1112/drone/TXMK1112_capture_metadata.json,JSON,,2026-08-20
+069iHdYkQnP6jXNAAA,a0PFwEmjAsFH97eAAA,RFDS,TXAD0405_RFDS_R3.pdf,sites/TXAD0405/rfds/TXAD0405_RFDS_R3.pdf,PDF,R3,2026-08-09
+069bEepGdPcCRbyAAA,a0PFwEmjAsFH97eAAA,Construction Drawings,TXAD0405_CD_REV1.pdf,sites/TXAD0405/cds/TXAD0405_CD_REV1.pdf,"PDF (vector, CAD-exported)",REV 1,2026-08-30
+06960TabYJk0FAfAAA,a0PFwEmjAsFH97eAAA,MA/SA,TXAD0405_MA_SA_R0.pdf,sites/TXAD0405/ma_sa/TXAD0405_MA_SA_R0.pdf,PDF,R0,2026-09-06
+069TcgTtOSJgbXAAAA,a0PFwEmjAsFH97eAAA,BOM REV 0,TXAD0405_BOM_REV0_preliminary.xlsx,sites/TXAD0405/bom/TXAD0405_BOM_REV0_preliminary.xlsx,XLSX,REV 0,2026-09-14
+069KD0OZg9XGuqeAAA,a0PFwEmjAsFH97eAAA,Drone Survey - Point Cloud,TXAD0405_pointcloud.laz,sites/TXAD0405/drone/TXAD0405_pointcloud.laz,"LAZ (LAS 1.4, PDRF 7)",,2026-08-21
+069WM03rIUSwVE9AAA,a0PFwEmjAsFH97eAAA,Drone Survey - Imagery,TXAD0405_ortho_stitched.jpg,sites/TXAD0405/drone/imagery/TXAD0405_ortho_stitched.jpg,JPG,,2026-08-21
+069qOQq8gc0rqrrAAA,a0PFwEmjAsFH97eAAA,Drone Survey - Imagery,TXAD0405_sector_alpha.jpg,sites/TXAD0405/drone/imagery/TXAD0405_sector_alpha.jpg,JPG,,2026-08-21
+069vyiPfo4X473DAAA,a0PFwEmjAsFH97eAAA,Drone Survey - Imagery,TXAD0405_sector_beta.jpg,sites/TXAD0405/drone/imagery/TXAD0405_sector_beta.jpg,JPG,,2026-08-21
+069E25P5URaJawgAAA,a0PFwEmjAsFH97eAAA,Drone Survey - Imagery,TXAD0405_elevation_full.jpg,sites/TXAD0405/drone/imagery/TXAD0405_elevation_full.jpg,JPG,,2026-08-21
+069dY2q3VhfBcDDAAA,a0PFwEmjAsFH97eAAA,Drone Survey - Video,TXAD0405_orbit.mp4,sites/TXAD0405/drone/video/TXAD0405_orbit.mp4,MP4 (H.264),,2026-08-21
+0696ppMiOXOoPwgAAA,a0PFwEmjAsFH97eAAA,Drone Survey - Metadata,TXAD0405_capture_metadata.json,sites/TXAD0405/drone/TXAD0405_capture_metadata.json,JSON,,2026-08-21
+0694r2270s3UnYzAAA,a0Pn40cNAmISCfHAAA,RFDS,TXCA0977_RFDS_R3.pdf,sites/TXCA0977/rfds/TXCA0977_RFDS_R3.pdf,PDF,R3,2026-08-10
+069MA5i5ZpBkVdGAAA,a0Pn40cNAmISCfHAAA,Construction Drawings,TXCA0977_CD_REV1.pdf,sites/TXCA0977/cds/TXCA0977_CD_REV1.pdf,"PDF (vector, CAD-exported)",REV 1,2026-08-31
+069UZQ485L4xTHJAAA,a0Pn40cNAmISCfHAAA,Construction Drawings,TXCA0977_CD_REV1.dxf,sites/TXCA0977/cds/TXCA0977_CD_REV1.dxf,DXF (AutoCAD R2018),REV 1,2026-08-31
+069ckbob87pggplAAA,a0Pn40cNAmISCfHAAA,MA/SA,TXCA0977_MA_SA_R0.pdf,sites/TXCA0977/ma_sa/TXCA0977_MA_SA_R0.pdf,PDF,R0,2026-09-07
+069Ie9UUbAql1aBAAA,a0Pn40cNAmISCfHAAA,BOM REV 0,TXCA0977_BOM_REV0_preliminary.xlsx,sites/TXCA0977/bom/TXCA0977_BOM_REV0_preliminary.xlsx,XLSX,REV 0,2026-09-15
+069UORnwRlPDZ6nAAA,a0Pn40cNAmISCfHAAA,Drone Survey - Point Cloud,TXCA0977_pointcloud.laz,sites/TXCA0977/drone/TXCA0977_pointcloud.laz,"LAZ (LAS 1.4, PDRF 7)",,2026-08-22
+069qS5iBE3J07l1AAA,a0Pn40cNAmISCfHAAA,Drone Survey - Imagery,TXCA0977_ortho_stitched.jpg,sites/TXCA0977/drone/imagery/TXCA0977_ortho_stitched.jpg,JPG,,2026-08-22
+069PXlblBzoorQCAAA,a0Pn40cNAmISCfHAAA,Drone Survey - Imagery,TXCA0977_sector_alpha.jpg,sites/TXCA0977/drone/imagery/TXCA0977_sector_alpha.jpg,JPG,,2026-08-22
+069ZtUnFsnXxBoiAAA,a0Pn40cNAmISCfHAAA,Drone Survey - Imagery,TXCA0977_sector_beta.jpg,sites/TXCA0977/drone/imagery/TXCA0977_sector_beta.jpg,JPG,,2026-08-22
+0692c1SHBKLjadhAAA,a0Pn40cNAmISCfHAAA,Drone Survey - Imagery,TXCA0977_sector_gamma.jpg,sites/TXCA0977/drone/imagery/TXCA0977_sector_gamma.jpg,JPG,,2026-08-22
+069hOnSuQFin8joAAA,a0Pn40cNAmISCfHAAA,Drone Survey - Imagery,TXCA0977_elevation_full.jpg,sites/TXCA0977/drone/imagery/TXCA0977_elevation_full.jpg,JPG,,2026-08-22
+0695mCB81MFcmx5AAA,a0Pn40cNAmISCfHAAA,Drone Survey - Video,TXCA0977_orbit.mp4,sites/TXCA0977/drone/video/TXCA0977_orbit.mp4,MP4 (H.264),,2026-08-22
+0692dRaWGpvlBncAAA,a0Pn40cNAmISCfHAAA,Drone Survey - Metadata,TXCA0977_capture_metadata.json,sites/TXCA0977/drone/TXCA0977_capture_metadata.json,JSON,,2026-08-22

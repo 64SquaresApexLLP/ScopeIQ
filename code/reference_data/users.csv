@@ -1,0 +1,11 @@
+USER_ID,DISPLAY_NAME,EMAIL,ROLE_CODE,ORGANISATION,MARKET,SERVICE_PROVIDER,ACTIVE
+scoper1,Asha Rao (Scoper),scoper1@scopeiq.demo,SCOPER,Innosquares,DFW,,Y
+scoper2,Vikram Iyer (Scoper),scoper2@scopeiq.demo,SCOPER,Innosquares,DFW,,Y
+reviewer1,Dana Brooks (Scoping Lead),reviewer1@scopeiq.demo,REVIEWER,Innosquares,DFW,,Y
+sp_prairie,Prairie Tower Services PM,sp.prairie@scopeiq.demo,CX_SP,Prairie Tower Services (synthetic),DFW,Prairie Tower Services (synthetic),Y
+sp_brazos,Brazos Wireless PM,sp.brazos@scopeiq.demo,CX_SP,Brazos Wireless Construction (synthetic),DFW,Brazos Wireless Construction (synthetic),Y
+sp_redline,Redline Constructors PM,sp.redline@scopeiq.demo,CX_SP,Redline Constructors (synthetic),DFW,Redline Constructors (synthetic),Y
+ericsson1,Ericsson Scoping Lead,ericsson1@scopeiq.demo,ERICSSON,Ericsson,DFW,,Y
+ae1,Meridian A&E Engineer,ae1@scopeiq.demo,AE_ENGINEER,Meridian A&E Group (synthetic),DFW,,Y
+ehs1,EH&S Manager,ehs1@scopeiq.demo,EHS,Ericsson,DFW,,Y
+admin,Platform Admin,admin@scopeiq.demo,ADMIN,Innosquares,*,,Y

@@ -1,0 +1,181 @@
+[
+  {
+    "disc_id": "DSC-2DB0230D3FA3",
+    "site_id": "TXIR1340",
+    "rule_id": "EXT-01",
+    "family": "EXTRACTION",
+    "severity": "MEDIUM",
+    "outcome": "REVIEW",
+    "title": "9 value(s) need review in TXIR1340_CD_REV1.pdf",
+    "description": "Read below the confidence threshold or not matched to the catalog: CD:A1:pipe=Mount pipe (0.70); CD:A2:pipe=Mount pipe (0.70); CD:A3:pipe=Mount pipe (0.70); CD:B1:pipe=Mount pipe (0.70); CD:B2:pipe=Mount pipe (0.70); CD:B3:pipe=Mount pipe (0.70); CD:C1:pipe=Mount pipe (0.70); CD:C2:pipe=Mount pipe (0.70); CD:C3:pipe=Mount pipe (0.70)",
+    "sector": null,
+    "position": null,
+    "expected": null,
+    "found": [
+      {
+        "field": "CD:A1:pipe",
+        "value": "Mount pipe",
+        "confidence": 0.7,
+        "page": "A-3"
+      },
+      {
+        "field": "CD:A2:pipe",
+        "value": "Mount pipe",
+        "confidence": 0.7,
+        "page": "A-3"
+      },
+      {
+        "field": "CD:A3:pipe",
+        "value": "Mount pipe",
+        "confidence": 0.7,
+        "page": "A-3"
+      },
+      {
+        "field": "CD:B1:pipe",
+        "value": "Mount pipe",
+        "confidence": 0.7,
+        "page": "A-3"
+      },
+      {
+        "field": "CD:B2:pipe",
+        "value": "Mount pipe",
+        "confidence": 0.7,
+        "page": "A-3"
+      },
+      {
+        "field": "CD:B3:pipe",
+        "value": "Mount pipe",
+        "confidence": 0.7,
+        "page": "A-3"
+      },
+      {
+        "field": "CD:C1:pipe",
+        "value": "Mount pipe",
+        "confidence": 0.7,
+        "page": "A-3"
+      },
+      {
+        "field": "CD:C2:pipe",
+        "value": "Mount pipe",
+        "confidence": 0.7,
+        "page": "A-3"
+      },
+      {
+        "field": "CD:C3:pipe",
+        "value": "Mount pipe",
+        "confidence": 0.7,
+        "page": "A-3"
+      }
+    ],
+    "governing": "",
+    "sources": [
+      "CD"
+    ],
+    "target_doc": "ANY",
+    "target_sheet": "",
+    "bom_impact": "",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 0.7
+  },
+  {
+    "disc_id": "DSC-B5BDB3BC44AA",
+    "site_id": "TXIR1340",
+    "rule_id": "FLD-03",
+    "family": "CD_VS_FIELD",
+    "severity": "MEDIUM",
+    "outcome": "RFI",
+    "title": "Existing antennas measured 4 ft lower than drawn",
+    "description": "6 existing antenna(s) measure 131 ft rad center vs 135 ft on the CD/RFDS (tolerance 2 ft). Raise an RFI and redline the CD elevation; trunk length is recomputed from the design rad center.",
+    "sector": null,
+    "position": null,
+    "expected": [
+      135.0
+    ],
+    "found": [
+      130.7,
+      130.8,
+      130.9,
+      131.2,
+      131.4
+    ],
+    "governing": "FIELD",
+    "sources": [
+      "CD REV 1 A-2",
+      "Drone survey (vendor measurements)"
+    ],
+    "target_doc": "CD",
+    "target_sheet": "A-2",
+    "bom_impact": "None unless the trunk step changes",
+    "evidence": [
+      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXIR1340\\TXIR1340_f000.jpg",
+      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXIR1340\\TXIR1340_f012.jpg",
+      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXIR1340\\TXIR1340_f021.jpg"
+    ],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-4E22C0B2071D",
+    "site_id": "TXIR1340",
+    "rule_id": "BOM-04",
+    "family": "REV0_BOM",
+    "severity": "HIGH",
+    "outcome": "BOM_CHANGE",
+    "title": "Non-approved AF-LC-15 used instead of FJ-LCLC-OD-20",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha AF-LC-15 (R-AIR-03): REV 0 1 vs rules 1; Beta AF-LC-15 (R-AIR-03): REV 0 1 vs rules 1; Gamma AF-LC-15 (R-AIR-03): REV 0 1 vs rules 1. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": null,
+    "position": null,
+    "expected": [
+      {
+        "sector": "A",
+        "part": "FJ20",
+        "qty": 1.0,
+        "rule": "R-AIR-03"
+      },
+      {
+        "sector": "B",
+        "part": "FJ20",
+        "qty": 1.0,
+        "rule": "R-AIR-03"
+      },
+      {
+        "sector": "C",
+        "part": "FJ20",
+        "qty": 1.0,
+        "rule": "R-AIR-03"
+      }
+    ],
+    "found": [
+      {
+        "sector": "A",
+        "part": "FJ15NA",
+        "qty": 1.0,
+        "rule": "R-AIR-03"
+      },
+      {
+        "sector": "B",
+        "part": "FJ15NA",
+        "qty": 1.0,
+        "rule": "R-AIR-03"
+      },
+      {
+        "sector": "C",
+        "part": "FJ15NA",
+        "qty": 1.0,
+        "rule": "R-AIR-03"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "Swap 3 x FJ15NA for FJ20",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  }
+]

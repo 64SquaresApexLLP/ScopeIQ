@@ -1,0 +1,14 @@
+[
+  {
+    "redline_id": "RDL-0E737AD0FD4F",
+    "site_id": "TXDA1024",
+    "doc_type": "CD",
+    "doc_revision": "REV 1",
+    "sheet": "A-3",
+    "disc_id": "DSC-2ED927169C3D",
+    "markup": "DELETE (E) SPARE PIPE AT BETA POS 3 - NOT PRESENT PER DRONE SURVEY. ADD (P) MOUNT PIPE IF POSITION IS USED.",
+    "change_from": "(E) pipe",
+    "change_to": "none / (P) pipe",
+    "status": "DRAFT"
+  }
+]

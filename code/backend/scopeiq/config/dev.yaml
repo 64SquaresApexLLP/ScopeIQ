@@ -1,0 +1,12 @@
+# DEV: extensive logging. Everything at DEBUG, payloads and SQL traced, nothing masked.
+logging:
+  level: DEBUG
+  format: text
+  db_sink_level: INFO
+  log_payloads: true
+  log_sql: true
+  mask_pii: false
+  slow_call_ms: 500
+database:
+  snowflake:
+    database: SCOPEIQ_DEV

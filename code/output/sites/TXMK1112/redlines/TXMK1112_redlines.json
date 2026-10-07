@@ -1,0 +1,14 @@
+[
+  {
+    "redline_id": "RDL-E597BBDF8E26",
+    "site_id": "TXMK1112",
+    "doc_type": "CD",
+    "doc_revision": "REV 1",
+    "sheet": "A-3",
+    "disc_id": "DSC-FAE2FB1B41FB",
+    "markup": "ADD UNRECORDED (E) SBNHH-1D65B AT GAMMA POS 3 TO EXISTING INVENTORY AND MARK (R) REMOVE.",
+    "change_from": "not shown",
+    "change_to": "(E)/(R) SBNHH",
+    "status": "DRAFT"
+  }
+]

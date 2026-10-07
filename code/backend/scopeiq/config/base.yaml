@@ -1,0 +1,74 @@
+# ScopeIQ base configuration. Environment files (dev.yaml, test.yaml, prod.yaml) override these keys,
+# and any key can be overridden by an environment variable: SCOPEIQ__<SECTION>__<KEY>=value
+# (double underscore separates nesting), e.g. SCOPEIQ__LOGGING__LEVEL=DEBUG.
+app:
+  name: ScopeIQ
+  version: 1.0.0-poc
+  carrier: CARRIER-A
+  market: DFW
+
+paths:
+  # Relative paths resolve against the code/ folder.
+  data_root: ../Data
+  sites_dir: ../Data/Input-Data/Sites
+  sitetracker_dir: ../Data/Input-Data/SiteTracker
+  reference_xlsx_dir: ../Data/Reference-Data
+  reference_data_dir: reference_data
+  output_dir: output
+  upload_dir: output/uploads
+  log_dir: output/logs
+
+database:
+  # local = SQLite file (demo / offline), snowflake = Snowflake account (see snowflake/EXECUTION_GUIDE.md)
+  backend: local
+  sqlite_path: output/scopeiq_local.db
+  snowflake:
+    account: ""
+    user: ""
+    authenticator: snowflake        # snowflake | externalbrowser | snowflake_jwt
+    private_key_path: ""
+    role: SCOPEIQ_APP_ROLE
+    warehouse: SCOPEIQ_WH
+    database: SCOPEIQ_DEV
+    schema: CORE
+
+logging:
+  level: INFO                 # root level
+  format: json                # json | text
+  console: true
+  file: true
+  file_max_bytes: 5242880
+  file_backup_count: 5
+  db_sink: true               # write WARNING+ (or db_sink_level) into APP_LOG
+  db_sink_level: WARNING
+  log_payloads: false         # request/response bodies
+  log_sql: false              # every SQL statement with timings
+  mask_pii: true              # mask user names / emails in log lines
+  slow_call_ms: 1500          # always log calls slower than this, at WARNING
+  sample_debug_rate: 1.0      # fraction of DEBUG records kept (1.0 = all)
+
+reference:
+  # csv = reference_data/*.csv (edit, then POST /reference/reload to copy into REF.*); database = read REF.* tables
+  source: csv
+
+audit:
+  enabled: true
+  capture_before_after: true
+
+engine:
+  extraction_confidence_threshold: 0.80
+  azimuth_tolerance_deg: 5
+  rad_center_tolerance_ft: 2
+  route_tolerance_ft: 10
+  pipe_match_radius_m: 0.6
+  video_frames_per_site: 24
+  ocr_dpi: 600
+  ocr_enabled: true
+  tesseract_cmd: ""           # empty = find tesseract on PATH; Windows: C:/Program Files/Tesseract-OCR/tesseract.exe
+
+api:
+  host: 0.0.0.0
+  port: 8000
+  cors_origins: ["*"]
+  token_secret: change-me-in-prod
+  token_ttl_minutes: 480

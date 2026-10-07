@@ -1,0 +1,14 @@
+[
+  {
+    "rfi_id": "RFI-B59548FF6BD9",
+    "site_id": "TXDE0831",
+    "to_party": "ERICSSON",
+    "subject": "TXDE0831: Alpha measured at 348 deg, CD 0 deg",
+    "question": "Alpha antennas measure 348 deg in the field vs 0 deg designed. Please confirm re-orientation to the design azimuth.",
+    "proposed_answer": "Re-orient to design azimuth during construction.",
+    "disc_ids": [
+      "DSC-88C905A9A044"
+    ],
+    "status": "DRAFT"
+  }
+]

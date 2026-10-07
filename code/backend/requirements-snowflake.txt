@@ -1,0 +1,6 @@
+# Extra packages to use Snowflake as the database (database.backend: snowflake) and to deploy the scripts.
+-r requirements.txt
+snowflake-connector-python[secure-local-storage]>=3.10
+snowflake-snowpark-python>=1.20   # only needed to test the stored-procedure entry point locally
+sqlglot>=25                       # optional: syntax-check the generated SQL
+

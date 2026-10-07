@@ -1,0 +1,118 @@
+[
+  {
+    "disc_id": "DSC-71E27D42B8CC",
+    "site_id": "TXFW2217",
+    "rule_id": "EXT-01",
+    "family": "EXTRACTION",
+    "severity": "MEDIUM",
+    "outcome": "REVIEW",
+    "title": "4 value(s) need review in TXFW2217_vendor_measurements.csv",
+    "description": "Read below the confidence threshold or not matched to the catalog: FIELD:B2:passive=APXVSPP18-C-A20 (0.79); FIELD:C2:passive=APXVSPP18-C-A20 (0.79); FIELD:A1:radio=Radio 4449 B5 B12 (0.78); FIELD:C1:radio=Radio 4460 B2 B66 (0.79)",
+    "sector": null,
+    "position": null,
+    "expected": null,
+    "found": [
+      {
+        "field": "FIELD:B2:passive",
+        "value": "APXVSPP18-C-A20",
+        "confidence": 0.786,
+        "page": "OBJ-014"
+      },
+      {
+        "field": "FIELD:C2:passive",
+        "value": "APXVSPP18-C-A20",
+        "confidence": 0.787,
+        "page": "OBJ-022"
+      },
+      {
+        "field": "FIELD:A1:radio",
+        "value": "Radio 4449 B5 B12",
+        "confidence": 0.776,
+        "page": "OBJ-003"
+      },
+      {
+        "field": "FIELD:C1:radio",
+        "value": "Radio 4460 B2 B66",
+        "confidence": 0.793,
+        "page": "OBJ-019"
+      }
+    ],
+    "governing": "",
+    "sources": [
+      "DRONE_VENDOR"
+    ],
+    "target_doc": "ANY",
+    "target_sheet": "",
+    "bom_impact": "",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 0.776
+  },
+  {
+    "disc_id": "DSC-C6623AE55EB8",
+    "site_id": "TXFW2217",
+    "rule_id": "RFC-01",
+    "family": "RFDS_VS_CD",
+    "severity": "HIGH",
+    "outcome": "RFI",
+    "title": "Alpha azimuth RFDS 30 vs CD 20",
+    "description": "RFDS sets Alpha to 30 deg; the CD shows 20 deg and the field measures 20.6 deg. RFDS governs RF: confirm the re-orientation with the RF engineer and redline the CD.",
+    "sector": "A",
+    "position": null,
+    "expected": 30.0,
+    "found": 20.0,
+    "governing": "RFDS",
+    "sources": [
+      "RFDS R3 Final Config",
+      "CD REV 1 A-3"
+    ],
+    "target_doc": "CD",
+    "target_sheet": "A-3",
+    "bom_impact": "None",
+    "evidence": [
+      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXFW2217\\TXFW2217_f009.jpg",
+      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXFW2217\\TXFW2217_f012.jpg"
+    ],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-53E438DF2C2A",
+    "site_id": "TXFW2217",
+    "rule_id": "BOM-03",
+    "family": "REV0_BOM",
+    "severity": "MEDIUM",
+    "outcome": "BOM_CHANGE",
+    "title": "Duplicate SFP28 25G LR line (Alpha)",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha SFP28 25G LR (R-AIR-04): REV 0 4 vs rules 2. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": "A",
+    "position": null,
+    "expected": [
+      {
+        "sector": "A",
+        "part": "SFP25",
+        "qty": 2.0,
+        "rule": "R-AIR-04"
+      }
+    ],
+    "found": [
+      {
+        "sector": "A",
+        "part": "SFP25",
+        "qty": 4.0,
+        "rule": "R-AIR-04"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-2 SFP25",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  }
+]
