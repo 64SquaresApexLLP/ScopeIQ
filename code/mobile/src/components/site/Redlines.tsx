@@ -7,6 +7,7 @@ import { useApi } from '../../lib/useApi';
 import { colors, space } from '../theme';
 import { Badge, Button, Card, Empty, ErrorView, KV, Loading, Muted, Row, s, Section, Title } from '../ui';
 import { WorkflowActions } from '../WorkflowActions';
+import { ImplementChanges } from './ImplementChanges';
 
 function RfiCard({ r, reload }: { r: R; reload: () => void }) {
   const { can } = useAuth();
@@ -50,6 +51,8 @@ export function Redlines({ siteId }: { siteId: string }) {
   return (
     <View>
       {pdf ? <Button title="Open red-marked CD (PDF)" onPress={() => Linking.openURL(authedUrl(pdf))} /> : null}
+      {/* re-read the approved count when a redline changes */}
+      <ImplementChanges key={red.data.map((x) => x.STATUS).join(',')} siteId={siteId} />
       <Section title={`Redlines (${red.data.length})`}>
         {!red.data.length ? <Empty text="No redlines for this site." /> : null}
         {red.data.map((x, i) => (

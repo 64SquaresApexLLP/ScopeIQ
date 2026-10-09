@@ -30,6 +30,16 @@ def client(api_results):
         yield c
 
 
+@pytest.fixture(scope="module", autouse=True)
+def no_issued_drawings_left_behind():
+    """INCORPORATE issues a revised CD into <output>/uploads, where the next pipeline run would read it as the site's
+    current drawing. These tests share the output folder with the acceptance tests, so remove it afterwards."""
+    yield
+    import shutil
+    from scopeiq.config import get_settings
+    shutil.rmtree(get_settings().path("paths.upload_dir"), ignore_errors=True)
+
+
 def login(client, user_id):
     r = client.post("/auth/login", json={"user_id": user_id, "password": "demo"})
     assert r.status_code == 200, r.text
@@ -115,3 +125,91 @@ def test_upload_validation(client, api_results):
     sid = sorted(api_results)[0]
     r = client.post(f"/sites/{sid}/documents/upload", data={"doc_type": "CD"}, files={"file": ("notes.txt", b"x")}, headers=h)
     assert r.status_code == 400
+
+
+# ------------------------------------------------------------------------------------ pipeline progress and implement changes
+import time
+
+
+def wait_done(client, h, run_id, timeout=420):
+    """Poll a run the way the app does until it is no longer RUNNING."""
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        run = client.get(f"/pipeline/runs/{run_id}", headers=h).json()
+        if run["STATUS"] != "RUNNING":
+            return run
+        time.sleep(1)
+    raise AssertionError(f"run {run_id} still RUNNING after {timeout}s")
+
+
+def test_every_step_is_recorded_and_readable(client, api_results):
+    h = login(client, "scoper1")
+    sid = sorted(api_results)[0]
+    run = client.get(f"/pipeline/sites/{sid}/latest", headers=h).json()
+    steps = run["STEPS"]
+    assert [s["key"] for s in steps] == ["INGEST", "EXTRACT", "RECONCILE", "DELTA", "GENERATE", "ESTIMATE", "REDLINES", "PERSIST", "FILES"]
+    assert all(s["status"] == "DONE" and s["message"] and s["duration_ms"] is not None for s in steps)
+    for s in steps:
+        r = client.get(f"/pipeline/runs/{run['RUN_ID']}/steps/{s['key']}", headers=h)
+        assert r.status_code == 200, (s["key"], r.text)
+    assert client.get(f"/pipeline/runs/{run['RUN_ID']}/steps/NOPE", headers=h).status_code == 404
+    recon = client.get(f"/pipeline/runs/{run['RUN_ID']}/steps/RECONCILE", headers=h).json()["discrepancies"]
+    assert recon and {d["SITE_ID"] for d in recon} == {sid} and len(recon) == run["SUMMARY"]["discrepancies"]
+
+
+def test_progress_is_scoped_to_the_service_provider(client, api_results):
+    sp = login(client, "sp_prairie")
+    own = {s["SITE_ID"] for s in client.get("/sites", headers=sp).json()}
+    other = next(s for s in api_results if s not in own)
+    assert client.get(f"/pipeline/sites/{other}/latest", headers=sp).status_code == 403
+    run_id = client.get(f"/pipeline/sites/{other}/latest", headers=login(client, "scoper1")).json()["RUN_ID"]
+    assert client.get(f"/pipeline/runs/{run_id}", headers=sp).status_code == 403
+    assert client.post(f"/pipeline/sites/{other}/start", headers=sp).status_code == 403
+
+
+def test_background_run_reports_progress(client):
+    h = login(client, "scoper1")
+    started = client.post("/pipeline/sites/TXDA1024/start", headers=h).json()
+    assert started["status"] == "RUNNING" and started["run_id"].startswith("RUN-")
+    first = client.get(f"/pipeline/runs/{started['run_id']}", headers=h).json()
+    assert first["STATUS"] in ("RUNNING", "SUCCEEDED", "SUCCEEDED_WITH_WARNINGS") and len(first["STEPS"]) == 9
+    again = client.post("/pipeline/sites/TXDA1024/start", headers=h).json()          # one run per site at a time
+    assert again["run_id"] == started["run_id"] or not again["already_running"]
+    done = wait_done(client, h, started["run_id"])
+    assert done["STATUS"].startswith("SUCCEEDED") and all(s["status"] == "DONE" for s in done["STEPS"])
+
+
+def test_implement_only_approved_redlines(client):
+    h, rv, ae = login(client, "scoper1"), login(client, "reviewer1"), login(client, "ae1")
+    site = "TXCA0977"                                              # DXF drawing: a cable-route redline and a mount-reinforcement redline
+    red = [r for r in client.get(f"/redlines?site_id={site}", headers=h).json() if r["DOC_TYPE"] == "CD"]
+    assert len(red) >= 2 and all(r["STATUS"] == "DRAFT" for r in red)
+    # nothing approved: the job runs but writes no drawing, and says so
+    job = client.post(f"/pipeline/sites/{site}/apply", headers=rv).json()
+    run = wait_done(client, rv, job["run_id"])
+    assert run["STATUS"] == "SUCCEEDED_WITH_WARNINGS" and not (run["SUMMARY"] or {}).get("files")
+    assert client.get(f"/pipeline/sites/{site}/revision", headers=h).json()["revision"] is None
+    # INCORPORATE needs the revised drawing first
+    first = red[0]["REDLINE_ID"]
+    for a, who in (("APPROVE", rv), ("SEND", rv), ("ACKNOWLEDGE", ae)):
+        assert client.post(f"/redlines/{first}/transition", json={"action": a}, headers=who).status_code == 200, a
+    r = client.post(f"/redlines/{first}/transition", json={"action": "INCORPORATE", "reason_code": "RC-AE-REVISED"}, headers=ae)
+    assert r.status_code == 400 and "Implement" in r.json()["error"]["message"]
+    # approve one of the two redlines and implement
+    job = client.post(f"/pipeline/sites/{site}/apply", headers=rv).json()
+    run = wait_done(client, rv, job["run_id"])
+    assert run["STATUS"] == "SUCCEEDED", run["WARNINGS"]
+    assert [s["status"] for s in run["STEPS"]] == ["DONE", "DONE", "DONE"]
+    changes = run["SUMMARY"]["changes"]
+    applied = {c["redline_id"]: c["applied"] for c in changes}
+    assert applied[first] is True and sum(applied.values()) == 1                      # the unapproved redline is listed, not applied
+    assert any("approve it" in c["detail"] for c in changes if not c["applied"])
+    rev = client.get(f"/pipeline/sites/{site}/revision", headers=h).json()["revision"]
+    assert rev and rev["RUN_ID"] == run["RUN_ID"]
+    pdf = client.get(f"/pipeline/runs/{run['RUN_ID']}/file/revised_cd_pdf", headers=h)
+    assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF"
+    assert client.get(f"/pipeline/runs/{run['RUN_ID']}/file/nope", headers=h).status_code == 404
+    # incorporating issues the drawing as the site's next CD revision (once, however many redlines are incorporated)
+    r = client.post(f"/redlines/{first}/transition", json={"action": "INCORPORATE", "reason_code": "RC-AE-REVISED"}, headers=ae)
+    assert r.status_code == 200, r.text
+    assert any(u["FILE_NAME"] == f"{site}_CD_REV2.dxf" for u in client.get(f"/sites/{site}/documents", headers=h).json()["uploads"])

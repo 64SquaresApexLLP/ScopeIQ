@@ -9,18 +9,23 @@ or locked one is never touched and the run creates the next revision instead.
 """
 from __future__ import annotations
 
+import contextvars
 import json
+import threading
 import uuid
+from contextlib import contextmanager
 from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
 
+from scopeiq.common.audit import AuditTrail
 from scopeiq.common.context import bind, current
-from scopeiq.common.errors import AppError, ErrorRecorder, NotFound
+from scopeiq.common.errors import AppError, ErrorRecorder, NotFound, ValidationError
 from scopeiq.common.ids import stable_id
 from scopeiq.common.logging import get_logger, log_call
 from scopeiq.config import get_settings
 from scopeiq.db.repository import Repository, now_iso
-from scopeiq.domain import BomLine, SiteFacts
+from scopeiq.domain import BomLine, Discrepancy, Redline, SiteFacts
 from scopeiq.engine import bom as bom_engine
 from scopeiq.engine.design import AS_DRAWN, FINAL, build_model, compute_delta
 from scopeiq.engine.drivers import build_drivers, estimate, site_requirements
@@ -29,13 +34,96 @@ from scopeiq.engine.reconcile import reconcile
 from scopeiq.engine.redlines import draft_redlines_and_rfis
 from scopeiq.engine.revisions import build_rev1, validate_rev0
 from scopeiq.extract.sitetracker import SiteTracker
+from scopeiq.outputs.cd_revision import write_revised_cd
 from scopeiq.outputs.exports import write_bom_xlsx, write_site_package
 from scopeiq.outputs.redline_pdf import write_redlined_pdf
 from scopeiq.reference.loader import ReferenceData
 from scopeiq.workflow.engine import WorkflowEngine
 
 log = get_logger("pipeline")
-PIPELINE_STEPS = ["INGEST", "EXTRACT", "RECONCILE"]
+
+STEP_DEFS = [("INGEST", "Ingest documents"), ("EXTRACT", "Extract values"), ("RECONCILE", "Reconcile sources"), ("DELTA", "Design delta"),
+             ("GENERATE", "Generate BOM"), ("ESTIMATE", "Estimate"), ("REDLINES", "Draft redlines and RFIs"), ("PERSIST", "Save results"),
+             ("FILES", "Write files")]
+APPLY_PREFIX = "CDREV-"             # run ids of 'implement changes' jobs (pipeline runs start with RUN-)
+APPLY_STEP_DEFS = [("LOAD", "Load drawing and redlines"), ("APPLY", "Apply approved redlines"), ("FILES", "Write revised drawing")]
+_ACTIVE: dict[str, str] = {}          # site -> run id of the background job in progress (one at a time per site)
+_ACTIVE_LOCK = threading.Lock()
+
+
+def _disc_from_row(d: dict) -> Discrepancy:
+    unwrap = lambda v: v.get("v") if isinstance(v, dict) and set(v) == {"v"} else v  # noqa: E731 - EXPECTED / FOUND are stored as {"v": value}
+    return Discrepancy(d["DISC_ID"], d["SITE_ID"], d["RULE_ID"], d["FAMILY"] or "", d["SEVERITY"] or "", d["OUTCOME"] or "", d["TITLE"] or "",
+                       d["DESCRIPTION"] or "", sector=d.get("SECTOR"), position=d.get("POSITION"), expected=unwrap(d.get("EXPECTED")),
+                       found=unwrap(d.get("FOUND")), governing=d.get("GOVERNING") or "", sources=d.get("SOURCES") or [],
+                       target_doc=d.get("TARGET_DOC") or "", target_sheet=d.get("TARGET_SHEET") or "", bom_impact=d.get("BOM_IMPACT") or "",
+                       status=d.get("STATUS") or "OPEN", confidence=d.get("CONFIDENCE") or 1.0)
+
+
+def _doc_path(f: SiteFacts, d, sites_dir: Path) -> Path:
+    return Path(f.site["doc_paths"].get(d.doc_id) or sites_dir / f.site_id / Path(*Path(d.rel_path).parts[2:]))
+
+
+def _count(values) -> dict:
+    out: dict = {}
+    for v in values:
+        out[v] = out.get(v, 0) + 1
+    return out
+
+
+class RunProgress:
+    """Per-step progress of one run, written to CORE.PIPELINE_RUN.STEPS after every change so the app can poll it.
+    Each step: key, label, status (PENDING | RUNNING | DONE | FAILED), started_at, finished_at, duration_ms, message, counts."""
+
+    def __init__(self, repo: Repository, run_id: str, defs: list[tuple[str, str]] | None = None):
+        self.repo, self.run_id, self.steps = repo, run_id, RunProgress.initial(defs)
+
+    @staticmethod
+    def initial(defs: list[tuple[str, str]] | None = None) -> list[dict]:
+        return [{"key": k, "label": label, "status": "PENDING", "started_at": None, "finished_at": None, "duration_ms": None,
+                 "message": "", "counts": {}} for k, label in (defs or STEP_DEFS)]
+
+    def _flush(self) -> None:
+        self.repo.update("CORE.PIPELINE_RUN", {"STEPS": self.steps}, {"RUN_ID": self.run_id})
+
+    def _get(self, key: str) -> dict:
+        return next(s for s in self.steps if s["key"] == key)
+
+    def start(self, key: str) -> None:
+        s = self._get(key)
+        s.update(status="RUNNING", started_at=now_iso())
+        self._flush()
+
+    def finish(self, key: str, message: str = "", counts: dict | None = None) -> None:
+        s = self._get(key)
+        if s["status"] == "DONE":
+            return
+        end = now_iso()
+        started = s["started_at"] or end
+        s.update(status="DONE", finished_at=end, message=message, counts=counts or {},
+                 duration_ms=int((datetime.fromisoformat(end) - datetime.fromisoformat(started)).total_seconds() * 1000))
+        self._flush()
+
+    @contextmanager
+    def step(self, key: str):
+        self.start(key)
+        try:
+            yield self._get(key)
+        except Exception as exc:
+            self.fail_running(exc)
+            raise
+        finally:
+            if self._get(key)["status"] == "RUNNING":      # the body did not report: close it without a message
+                self.finish(key)
+
+    def fail_running(self, exc: BaseException) -> None:
+        for s in self.steps:
+            if s["status"] == "RUNNING":
+                end = now_iso()
+                s.update(status="FAILED", finished_at=end, message=str(exc)[:500])
+        self._flush()
+
+
 
 
 class PipelineService:
@@ -58,50 +146,99 @@ class PipelineService:
         return sorted(p.name for p in self.sites_dir.iterdir() if p.is_dir()) if self.sites_dir.exists() else []
 
     # ------------------------------------------------------------------------------------ run
-    @log_call()
-    def run_site(self, site_id: str, *, triggered_by: str | None = None) -> dict:
+    def begin_run(self, site_id: str, *, triggered_by: str | None = None) -> str:
+        """Create the RUNNING row (with every step PENDING) and return its id. The row is the progress record the app polls."""
         site_dir = self.sites_dir / site_id
         if not site_dir.is_dir():
             raise NotFound(f"Site folder {site_id} not found", details={"sites_dir": str(self.sites_dir)})
         run_id = f"RUN-{site_id}-{uuid.uuid4().hex[:10]}"
         ctx = current()
-        steps: dict[str, str] = {}
         self.repo.insert("CORE.PIPELINE_RUN", [{"RUN_ID": run_id, "SITE_ID": site_id, "STARTED_AT": now_iso(), "STATUS": "RUNNING",
                                                "TRIGGERED_BY": triggered_by or ctx.user_id, "CORRELATION_ID": ctx.correlation_id,
-                                               "REFERENCE_VERSIONS": self.ref.versions}])
+                                               "STEPS": RunProgress.initial(), "REFERENCE_VERSIONS": self.ref.versions}])
+        return run_id
+
+    def start_site(self, site_id: str, *, triggered_by: str | None = None) -> dict:
+        """Run a site in the background and return at once; poll GET /pipeline/runs/{run_id}. One run per site at a time."""
+        with _ACTIVE_LOCK:
+            if site_id in _ACTIVE:
+                return {"run_id": _ACTIVE[site_id], "site_id": site_id, "status": "RUNNING", "already_running": True}
+            run_id = self.begin_run(site_id, triggered_by=triggered_by)
+            _ACTIVE[site_id] = run_id
+
+        def work():
+            try:
+                self.run_site(site_id, triggered_by=triggered_by, run_id=run_id)
+            except Exception:  # noqa: BLE001 - run_site has already recorded the failure on the run row
+                pass
+            finally:
+                with _ACTIVE_LOCK:
+                    _ACTIVE.pop(site_id, None)
+
+        threading.Thread(target=contextvars.copy_context().run, args=(work,), name=f"pipeline-{site_id}", daemon=True).start()
+        return {"run_id": run_id, "site_id": site_id, "status": "RUNNING", "already_running": False}
+
+    @log_call()
+    def run_site(self, site_id: str, *, triggered_by: str | None = None, run_id: str | None = None) -> dict:
+        run_id = run_id or self.begin_run(site_id, triggered_by=triggered_by)
+        site_dir = self.sites_dir / site_id
+        prog = RunProgress(self.repo, run_id)
         with bind(site_id=site_id, component="pipeline"):
             try:
-                facts = build_site_facts(site_dir, self.ref, sitetracker=self.sitetracker, evidence_dir=self.output_dir / "evidence")
-                steps["INGEST"] = steps["EXTRACT"] = "OK"
+                def ingested(f):          # documents are registered: Ingest is done, the extractors start
+                    prog.finish("INGEST", f"{len(f.documents)} document(s) registered", _count(d.doc_type for d in f.documents))
+                    prog.start("EXTRACT")
+
+                with prog.step("INGEST"):
+                    facts = build_site_facts(site_dir, self.ref, sitetracker=self.sitetracker, evidence_dir=self.output_dir / "evidence",
+                                             on_ingested=ingested)
+                    review = sum(1 for x in facts.fields if x.needs_review)
+                    prog.finish("EXTRACT", f"{len(facts.fields)} value(s) read, {review} need review",
+                                {"values": len(facts.fields), "needs_review": review, "cd_read_by": facts.cd_method or "-", "field_read_by": facts.field_method or "-",
+                                 "warnings": len(facts.warnings)})
                 stream = facts.project.get("stream", "BOM")
-                discs = reconcile(facts, self.ref, stream=stream)
-                steps["RECONCILE"] = "OK"
-                as_drawn_m = build_model(facts, self.ref, AS_DRAWN, discs)
-                final_m = build_model(facts, self.ref, FINAL, discs)
-                delta = compute_delta(final_m)
-                steps["DELTA"] = "OK"
-                ad_lines, _ = bom_engine.generate_bom(as_drawn_m, self.ref)
-                fn_lines, tp = bom_engine.generate_bom(final_m, self.ref)
-                rev0_findings = validate_rev0(site_id, facts.rev0, ad_lines, self.ref, stream)
-                discs += rev0_findings
-                changes = build_rev1(site_id, facts.rev0, ad_lines, fn_lines, discs)
-                _apply_reason_codes(fn_lines, changes)
-                steps["GENERATE"] = "OK"
-                reqs = site_requirements(facts, delta, self.ref)
-                drivers = build_drivers(facts, delta, fn_lines, tp, reqs, discs, self.ref)
-                est = estimate(facts, delta, fn_lines, tp, reqs, drivers, self.ref)
-                steps["ESTIMATE"] = "OK"
-                redlines, rfis = draft_redlines_and_rfis(facts, discs, self.ref)
-                summary = self._persist(run_id, facts, discs, delta, as_drawn_m, fn_lines, tp, changes, drivers, reqs, est, redlines, rfis)
-                summary["files"] = self._write_files(run_id, facts, fn_lines, changes, discs, redlines, rfis, summary)
+                with prog.step("RECONCILE"):
+                    discs = reconcile(facts, self.ref, stream=stream)
+                    prog.finish("RECONCILE", f"{len(discs)} finding(s) from the consistency rules",
+                                _count(d.severity for d in discs) | {"rules": len({d.rule_id for d in discs})})
+                with prog.step("DELTA"):
+                    as_drawn_m = build_model(facts, self.ref, AS_DRAWN, discs)
+                    final_m = build_model(facts, self.ref, FINAL, discs)
+                    delta = compute_delta(final_m)
+                    prog.finish("DELTA", f"{len(delta)} equipment change(s) between the drawn and the final design", _count(d.action for d in delta))
+                with prog.step("GENERATE"):
+                    ad_lines, _ = bom_engine.generate_bom(as_drawn_m, self.ref)
+                    fn_lines, tp = bom_engine.generate_bom(final_m, self.ref)
+                    rev0_findings = validate_rev0(site_id, facts.rev0, ad_lines, self.ref, stream)
+                    discs += rev0_findings
+                    changes = build_rev1(site_id, facts.rev0, ad_lines, fn_lines, discs)
+                    _apply_reason_codes(fn_lines, changes)
+                    prog.finish("GENERATE", f"{len(fn_lines)} BOM line(s); {len(rev0_findings)} REV 0 error(s); {len(changes)} change(s) vs REV 0",
+                                {"lines": len(fn_lines), "rev0_errors": len(rev0_findings), "changes_vs_rev0": len(changes)})
+                with prog.step("ESTIMATE"):
+                    reqs = site_requirements(facts, delta, self.ref)
+                    drivers = build_drivers(facts, delta, fn_lines, tp, reqs, discs, self.ref)
+                    est = estimate(facts, delta, fn_lines, tp, reqs, drivers, self.ref)
+                    prog.finish("ESTIMATE", f"{est['cycle_days']} cycle day(s), ${est['total_usd']:,.0f} total",
+                                {"drivers": len(drivers), "cycle_days": est["cycle_days"], "total_usd": est["total_usd"]})
+                with prog.step("REDLINES"):
+                    redlines, rfis = draft_redlines_and_rfis(facts, discs, self.ref)
+                    prog.finish("REDLINES", f"{len(redlines)} redline(s) and {len(rfis)} RFI(s) drafted", {"redlines": len(redlines), "rfis": len(rfis)})
+                with prog.step("PERSIST"):
+                    summary = self._persist(run_id, facts, discs, delta, as_drawn_m, fn_lines, tp, changes, drivers, reqs, est, redlines, rfis)
+                    prog.finish("PERSIST", f"saved as {summary['bom']['rev_label']}", {"discrepancies": summary["discrepancies"]})
+                with prog.step("FILES"):
+                    summary["files"] = self._write_files(run_id, facts, fn_lines, changes, discs, redlines, rfis, summary)
+                    prog.finish("FILES", f"{len(summary['files'])} file(s) written", {"files": len(summary["files"])})
                 self._advance_workflow(site_id)
                 self.repo.update("CORE.PIPELINE_RUN", {"FINISHED_AT": now_iso(), "STATUS": "SUCCEEDED" if not facts.warnings else "SUCCEEDED_WITH_WARNINGS",
-                                                       "STEPS": steps, "SUMMARY": summary, "WARNINGS": facts.warnings}, {"RUN_ID": run_id})
+                                                       "STEPS": prog.steps, "SUMMARY": summary, "WARNINGS": facts.warnings}, {"RUN_ID": run_id})
                 log.info("pipeline finished for %s: %s", site_id, json.dumps({k: v for k, v in summary.items() if k != "files"}, default=str))
                 return {"run_id": run_id, "site_id": site_id, "status": "SUCCEEDED", "summary": summary, "warnings": facts.warnings}
             except Exception as exc:
                 ErrorRecorder.record(exc, where="pipeline.run_site")
-                self.repo.update("CORE.PIPELINE_RUN", {"FINISHED_AT": now_iso(), "STATUS": "FAILED", "STEPS": steps,
+                prog.fail_running(exc)
+                self.repo.update("CORE.PIPELINE_RUN", {"FINISHED_AT": now_iso(), "STATUS": "FAILED", "STEPS": prog.steps,
                                                        "WARNINGS": [str(exc)]}, {"RUN_ID": run_id})
                 log.exception("pipeline failed for %s", site_id)
                 raise
@@ -281,6 +418,114 @@ class PipelineService:
                         self.repo.update("CORE.REDLINE", {"PDF_PATH": _rel(str(pdf), self.output_dir)}, {"REDLINE_ID": x.redline_id})
         files.update(write_site_package(out / "redlines", f.site_id, discs, redlines, rfis))
         return {k: _rel(v, self.output_dir) for k, v in files.items()}
+
+    # ------------------------------------------------------------------------------------ implement changes
+    def start_apply(self, site_id: str, *, triggered_by: str | None = None) -> dict:
+        """'Implement changes': build the next CD revision from the approved redlines, in the background (same polling as a run)."""
+        with _ACTIVE_LOCK:
+            if site_id in _ACTIVE:
+                return {"run_id": _ACTIVE[site_id], "site_id": site_id, "status": "RUNNING", "already_running": True}
+            if not self.repo.select("CORE.REDLINE", {"SITE_ID": site_id}, limit=1):
+                raise ValidationError("This site has no redlines to implement - run the pipeline first")
+            run_id = f"{APPLY_PREFIX}{site_id}-{uuid.uuid4().hex[:10]}"
+            ctx = current()
+            self.repo.insert("CORE.PIPELINE_RUN", [{"RUN_ID": run_id, "SITE_ID": site_id, "STARTED_AT": now_iso(), "STATUS": "RUNNING",
+                                                   "TRIGGERED_BY": triggered_by or ctx.user_id, "CORRELATION_ID": ctx.correlation_id,
+                                                   "STEPS": RunProgress.initial(APPLY_STEP_DEFS), "REFERENCE_VERSIONS": self.ref.versions}])
+            _ACTIVE[site_id] = run_id
+
+        def work():
+            try:
+                self.apply_redlines(site_id, run_id)
+            except Exception:  # noqa: BLE001 - recorded on the run row
+                pass
+            finally:
+                with _ACTIVE_LOCK:
+                    _ACTIVE.pop(site_id, None)
+
+        threading.Thread(target=contextvars.copy_context().run, args=(work,), name=f"apply-{site_id}", daemon=True).start()
+        return {"run_id": run_id, "site_id": site_id, "status": "RUNNING", "already_running": False}
+
+    def apply_redlines(self, site_id: str, run_id: str) -> dict:
+        """Re-read the current drawing, apply every approved redline to it and write the next revision (DXF + PDF + change log)."""
+        prog = RunProgress(self.repo, run_id, APPLY_STEP_DEFS)
+        site_dir = self.sites_dir / site_id
+        with bind(site_id=site_id, component="pipeline"):
+            try:
+                with prog.step("LOAD"):
+                    facts = build_site_facts(site_dir, self.ref, sitetracker=self.sitetracker, evidence_dir=self.output_dir / "evidence")
+                    rows = self.repo.select("CORE.REDLINE", {"SITE_ID": site_id, "DOC_TYPE": "CD"})
+                    discs = [_disc_from_row(d) for d in self.repo.select("CORE.DISCREPANCY", {"SITE_ID": site_id})]
+                    redlines = [Redline(x["REDLINE_ID"], site_id, x["DOC_TYPE"], x["DOC_REVISION"] or "", x["SHEET"], x["DISC_ID"], x["MARKUP"],
+                                        x["CHANGE_FROM"] or "", x["CHANGE_TO"] or "", x["STATUS"]) for x in rows]
+                    prog.finish("LOAD", f"{len(redlines)} redline(s) and the current drawing ({facts.cd_revision}) loaded",
+                                _count(r.status for r in redlines))
+                with prog.step("APPLY"):
+                    cds = [d for d in facts.documents if d.doc_type == "CD" and d.status == "CURRENT"]
+                    top = max((d.revision_rank for d in cds), default=0)
+                    src = {d.file_format: _doc_path(facts, d, self.sites_dir) for d in cds if d.revision_rank == top}
+                    reconciled = [d for d in discs if not d.rule_id.startswith("BOM-")]
+                    final_m = build_model(facts, self.ref, FINAL, reconciled)
+                    tp = bom_engine.trunk_plan(final_m, self.ref)
+                    files = write_revised_cd(site_id=site_id, dxf_path=src.get("DXF"), pdf_path=src.get("PDF"), out_dir=self.output_dir / "sites" / site_id / "cd",
+                                             redlines=redlines, discrepancies=reconciled, facts=facts, ref=self.ref, trunk_plan=tp,
+                                             ocr_dpi=min(int(get_settings().get("engine.ocr_dpi", 400)), 400))
+                    log_file = Path(files["revised_cd_changes"]) if files.get("revised_cd_changes") else None
+                    changes = json.loads(log_file.read_text(encoding="utf-8"))["changes"] if log_file else []
+                    applied = sum(1 for c in changes if c["applied"])
+                    prog.finish("APPLY", f"{applied} of {len(changes)} redline(s) applied", {"applied": applied, "not_applied": len(changes) - applied})
+                with prog.step("FILES"):
+                    out = {k: _rel(v, self.output_dir) for k, v in files.items()}
+                    prog.finish("FILES", f"{len(out)} file(s) written", {"files": len(out)})
+                summary = {"files": out, "changes": changes, "from_revision": facts.cd_revision, "applied": applied}
+                self.repo.update("CORE.PIPELINE_RUN", {"FINISHED_AT": now_iso(), "STATUS": "SUCCEEDED" if changes else "SUCCEEDED_WITH_WARNINGS",
+                                                       "STEPS": prog.steps, "SUMMARY": summary,
+                                                       "WARNINGS": [] if files else ["No redlines were approved yet - nothing to implement"]}, {"RUN_ID": run_id})
+                AuditTrail.record(entity_type="CD_REVISION", entity_id=run_id, action="IMPLEMENT_CHANGES", after={"applied": applied, "total": len(changes)},
+                                  site_id=site_id, source="pipeline")
+                return {"run_id": run_id, "site_id": site_id, "status": "SUCCEEDED", "summary": summary}
+            except Exception as exc:
+                ErrorRecorder.record(exc, where="pipeline.apply_redlines")
+                prog.fail_running(exc)
+                self.repo.update("CORE.PIPELINE_RUN", {"FINISHED_AT": now_iso(), "STATUS": "FAILED", "STEPS": prog.steps, "WARNINGS": [str(exc)]}, {"RUN_ID": run_id})
+                log.exception("implementing changes failed for %s", site_id)
+                raise
+
+    def latest_revision(self, site_id: str) -> dict | None:
+        """Newest successful 'implement changes' run of a site that wrote a revised drawing."""
+        runs = [r for r in self.repo.select("CORE.PIPELINE_RUN", {"SITE_ID": site_id}, order_by="STARTED_AT DESC", limit=20)
+                if r["RUN_ID"].startswith(APPLY_PREFIX) and r["STATUS"].startswith("SUCCEEDED") and (r.get("SUMMARY") or {}).get("files")]
+        return runs[0] if runs else None
+
+    def register_revised_cd(self, site_id: str, user: str) -> dict:
+        """INCORPORATE: the revised drawing becomes the site's CD revision (picked up by the next pipeline run like an A&E upload)."""
+        import hashlib
+        import shutil
+        run = self.latest_revision(site_id)
+        if not run:
+            raise ValidationError("Implement the approved changes first - there is no revised drawing to issue")
+        files = run["SUMMARY"]["files"]
+        rows, dest_dir = [], self.output_dir / "uploads" / site_id / "cds"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        done = {u["FILE_HASH"] for u in self.repo.select("CORE.UPLOAD", {"SITE_ID": site_id})}
+        for kind, doc_type in (("revised_cd_dxf", "CD"), ("revised_cd_pdf", "CD")):
+            if kind not in files:
+                continue
+            src = self.output_dir / files[kind]
+            data = src.read_bytes()
+            if hashlib.sha256(data).hexdigest() in done:         # several redlines are incorporated one by one: issue the drawing once
+                continue
+            dest = dest_dir / src.name
+            shutil.copyfile(src, dest)
+            rows.append({"UPLOAD_ID": uuid.uuid4().hex, "SITE_ID": site_id, "DOC_TYPE": doc_type, "FILE_NAME": dest.name,
+                         "STAGE_PATH": f"uploads/{site_id}/cds/{dest.name}", "SIZE_BYTES": len(data), "FILE_HASH": hashlib.sha256(data).hexdigest(),
+                         "UPLOADED_BY": user, "UPLOADED_AT": now_iso(), "STATUS": "RECEIVED", "DOC_ID": None,
+                         "MESSAGE": f"Issued from the approved redlines ({run['RUN_ID']}); run the pipeline to register it"})
+        if rows:
+            self.repo.insert("CORE.UPLOAD", rows)
+            AuditTrail.record(entity_type="CD_REVISION", entity_id=run["RUN_ID"], action="ISSUE", after={"files": [r["FILE_NAME"] for r in rows]},
+                              site_id=site_id, source="pipeline")
+        return {"issued": [r["FILE_NAME"] for r in rows], "run_id": run["RUN_ID"]}
 
     # ------------------------------------------------------------------------------------ workflow
     def _advance_workflow(self, site_id: str) -> None:

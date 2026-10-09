@@ -111,6 +111,8 @@ def extract_cd_dxf(path: Path, *, site_id: str, doc_id: str, revision: str, cata
     # TEXT entities -> rows per sheet
     texts: dict[str, list[tuple[float, float, str]]] = {}
     for t in msp.query("TEXT"):
+        if t.dxf.layer == "A-REV":          # revision markup (delta tags, change list) is not drawing data
+            continue
         texts.setdefault(sheet_of(t.dxf.insert.x), []).append((round(t.dxf.insert.y, 1), t.dxf.insert.x, t.dxf.text))
     _parse_text_sheets(res, texts, doc_id, revision, site_id)
     _finish(res, site_id, doc_id)

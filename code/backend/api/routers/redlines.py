@@ -1,7 +1,7 @@
 """Redlines and the red-marked CD PDFs; RFIs with answers. Both move through the workflow."""
 from fastapi import APIRouter, Depends
 
-from api.deps import current_user, repo, require, site_scope, workflow
+from api.deps import check_site_scope, current_user, pipeline, repo, require, site_scope, workflow
 from api.schemas import RfiAnswerIn, TransitionIn
 from scopeiq.common.errors import ValidationError
 from scopeiq.db.repository import now_iso
@@ -29,7 +29,15 @@ def list_redlines(site_id: str | None = None, status: str | None = None, user: d
 
 @router.post("/redlines/{redline_id}/transition")
 def redline_transition(redline_id: str, body: TransitionIn, user: dict = Depends(current_user)):
-    return workflow().transition("REDLINE", redline_id, body.action, reason_code=body.reason_code, comment=body.comment)
+    row = repo().get("CORE.REDLINE", REDLINE_ID=redline_id)
+    check_site_scope(user, row["SITE_ID"])
+    incorporate = body.action.upper() == "INCORPORATE" and row["DOC_TYPE"] == "CD"
+    if incorporate and not pipeline().latest_revision(row["SITE_ID"]):
+        raise ValidationError("Implement the approved changes first, then incorporate - there is no revised drawing yet")
+    out = workflow().transition("REDLINE", redline_id, body.action, reason_code=body.reason_code, comment=body.comment)
+    if incorporate:        # the revised drawing becomes the site's CD revision; the next run reads it and the findings resolve
+        out["issued"] = pipeline().register_revised_cd(row["SITE_ID"], user["sub"])
+    return out
 
 
 @router.get("/rfis")

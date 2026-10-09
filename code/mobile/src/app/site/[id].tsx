@@ -8,6 +8,7 @@ import { Documents } from '../../components/site/Documents';
 import { Estimate } from '../../components/site/Estimate';
 import { Evidence } from '../../components/site/Evidence';
 import { Overview } from '../../components/site/Overview';
+import { Pipeline } from '../../components/site/Pipeline';
 import { Redlines } from '../../components/site/Redlines';
 import { Button, Chips, ErrorView, Loading, Row, s } from '../../components/ui';
 import { api, ApiError } from '../../lib/api';
@@ -15,9 +16,9 @@ import { useAuth } from '../../lib/auth';
 import { SiteDetail } from '../../lib/types';
 import { useApi } from '../../lib/useApi';
 
-type Tab = 'overview' | 'documents' | 'discrepancies' | 'delta' | 'bom' | 'redlines' | 'estimate' | 'evidence';
+type Tab = 'overview' | 'pipeline' | 'documents' | 'discrepancies' | 'delta' | 'bom' | 'redlines' | 'estimate' | 'evidence';
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'overview', label: 'Overview' }, { key: 'discrepancies', label: 'Discrepancies' }, { key: 'delta', label: 'Delta' },
+  { key: 'overview', label: 'Overview' }, { key: 'pipeline', label: 'Pipeline' }, { key: 'discrepancies', label: 'Discrepancies' }, { key: 'delta', label: 'Delta' },
   { key: 'bom', label: 'BOM' }, { key: 'redlines', label: 'Redlines & RFIs' }, { key: 'estimate', label: 'Drivers & estimate' },
   { key: 'evidence', label: 'Drone evidence' }, { key: 'documents', label: 'Documents' },
 ];
@@ -31,12 +32,13 @@ export default function Site() {
   const [running, setRunning] = useState(false);
   const [runErr, setRunErr] = useState<ApiError | null>(null);
 
+  // start the run in the background and follow it on the Pipeline tab
   const run = async () => {
     setRunning(true);
     setRunErr(null);
     try {
-      await api.post(`/pipeline/sites/${id}/run`);
-      await d.reload();
+      await api.post(`/pipeline/sites/${id}/start`);
+      setTab('pipeline');
       setKey((k) => k + 1);
     } catch (e) {
       setRunErr(e as ApiError);
@@ -51,12 +53,13 @@ export default function Site() {
       <View style={{ paddingHorizontal: 16 }}><Chips<Tab> value={tab} onChange={setTab} options={TABS} /></View>
       <ScrollView contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={d.loading} onRefresh={() => { void d.reload(); setKey((k) => k + 1); }} />}>
         {can('SCOPER', 'REVIEWER') && tab === 'overview' ? (
-          <Row style={{ marginBottom: 8 }}><Button small kind="secondary" title={running ? 'Running pipeline...' : 'Re-run pipeline'} disabled={running} onPress={run} /></Row>
+          <Row style={{ marginBottom: 8 }}><Button small kind="secondary" title={running ? 'Starting...' : 'Re-run pipeline'} disabled={running} onPress={run} /></Row>
         ) : null}
         {runErr ? <ErrorView error={runErr} /> : null}
         {d.error ? <ErrorView error={d.error} onRetry={d.reload} /> : !d.data ? <Loading /> : (
           <View key={`${tab}-${key}`}>
             {tab === 'overview' && <Overview d={d.data} reload={d.reload} />}
+            {tab === 'pipeline' && <Pipeline siteId={id} onFinished={d.reload} />}
             {tab === 'documents' && <Documents siteId={id} />}
             {tab === 'discrepancies' && <Discrepancies siteId={id} />}
             {tab === 'delta' && <Delta rows={d.data.delta} />}

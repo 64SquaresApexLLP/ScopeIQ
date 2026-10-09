@@ -6,9 +6,9 @@
     "doc_revision": "REV 1",
     "sheet": "A-3",
     "disc_id": "DSC-BB0308EC877C",
-    "markup": "REVISE BETA POSITIONS PER RFDS R3: RADIO 4480 B71 B85 TO POS 2; AIR 6419 B41 TO POS 3; NNH4-65B-R6 TO POS 1/2.",
-    "change_from": "{'R4480': [3], 'AIR6419': [2], 'NNH4': [1, 3]}",
-    "change_to": "{'R4480': [2], 'AIR6419': [3], 'NNH4': [1, 2]}",
+    "markup": "REVISE BETA POSITIONS PER RFDS R3: RADIO 4480 B71 B85 TO POS 2; NNH4-65B-R6 TO POS 1/2; AIR 6419 B41 TO POS 3.",
+    "change_from": "RADIO 4480 B71 B85 pos 3; NNH4-65B-R6 pos 1/3; AIR 6419 B41 pos 2",
+    "change_to": "RADIO 4480 B71 B85 pos 2; NNH4-65B-R6 pos 1/2; AIR 6419 B41 pos 3",
     "status": "DRAFT"
   },
   {
@@ -19,8 +19,8 @@
     "sheet": "A-2",
     "disc_id": "DSC-5A99342D3F40",
     "markup": "REVISE RAD CENTER OF EXISTING ANTENNAS 63 FT -> 67.9 FT (MEASURED).",
-    "change_from": "[63.0]",
-    "change_to": "[np.float64(67.9)]",
+    "change_from": "63 ft",
+    "change_to": "67.9 ft",
     "status": "DRAFT"
   }
 ]

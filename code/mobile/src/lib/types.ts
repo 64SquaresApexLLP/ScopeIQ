@@ -28,6 +28,41 @@ export interface ReasonCode {
   APPLIES_TO: string;
 }
 
+/** One phase of a pipeline run (or of an "implement changes" job), updated by the backend while it runs. */
+export interface PipelineStep {
+  key: string;
+  label: string;
+  status: 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED';
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number | null;
+  message: string;
+  counts: Record<string, any>;
+}
+
+export interface PipelineRun {
+  RUN_ID: string;
+  SITE_ID: string;
+  STARTED_AT: string;
+  FINISHED_AT: string | null;
+  STATUS: 'RUNNING' | 'SUCCEEDED' | 'SUCCEEDED_WITH_WARNINGS' | 'FAILED';
+  TRIGGERED_BY: string | null;
+  STEPS: PipelineStep[] | Record<string, string> | null;   // runs recorded before step tracking have a plain object
+  SUMMARY: Row | null;
+  WARNINGS: string[] | null;
+}
+
+export interface RevisionChange {
+  redline_id: string;
+  disc_id: string;
+  rule_id: string;
+  sheet: string;
+  markup: string;
+  status: string;
+  applied: boolean;
+  detail: string;
+}
+
 export interface SiteDetail {
   site: Row;
   actions: WorkflowAction[];

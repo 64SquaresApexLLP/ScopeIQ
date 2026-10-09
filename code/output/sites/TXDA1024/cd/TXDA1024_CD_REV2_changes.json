@@ -1,0 +1,19 @@
+{
+  "site_id": "TXDA1024",
+  "from_revision": "REV 1",
+  "to_revision": "REV 2",
+  "issued": "ISSUED FOR CONSTRUCTION",
+  "source": "TXDA1024_CD_REV1.dxf",
+  "changes": [
+    {
+      "redline_id": "RDL-0E737AD0FD4F",
+      "disc_id": "DSC-2ED927169C3D",
+      "rule_id": "FLD-02",
+      "sheet": "A-3",
+      "markup": "DELETE (E) SPARE PIPE AT BETA POS 3 - NOT PRESENT PER DRONE SURVEY. ADD (P) MOUNT PIPE IF POSITION IS USED.",
+      "status": "APPROVED",
+      "applied": true,
+      "detail": "A-3: Beta pos 3 pipe revised (E) -> (P) (position is used)"
+    }
+  ]
+}

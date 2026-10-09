@@ -47,7 +47,8 @@ def _merge_sectors(facts: SiteFacts, sectors: dict[str, SectorInfo]) -> None:
 
 @log_call()
 def build_site_facts(site_dir: Path, ref: ReferenceData, *, sitetracker: SiteTracker | None = None,
-                     evidence_dir: Path | None = None, site_id: str | None = None) -> SiteFacts:
+                     evidence_dir: Path | None = None, site_id: str | None = None, on_ingested=None) -> SiteFacts:
+    """`on_ingested(facts)` is called once the documents are registered, before any extractor runs (progress reporting)."""
     st = get_settings()
     site_dir = Path(site_dir)
     site_id = site_id or site_dir.name
@@ -60,6 +61,8 @@ def build_site_facts(site_dir: Path, ref: ReferenceData, *, sitetracker: SiteTra
         doc_paths: dict = {}
         facts.documents = register_site_folder(site_dir, site_id, upload_dir=Path(st.path("paths.upload_dir")) / site_id, paths=doc_paths)
         facts.site["doc_paths"] = {k: str(v) for k, v in doc_paths.items()}
+        if on_ingested:
+            on_ingested(facts)
         path = lambda d: doc_paths.get(d.doc_id) or _abs(site_dir, d.rel_path)  # noqa: E731
         cat = ref.catalog
 

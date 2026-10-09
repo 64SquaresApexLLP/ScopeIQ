@@ -108,3 +108,12 @@ def site_scope(user: dict) -> dict:
     if user["role"] == "CX_SP":
         return {"CX_SP": user.get("sp") or user.get("org")}
     return {}
+
+
+def check_site_scope(user: dict, site_id: str) -> dict:
+    """Load the site and refuse it when it is outside the caller's scope (a CX SP's own sites only)."""
+    site = repo().get("CORE.SITE", SITE_ID=site_id)
+    scope = site_scope(user)
+    if scope and site.get("CX_SP") != scope["CX_SP"]:
+        raise PermissionDenied("This site is not assigned to your organisation")
+    return site

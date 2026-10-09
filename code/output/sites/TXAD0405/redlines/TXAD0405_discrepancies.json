@@ -105,31 +105,31 @@
     "severity": "MEDIUM",
     "outcome": "RFI",
     "title": "Beta positions differ RFDS vs CD",
-    "description": "Beta: Radio 4480 B71 B85 RFDS pos 2 vs CD pos 3; AIR 6419 B41 RFDS pos 3 vs CD pos 2; NNH4-65B-R6 RFDS pos 1/2 vs CD pos 1/3. RFDS governs placement: raise an RFI and redline CD A-3.",
+    "description": "Beta: Radio 4480 B71 B85 RFDS pos 2 vs CD pos 3; NNH4-65B-R6 RFDS pos 1/2 vs CD pos 1/3; AIR 6419 B41 RFDS pos 3 vs CD pos 2. RFDS governs placement: raise an RFI and redline CD A-3.",
     "sector": "B",
     "position": null,
     "expected": {
       "R4480": [
         2
       ],
-      "AIR6419": [
-        3
-      ],
       "NNH4": [
         1,
         2
+      ],
+      "AIR6419": [
+        3
       ]
     },
     "found": {
       "R4480": [
         3
       ],
-      "AIR6419": [
-        2
-      ],
       "NNH4": [
         1,
         3
+      ],
+      "AIR6419": [
+        2
       ]
     },
     "governing": "RFDS",
@@ -170,9 +170,9 @@
     "target_sheet": "A-2",
     "bom_impact": "None unless the trunk step changes",
     "evidence": [
-      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXAD0405\\TXAD0405_f000.jpg",
-      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXAD0405\\TXAD0405_f006.jpg",
-      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXAD0405\\TXAD0405_f039.jpg"
+      "G:\\64Squares Work\\ScopeIQ\\code\\output\\evidence\\TXAD0405\\TXAD0405_f000.jpg",
+      "G:\\64Squares Work\\ScopeIQ\\code\\output\\evidence\\TXAD0405\\TXAD0405_f006.jpg",
+      "G:\\64Squares Work\\ScopeIQ\\code\\output\\evidence\\TXAD0405\\TXAD0405_f039.jpg"
     ],
     "status": "OPEN",
     "confidence": 1.0

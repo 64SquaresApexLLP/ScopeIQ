@@ -4,7 +4,7 @@
     "site_id": "TXAD0405",
     "to_party": "ERICSSON",
     "subject": "TXAD0405: Beta positions differ RFDS vs CD",
-    "question": "Beta: Radio 4480 B71 B85 RFDS pos 2 vs CD pos 3; AIR 6419 B41 RFDS pos 3 vs CD pos 2; NNH4-65B-R6 RFDS pos 1/2 vs CD pos 1/3. RFDS governs placement: raise an RFI and redline CD A-3.",
+    "question": "Beta: Radio 4480 B71 B85 RFDS pos 2 vs CD pos 3; NNH4-65B-R6 RFDS pos 1/2 vs CD pos 1/3; AIR 6419 B41 RFDS pos 3 vs CD pos 2. RFDS governs placement: raise an RFI and redline CD A-3.",
     "proposed_answer": "None",
     "disc_ids": [
       "DSC-BB0308EC877C"

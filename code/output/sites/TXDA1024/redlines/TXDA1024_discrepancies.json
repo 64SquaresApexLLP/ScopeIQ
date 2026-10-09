@@ -21,8 +21,8 @@
     "target_sheet": "A-3",
     "bom_impact": "+1 PIPE if position is used",
     "evidence": [
-      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXDA1024\\TXDA1024_f000.jpg",
-      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXDA1024\\TXDA1024_f060.jpg"
+      "G:\\64Squares Work\\ScopeIQ\\code\\output\\evidence\\TXDA1024\\TXDA1024_f000.jpg",
+      "G:\\64Squares Work\\ScopeIQ\\code\\output\\evidence\\TXDA1024\\TXDA1024_f060.jpg"
     ],
     "status": "OPEN",
     "confidence": 1.0

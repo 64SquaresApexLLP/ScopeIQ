@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 os.environ.setdefault("SCOPEIQ_ENV", "test")
 os.environ["SCOPEIQ__LOGGING__CONSOLE"] = "false"
+# everything the tests write (BOMs, redlines, revised drawings, uploads, logs) goes to a throwaway folder, never to code/output:
+# an issued CD revision in output/uploads would otherwise be read by the next run and change what the acceptance tests find
+_OUT = tempfile.mkdtemp(prefix="scopeiq_test_")
+os.environ["SCOPEIQ__PATHS__OUTPUT_DIR"] = _OUT
+os.environ["SCOPEIQ__PATHS__UPLOAD_DIR"] = str(Path(_OUT) / "uploads")
+os.environ["SCOPEIQ__PATHS__LOG_DIR"] = str(Path(_OUT) / "logs")
 
 from scopeiq.config import get_settings, reset_settings_cache  # noqa: E402
 

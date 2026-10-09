@@ -35,8 +35,8 @@ def _markup(d: Discrepancy, f: SiteFacts, ref: ReferenceData) -> tuple[str, str,
         return "A-4", (f"REVISE CABLE SCHEDULE HORIZ RUN {d.expected:g} FT -> {d.found:.0f} FT (MEASURED). RECOMPUTE REQ'D LENGTH AND SPECIFIED TRUNK."
                        ), f"{d.expected:g} ft", f"{d.found:.0f} ft"
     if r == "FLD-03":
-        return "A-2", f"REVISE RAD CENTER OF EXISTING ANTENNAS {'/'.join(f'{x:g}' for x in d.expected)} FT -> {'/'.join(f'{x:g}' for x in d.found)} FT (MEASURED).", \
-            f"{d.expected}", f"{d.found}"
+        old, new = "/".join(f"{float(x):g}" for x in d.expected), "/".join(f"{float(x):g}" for x in d.found)
+        return "A-2", f"REVISE RAD CENTER OF EXISTING ANTENNAS {old} FT -> {new} FT (MEASURED).", f"{old} ft", f"{new} ft"
     if r == "FLD-04":
         return "A-3", f"EXISTING {s} MEASURED AT {d.found:.0f} DEG (DRAWN {d.expected:g} DEG). SHOW RE-ORIENTATION TO DESIGN AZIMUTH.", f"{d.expected:g} deg", f"{d.found:.0f} deg"
     if r == "FLD-01":
@@ -51,7 +51,8 @@ def _markup(d: Discrepancy, f: SiteFacts, ref: ReferenceData) -> tuple[str, str,
         return "A-3", f"DELETE (P) {_model(ref, d.found)} AT {s} POS {p} - NOT ON RFDS {f.rfds_revision}.", f"(P) {d.found}", "deleted"
     if r == "RFC-04":
         moves = "; ".join(f"{_model(ref, k)} TO POS {'/'.join(map(str, v))}" for k, v in (d.expected or {}).items())
-        return "A-3", f"REVISE {s} POSITIONS PER RFDS {f.rfds_revision}: {moves}.", str(d.found), str(d.expected)
+        pos = lambda m: "; ".join(f"{_model(ref, k)} pos {'/'.join(map(str, v))}" for k, v in (m or {}).items())  # noqa: E731
+        return "A-3", f"REVISE {s} POSITIONS PER RFDS {f.rfds_revision}: {moves}.", pos(d.found), pos(d.expected)
     if r == "RFC-05":
         return "A-2", f"REVISE {s} RAD CENTER TO RFDS VALUES {d.expected}.", str(d.found), str(d.expected)
     if r == "MNT-01":
