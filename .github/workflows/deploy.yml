@@ -57,20 +57,29 @@ jobs:
           Write-Host "ScopeIQ-API stopped. All file handles released."
 
       # -------------------------------------------------------------------------
-      # STEP 2 - Protect runtime SQLite DB and discard generated output diffs
+      # STEP 2 - Safely preserve server SQLite database and discard transient diffs
       # -------------------------------------------------------------------------
-      - name: Reset runtime-generated output files
+      - name: Preserve operational database and clean working directory
         shell: powershell
         run: |
           Set-Location "C:\ScopeIQ"
-          Write-Host "Marking scopeiq_local.db to prevent git lock/unlink conflicts..."
-          git update-index --assume-unchanged "code/output/scopeiq_local.db" 2>$null
-          Write-Host "Resetting generated site output files..."
-          git checkout -- "code/output/sites/" 2>$null
-          Write-Host "Done."
+          Write-Host "Unsetting any assume-unchanged index flags..."
+          git update-index --no-assume-unchanged "code/output/scopeiq_local.db" 2>$null
+
+          Write-Host "Safely backing up operational SQLite database..."
+          if (Test-Path "code\output\scopeiq_local.db") {
+              Copy-Item "code\output\scopeiq_local.db" "C:\ScopeIQ\scopeiq_local.db.bak" -Force
+              Remove-Item "code\output\scopeiq_local.db" -Force -ErrorAction SilentlyContinue
+          }
+
+          Write-Host "Discarding working tree modifications..."
+          git restore --staged . 2>$null
+          git restore . 2>$null
+          git clean -fd "code/output/sites/" 2>$null
+          Write-Host "Working tree cleaned."
 
       # -------------------------------------------------------------------------
-      # STEP 3 - Pull the latest code from main branch
+      # STEP 3 - Pull the latest code from main branch & restore operational database
       # -------------------------------------------------------------------------
       - name: Pull latest code from main
         shell: powershell
@@ -87,6 +96,12 @@ jobs:
               Write-Error "git reset to FETCH_HEAD failed with exit code $LASTEXITCODE"
               exit 1
           }
+
+          Write-Host "Restoring operational SQLite database from backup..."
+          if (Test-Path "C:\ScopeIQ\scopeiq_local.db.bak") {
+              Move-Item "C:\ScopeIQ\scopeiq_local.db.bak" "code\output\scopeiq_local.db" -Force
+          }
+
           $commit = git rev-parse --short HEAD
           $msg    = git log -1 --pretty=format:"%s"
           Write-Host "Deployed commit: $commit - $msg"
