@@ -27,6 +27,9 @@ concurrency:
   group: deploy-production            # Prevent two deployments running at the same time
   cancel-in-progress: false           # Never cancel a deployment mid-flight
 
+permissions:
+  contents: read                      # Grant GITHUB_TOKEN read access to clone/fetch repo
+
 jobs:
   deploy:
     name: Deploy to EC2 (ScopeIQ-API)
@@ -73,9 +76,17 @@ jobs:
         shell: powershell
         run: |
           Set-Location "C:\ScopeIQ"
-          Write-Host "Fetching origin/main..."
-          git fetch origin main
-          git reset --hard origin/main
+          Write-Host "Fetching latest main with GitHub token..."
+          git fetch "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/64SquaresApexLLP/ScopeIQ.git" main
+          if ($LASTEXITCODE -ne 0) {
+              Write-Error "git fetch failed with exit code $LASTEXITCODE"
+              exit 1
+          }
+          git reset --hard FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) {
+              Write-Error "git reset to FETCH_HEAD failed with exit code $LASTEXITCODE"
+              exit 1
+          }
           $commit = git rev-parse --short HEAD
           $msg    = git log -1 --pretty=format:"%s"
           Write-Host "Deployed commit: $commit - $msg"
