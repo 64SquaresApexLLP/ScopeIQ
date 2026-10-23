@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # ScopeIQ - Automatic Deployment to EC2 (Windows / NSSM)
 #
 # Triggered on every push or merge to `main`.
@@ -39,18 +39,35 @@ jobs:
     steps:
 
       # -------------------------------------------------------------------------
-      # STEP 1 - Discard generated runtime files so git pull has no conflicts
+      # STEP 1 - Stop ScopeIQ-API to release file locks (SQLite database, etc.)
+      # -------------------------------------------------------------------------
+      - name: Stop ScopeIQ-API service to release file locks
+        shell: powershell
+        run: |
+          Write-Host "Stopping ScopeIQ-API service to release database and file locks..."
+          Stop-Service -Name "ScopeIQ-API" -Force -ErrorAction SilentlyContinue
+          # Terminate any remaining child python processes under C:\ScopeIQ
+          Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" -ErrorAction SilentlyContinue |
+              Where-Object { $_.CommandLine -like "*C:\ScopeIQ*" } |
+              ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+          Start-Sleep -Seconds 2
+          Write-Host "ScopeIQ-API stopped. All file handles released."
+
+      # -------------------------------------------------------------------------
+      # STEP 2 - Protect runtime SQLite DB and discard generated output diffs
       # -------------------------------------------------------------------------
       - name: Reset runtime-generated output files
         shell: powershell
         run: |
           Set-Location "C:\ScopeIQ"
-          Write-Host "Resetting generated output files to avoid merge conflicts..."
-          git checkout -- code/output/
+          Write-Host "Marking scopeiq_local.db to prevent git lock/unlink conflicts..."
+          git update-index --assume-unchanged "code/output/scopeiq_local.db" 2>$null
+          Write-Host "Resetting generated site output files..."
+          git checkout -- "code/output/sites/" 2>$null
           Write-Host "Done."
 
       # -------------------------------------------------------------------------
-      # STEP 2 - Pull the latest code from main branch
+      # STEP 3 - Pull the latest code from main branch
       # -------------------------------------------------------------------------
       - name: Pull latest code from main
         shell: powershell
@@ -64,7 +81,7 @@ jobs:
           Write-Host "Deployed commit: $commit - $msg"
 
       # -------------------------------------------------------------------------
-      # STEP 3 - Update Python dependencies (safe to run on every deploy)
+      # STEP 4 - Update Python dependencies (safe to run on every deploy)
       # -------------------------------------------------------------------------
       - name: Install / upgrade Python dependencies
         shell: powershell
@@ -76,24 +93,24 @@ jobs:
           Write-Host "Dependencies up to date."
 
       # -------------------------------------------------------------------------
-      # STEP 4 - Restart the Windows service managed by NSSM
+      # STEP 5 - Start the ScopeIQ-API Windows service
       # -------------------------------------------------------------------------
-      - name: Restart ScopeIQ-API Windows service
+      - name: Start ScopeIQ-API Windows service
         shell: powershell
         run: |
-          Write-Host "Restarting ScopeIQ-API service..."
-          Restart-Service -Name "ScopeIQ-API" -Force
+          Write-Host "Starting ScopeIQ-API service..."
+          Start-Service -Name "ScopeIQ-API"
           Start-Sleep -Seconds 5
           $svc = Get-Service -Name "ScopeIQ-API"
           Write-Host "Service status: $($svc.Status)"
           if ($svc.Status -ne "Running") {
-              Write-Error "ScopeIQ-API failed to reach Running state after restart!"
+              Write-Error "ScopeIQ-API failed to reach Running state after start!"
               exit 1
           }
           Write-Host "ScopeIQ-API is Running."
 
       # -------------------------------------------------------------------------
-      # STEP 5 - Health check: confirm the API responds healthy on port 8010
+      # STEP 6 - Health check: confirm the API responds healthy on port 8010
       # -------------------------------------------------------------------------
       - name: Health check - GET /health
         shell: powershell
@@ -123,7 +140,7 @@ jobs:
           exit 1
 
       # -------------------------------------------------------------------------
-      # STEP 6 - Print deployment summary
+      # STEP 7 - Print deployment summary
       # -------------------------------------------------------------------------
       - name: Deployment summary
         if: success()
