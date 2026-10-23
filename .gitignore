@@ -1,1 +1,200 @@
-.venv
+# ==============================================================================
+# ScopeIQ - Comprehensive Git Ignore
+# Security & Credential Leak Prevention
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Environment Variables & Secret Configurations
+# ------------------------------------------------------------------------------
+.env
+.env.*
+*.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.flaskenv
+.envrc
+
+# Whitelist safe configuration templates & examples
+!.env.example
+!.env.*.example
+!.env.sample
+!.env.*.sample
+!.env.template
+!.env.*.template
+
+# ------------------------------------------------------------------------------
+# 2. Cryptographic Keys, Certificates & Keystores
+# ------------------------------------------------------------------------------
+# Private & Public Keys (SSH, RSA, Snowflake JWT keys, etc.)
+*.key
+*.pem
+*.p8
+*.pkcs12
+*.p12
+*.pfx
+*.asc
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+id_ecdsa
+id_ecdsa.pub
+id_dsa
+id_dsa.pub
+known_hosts
+authorized_keys
+
+# SSL/TLS Certificates & Certificate Signing Requests
+*.crt
+*.cer
+*.der
+*.csr
+*.ca-bundle
+
+# Mobile Keystores & Provisioning Profiles (Android / iOS)
+*.keystore
+*.jks
+*.mobileprovision
+
+# ------------------------------------------------------------------------------
+# 3. Cloud Provider & Database Credentials
+# ------------------------------------------------------------------------------
+# Snowflake credentials & connection configs
+.snowflake/
+connections.toml
+snowflake.cfg
+*snowflake*.json
+!code/docs/*.json
+
+# AWS credentials
+.aws/
+credentials.csv
+
+# Google Cloud Platform (GCP) credentials & service accounts
+*service-account*.json
+*service_account*.json
+*gcp*.json
+client_secret*.json
+credentials.json
+token.json
+.gcloud/
+
+# Microsoft Azure
+.azure/
+azureProfile.json
+
+# Kubernetes & Docker secrets
+.kube/
+*kubeconfig*
+docker-compose.override.yml
+.dockercfg
+
+# ------------------------------------------------------------------------------
+# 4. Package Manager, Registry & VCS Authentication Tokens
+# ------------------------------------------------------------------------------
+.netrc
+_netrc
+.git-credentials
+.npmrc
+.yarnrc
+.pypirc
+
+# Generic secret, token & credential file patterns
+*secret*.json
+!code/docs/*.json
+*secret*.yaml
+*secret*.yml
+*credentials*.yaml
+*credentials*.yml
+auth*.json
+session*.json
+
+# ------------------------------------------------------------------------------
+# 5. Logs, Diagnostics & Audit Trails (Prevent PII / Token Leakage)
+# ------------------------------------------------------------------------------
+*.log
+logs/
+output/logs/
+code/output/logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ------------------------------------------------------------------------------
+# 6. Database Artifacts, Backups & Transient Data
+# ------------------------------------------------------------------------------
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sql.gz
+*.dump
+*.dmp
+*.bak
+
+# Runtime exports & uploaded files
+output/exports/
+output/uploads/
+code/output/exports/
+code/output/uploads/
+
+# ------------------------------------------------------------------------------
+# 7. Python Runtime & Virtual Environments
+# ------------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+ENV/
+code/backend/.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ------------------------------------------------------------------------------
+# 8. Node, React Native & Mobile (Expo) Artifacts
+# ------------------------------------------------------------------------------
+node_modules/
+code/mobile/node_modules/
+.expo/
+code/mobile/.expo/
+.expo-shared/
+dist/
+code/mobile/dist/
+web-build/
+
+# ------------------------------------------------------------------------------
+# 9. Operating System & Editor Metadata
+# ------------------------------------------------------------------------------
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# IDEs & Editors (prevent local paths/tokens leakage in workspace files)
+.idea/
+*.swp
+*.swo
+*~
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json

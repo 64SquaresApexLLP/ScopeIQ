@@ -1,0 +1,144 @@
+﻿# ==============================================================================
+# ScopeIQ - Automatic Deployment to EC2 (Windows / NSSM)
+#
+# Triggered on every push or merge to `main`.
+# Requires a GitHub Actions self-hosted runner installed on the EC2 instance.
+#
+# HOW TO INSTALL THE SELF-HOSTED RUNNER ON EC2 (one-time setup):
+#   1. Go to: https://github.com/64SquaresApexLLP/ScopeIQ
+#              > Settings > Actions > Runners > New self-hosted runner
+#   2. Select: OS = Windows, Architecture = x64
+#   3. Run the PowerShell commands shown by GitHub inside C:\actions-runner
+#   4. Register and install as a Windows service:
+#        .\config.cmd --url https://github.com/64SquaresApexLLP/ScopeIQ --token <TOKEN>
+#        .\svc.cmd install
+#        .\svc.cmd start
+# ==============================================================================
+
+name: Deploy ScopeIQ to EC2
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:                  # Manual trigger from GitHub Actions UI
+
+concurrency:
+  group: deploy-production            # Prevent two deployments running at the same time
+  cancel-in-progress: false           # Never cancel a deployment mid-flight
+
+jobs:
+  deploy:
+    name: Deploy to EC2 (ScopeIQ-API)
+    runs-on: self-hosted              # Runner registered on the EC2 instance
+
+    environment:
+      name: production                # Optional: add approval gates in GitHub Environments
+      url: https://13.202.236.112     # EC2 Elastic IP shown in the GitHub deployment log
+
+    steps:
+
+      # -------------------------------------------------------------------------
+      # STEP 1 - Discard generated runtime files so git pull has no conflicts
+      # -------------------------------------------------------------------------
+      - name: Reset runtime-generated output files
+        shell: powershell
+        run: |
+          Set-Location "C:\ScopeIQ"
+          Write-Host "Resetting generated output files to avoid merge conflicts..."
+          git checkout -- code/output/
+          Write-Host "Done."
+
+      # -------------------------------------------------------------------------
+      # STEP 2 - Pull the latest code from main branch
+      # -------------------------------------------------------------------------
+      - name: Pull latest code from main
+        shell: powershell
+        run: |
+          Set-Location "C:\ScopeIQ"
+          Write-Host "Fetching origin/main..."
+          git fetch origin main
+          git reset --hard origin/main
+          $commit = git rev-parse --short HEAD
+          $msg    = git log -1 --pretty=format:"%s"
+          Write-Host "Deployed commit: $commit - $msg"
+
+      # -------------------------------------------------------------------------
+      # STEP 3 - Update Python dependencies (safe to run on every deploy)
+      # -------------------------------------------------------------------------
+      - name: Install / upgrade Python dependencies
+        shell: powershell
+        run: |
+          Write-Host "Installing backend dependencies..."
+          & "C:\ScopeIQ\.venv\Scripts\python.exe" -m pip install `
+              -r "C:\ScopeIQ\code\backend\requirements.txt" `
+              --quiet --no-warn-script-location
+          Write-Host "Dependencies up to date."
+
+      # -------------------------------------------------------------------------
+      # STEP 4 - Restart the Windows service managed by NSSM
+      # -------------------------------------------------------------------------
+      - name: Restart ScopeIQ-API Windows service
+        shell: powershell
+        run: |
+          Write-Host "Restarting ScopeIQ-API service..."
+          Restart-Service -Name "ScopeIQ-API" -Force
+          Start-Sleep -Seconds 5
+          $svc = Get-Service -Name "ScopeIQ-API"
+          Write-Host "Service status: $($svc.Status)"
+          if ($svc.Status -ne "Running") {
+              Write-Error "ScopeIQ-API failed to reach Running state after restart!"
+              exit 1
+          }
+          Write-Host "ScopeIQ-API is Running."
+
+      # -------------------------------------------------------------------------
+      # STEP 5 - Health check: confirm the API responds healthy on port 8010
+      # -------------------------------------------------------------------------
+      - name: Health check - GET /health
+        shell: powershell
+        run: |
+          $maxRetries = 6
+          $delay      = 5
+          $url        = "http://127.0.0.1:8010/health"
+
+          for ($i = 1; $i -le $maxRetries; $i++) {
+              Write-Host "Health check attempt $i of $maxRetries..."
+              try {
+                  $response = Invoke-RestMethod -Uri $url -Method GET -TimeoutSec 10
+                  Write-Host "Health response: $($response | ConvertTo-Json -Compress)"
+                  if ($response.status -eq "ok") {
+                      Write-Host "Deployment successful! ScopeIQ API is healthy."
+                      exit 0
+                  } else {
+                      Write-Warning "API returned status '$($response.status)'. Retrying..."
+                  }
+              } catch {
+                  Write-Warning "Request failed: $_"
+              }
+              Start-Sleep -Seconds $delay
+          }
+
+          Write-Error "Health check failed after $maxRetries attempts. Deployment incomplete!"
+          exit 1
+
+      # -------------------------------------------------------------------------
+      # STEP 6 - Print deployment summary
+      # -------------------------------------------------------------------------
+      - name: Deployment summary
+        if: success()
+        shell: powershell
+        run: |
+          $commit = git -C "C:\ScopeIQ" rev-parse --short HEAD
+          $author = git -C "C:\ScopeIQ" log -1 --pretty=format:"%an"
+          $msg    = git -C "C:\ScopeIQ" log -1 --pretty=format:"%s"
+          Write-Host ""
+          Write-Host "========================================"
+          Write-Host " ScopeIQ Deployment Complete"
+          Write-Host "========================================"
+          Write-Host " Commit : $commit"
+          Write-Host " Author : $author"
+          Write-Host " Message: $msg"
+          Write-Host " Service: ScopeIQ-API (NSSM, port 8010)"
+          Write-Host " Host   : 13.202.236.112 (ap-south-1)"
+          Write-Host "========================================"
