@@ -32,7 +32,7 @@ permissions:
 
 jobs:
   deploy:
-    name: Deploy to EC2 (ScopeIQ-API)
+    name: Deploy to EC2 (ScopeIQ-API + Frontend)
     runs-on: self-hosted              # Runner registered on the EC2 instance
 
     environment:
@@ -119,7 +119,41 @@ jobs:
           Write-Host "Dependencies up to date."
 
       # -------------------------------------------------------------------------
-      # STEP 5 - Start the ScopeIQ-API Windows service
+      # STEP 5 - Build the Expo web frontend (React Native Web → static bundle)
+      # -------------------------------------------------------------------------
+      - name: Build Expo web frontend
+        shell: powershell
+        run: |
+          Set-Location "C:\ScopeIQ\code\mobile"
+          Write-Host "Installing Node.js dependencies..."
+          npm ci --prefer-offline
+          Write-Host "Building Expo web export for production..."
+          $env:APP_ENV = "prod"
+          npx expo export --platform web --output-dir "dist" --clear
+          if ($LASTEXITCODE -ne 0) {
+              Write-Error "Expo web export failed with exit code $LASTEXITCODE"
+              exit 1
+          }
+          Write-Host "Frontend build complete. Output in C:\ScopeIQ\code\mobile\dist"
+
+      # -------------------------------------------------------------------------
+      # STEP 6 - Deploy frontend bundle to IIS (C:\inetpub\wwwroot)
+      # -------------------------------------------------------------------------
+      - name: Deploy frontend to IIS
+        shell: powershell
+        run: |
+          $src  = "C:\ScopeIQ\code\mobile\dist"
+          $dest = "C:\inetpub\wwwroot"
+
+          Write-Host "Removing old static files from IIS root..."
+          Get-ChildItem -Path $dest -Exclude "web.config" | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+
+          Write-Host "Copying new frontend bundle to IIS root..."
+          Copy-Item -Path "$src\*" -Destination $dest -Recurse -Force
+          Write-Host "Frontend deployed to $dest successfully."
+
+      # -------------------------------------------------------------------------
+      # STEP 7 - Start the ScopeIQ-API Windows service
       # -------------------------------------------------------------------------
       - name: Start ScopeIQ-API Windows service
         shell: powershell
@@ -136,7 +170,7 @@ jobs:
           Write-Host "ScopeIQ-API is Running."
 
       # -------------------------------------------------------------------------
-      # STEP 6 - Health check: confirm the API responds healthy on port 8010
+      # STEP 8 - Health check: confirm the API responds healthy on port 8010
       # -------------------------------------------------------------------------
       - name: Health check - GET /health
         shell: powershell
@@ -166,7 +200,7 @@ jobs:
           exit 1
 
       # -------------------------------------------------------------------------
-      # STEP 7 - Print deployment summary
+      # STEP 9 - Print deployment summary
       # -------------------------------------------------------------------------
       - name: Deployment summary
         if: success()
@@ -183,5 +217,6 @@ jobs:
           Write-Host " Author : $author"
           Write-Host " Message: $msg"
           Write-Host " Service: ScopeIQ-API (NSSM, port 8010)"
+          Write-Host " Frontend: IIS (C:\inetpub\wwwroot)"
           Write-Host " Host   : 13.202.236.112 (ap-south-1)"
           Write-Host "========================================"

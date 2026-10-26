@@ -1,1 +1,2 @@
-{ "apiUrl": "https://scopeiq.example.com/api", "logLevel": "warn", "remoteLogLevel": "error", "logNetwork": false, "showEnvBanner": false }
+{ "apiUrl": "/api", "logLevel": "warn", "remoteLogLevel": "error", "logNetwork": false, "showEnvBanner": false }
+
