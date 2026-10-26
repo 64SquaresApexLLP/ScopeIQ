@@ -43,6 +43,11 @@ def list_sites(user: dict = Depends(current_user)):
     store, r = get_store(), repo()
     scope = site_scope(user)
     rows = {s["SITE_ID"]: s for s in r.select("CORE.SITE", scope or None, order_by="SITE_ID")}
+    # Auto-provision folder for database sites if not present
+    if hasattr(store, "site_exists") and hasattr(store, "create_site_folder"):
+        for sid in rows:
+            if not store.site_exists(sid):
+                store.create_site_folder(sid)
     out = []
     for sid in store.list_site_ids():
         if scope and sid not in rows:

@@ -126,10 +126,26 @@ def _now() -> str:
 class LocalSharePoint(SharePointStore):
     name = "local"
 
-    def __init__(self, root: Path, library_root: str):
+    def __init__(self, root: Path, library_root: str, auto_seed: bool = False):
         self.base = Path(root) / library_root
         self.library_root = library_root
         self.base.mkdir(parents=True, exist_ok=True)
+        if auto_seed:
+            self._sync_from_sites_dir()
+
+    def _sync_from_sites_dir(self) -> None:
+        """Ensure any site directories from paths.sites_dir exist in the local SharePoint store."""
+        try:
+            sites_dir = get_settings().path("paths.sites_dir")
+            if sites_dir.is_dir():
+                import shutil
+                for p in sites_dir.iterdir():
+                    if p.is_dir() and SITE_ID_RE.match(p.name):
+                        dest_site = self.base / p.name
+                        if not dest_site.is_dir():
+                            shutil.copytree(p, dest_site, dirs_exist_ok=True)
+        except Exception as ex:
+            log.warning("could not auto-seed sites into local SharePoint: %s", ex)
 
     @property
     def location(self) -> str:
@@ -149,6 +165,12 @@ class LocalSharePoint(SharePointStore):
         d = self._site_dir(site_id)
         for f in SITE_FOLDERS:
             (d / f).mkdir(parents=True, exist_ok=True)
+        try:
+            sites_dir = get_settings().path("paths.sites_dir")
+            for f in SITE_FOLDERS:
+                (sites_dir / site_id / f).mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
         return {"site_id": validate_site_id(site_id), "path": f"{self.library_root}/{site_id}", "folders": SITE_FOLDERS}
 
     def list_site_ids(self) -> list[str]:
@@ -176,6 +198,16 @@ class LocalSharePoint(SharePointStore):
         dest.parent.mkdir(parents=True, exist_ok=True)
         replaced = dest.exists()
         dest.write_bytes(data)
+
+        # Sync to pipeline's input folder so the scoping pipeline immediately sees uploaded files
+        try:
+            sites_dir = get_settings().path("paths.sites_dir")
+            pipeline_dest = sites_dir / site_id / folder / file_name
+            pipeline_dest.parent.mkdir(parents=True, exist_ok=True)
+            pipeline_dest.write_bytes(data)
+        except Exception as ex:
+            log.warning("could not sync uploaded file to sites_dir: %s", ex)
+
         return {"name": file_name, "folder": folder, "size": len(data), "modified": _now(), "replaced": replaced,
                 "path": f"{self.library_root}/{site_id}/{folder}/{file_name}"}
 
@@ -317,7 +349,7 @@ def get_store() -> SharePointStore:
         if provider == "graph":
             _store = GraphSharePoint(st.section("sharepoint").get("graph", {}), lib)
         else:
-            _store = LocalSharePoint(st.path("sharepoint.local_root"), lib)
+            _store = LocalSharePoint(st.path("sharepoint.local_root"), lib, auto_seed=True)
     return _store
 
 
