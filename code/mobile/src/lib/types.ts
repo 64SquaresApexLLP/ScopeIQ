@@ -63,11 +63,31 @@ export interface RevisionChange {
   detail: string;
 }
 
+export interface RevisionCheckType {
+  doc_type: string;
+  picked_file: string | null;
+  picked_revision: string | null;
+  picked_format: string | null;
+  has_superseded: boolean;
+  superseded_revisions: string[];
+  total_files: number;
+}
+
+export interface RevisionCheck {
+  status: string;
+  message: string;
+  latest_picked_count: number;
+  superseded_count: number;
+  total_documents: number;
+  types: RevisionCheckType[];
+}
+
 export interface SiteDetail {
   site: Row;
   actions: WorkflowAction[];
   milestones: Row[];
   documents: Row[];
+  revision_check?: RevisionCheck;
   sectors: Row[];
   trunks: Row[];
   analyses: Row[];

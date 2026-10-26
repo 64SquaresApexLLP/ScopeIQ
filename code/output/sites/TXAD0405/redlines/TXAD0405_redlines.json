@@ -1,21 +1,9 @@
 [
   {
-    "redline_id": "RDL-DFBBD59EB5F1",
-    "site_id": "TXAD0405",
-    "doc_type": "CD",
-    "doc_revision": "REV 1",
-    "sheet": "A-3",
-    "disc_id": "DSC-BB0308EC877C",
-    "markup": "REVISE BETA POSITIONS PER RFDS R3: RADIO 4480 B71 B85 TO POS 2; NNH4-65B-R6 TO POS 1/2; AIR 6419 B41 TO POS 3.",
-    "change_from": "RADIO 4480 B71 B85 pos 3; NNH4-65B-R6 pos 1/3; AIR 6419 B41 pos 2",
-    "change_to": "RADIO 4480 B71 B85 pos 2; NNH4-65B-R6 pos 1/2; AIR 6419 B41 pos 3",
-    "status": "DRAFT"
-  },
-  {
     "redline_id": "RDL-323A386B8D64",
     "site_id": "TXAD0405",
     "doc_type": "CD",
-    "doc_revision": "REV 1",
+    "doc_revision": "",
     "sheet": "A-2",
     "disc_id": "DSC-5A99342D3F40",
     "markup": "REVISE RAD CENTER OF EXISTING ANTENNAS 63 FT -> 67.9 FT (MEASURED).",

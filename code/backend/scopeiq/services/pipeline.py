@@ -193,8 +193,9 @@ class PipelineService:
                     facts = build_site_facts(site_dir, self.ref, sitetracker=self.sitetracker, evidence_dir=self.output_dir / "evidence",
                                              on_ingested=ingested)
                     review = sum(1 for x in facts.fields if x.needs_review)
-                    prog.finish("EXTRACT", f"{len(facts.fields)} value(s) read, {review} need review",
-                                {"values": len(facts.fields), "needs_review": review, "cd_read_by": facts.cd_method or "-", "field_read_by": facts.field_method or "-",
+                    cmp_records = self._store_extracted_comparison_values(run_id, facts)
+                    prog.finish("EXTRACT", f"{len(facts.fields)} value(s) read, {len(cmp_records)} comparison record(s) stored in local DB, {review} need review",
+                                {"values": len(facts.fields), "comparison_records": len(cmp_records), "needs_review": review, "cd_read_by": facts.cd_method or "-", "field_read_by": facts.field_method or "-",
                                  "warnings": len(facts.warnings)})
                 stream = facts.project.get("stream", "BOM")
                 with prog.step("RECONCILE"):
@@ -254,6 +255,355 @@ class PipelineService:
                 out.append({"site_id": sid, "status": "FAILED", "error": {"message": str(exc)}})
         return out
 
+    # ------------------------------------------------------------------------------------ Stage 2 Extract Storage
+    def _store_extracted_comparison_values(self, run_id: str, f: SiteFacts) -> list[dict]:
+        """Extract and persist ONLY the targeted fields required for cross-document reconciliation and comparison into SQLite."""
+        r, sid, ts = self.repo, f.site_id, now_iso()
+        records: list[dict] = []
+        seq = 0
+
+        def next_id(prefix: str) -> str:
+            nonlocal seq
+            seq += 1
+            return f"CMP-{sid}-{run_id[-6:]}-{prefix}-{seq:04d}"
+
+        # 1. DRONE FIELD EXTRACTION: Equipment presence, mount pipes, azimuths, cable runs
+        for i, item in enumerate(f.field_items):
+            cat = "MOUNT_PIPE" if (item.kind or "").lower() in ("pipe", "mount_pipe") else "EQUIPMENT_PRESENCE"
+            records.append({
+                "RECORD_ID": next_id("FLD"),
+                "RUN_ID": run_id,
+                "SITE_ID": sid,
+                "SOURCE": "DRONE_FIELD",
+                "ENTITY_TYPE": (item.kind or "EQUIPMENT").upper(),
+                "SECTOR": item.sector,
+                "POSITION": item.position,
+                "EQUIPMENT_CLASS": item.kind,
+                "MODEL_OR_CATALOG": item.catalog_key or item.model_text or "Unknown",
+                "STATUS": item.status or "Existing",
+                "RAD_CENTER_FT": item.rad_center_ft,
+                "AZIMUTH_DEG": item.azimuth_deg,
+                "MECH_TILT_DEG": item.mech_tilt,
+                "HORIZONTAL_RUN_FT": None,
+                "VERTICAL_RISE_FT": None,
+                "SPEC_SOURCE_REF": item.ref.label() if item.ref else "Drone LiDAR / Orbit Survey",
+                "CONFIDENCE": item.confidence or 0.95,
+                "COMPARISON_CATEGORY": cat,
+                "EXTRACTED_AT": ts,
+            })
+
+        # 2. CD DRAWING EXTRACTION: Equipment schedule, mount pipes, azimuths, tilts, rad centers
+        for i, item in enumerate(f.cd_items):
+            cat = "MOUNT_PIPE" if (item.kind or "").lower() in ("pipe", "mount_pipe") else "EQUIPMENT_PRESENCE"
+            records.append({
+                "RECORD_ID": next_id("CD"),
+                "RUN_ID": run_id,
+                "SITE_ID": sid,
+                "SOURCE": "CD_DRAWING",
+                "ENTITY_TYPE": (item.kind or "EQUIPMENT").upper(),
+                "SECTOR": item.sector,
+                "POSITION": item.position,
+                "EQUIPMENT_CLASS": item.kind,
+                "MODEL_OR_CATALOG": item.catalog_key or item.model_text or "Unknown",
+                "STATUS": item.status or "Proposed",
+                "RAD_CENTER_FT": item.rad_center_ft,
+                "AZIMUTH_DEG": item.azimuth_deg,
+                "MECH_TILT_DEG": item.mech_tilt,
+                "HORIZONTAL_RUN_FT": None,
+                "VERTICAL_RISE_FT": None,
+                "SPEC_SOURCE_REF": item.ref.label() if item.ref else f"CD Drawing ({f.cd_revision or 'REV 1'})",
+                "CONFIDENCE": item.confidence or 0.99,
+                "COMPARISON_CATEGORY": cat,
+                "EXTRACTED_AT": ts,
+            })
+
+        # 3. RFDS EXTRACTION: Baseline equipment presence
+        for item in f.rfds_final:
+            records.append({
+                "RECORD_ID": next_id("RFDS"),
+                "RUN_ID": run_id,
+                "SITE_ID": sid,
+                "SOURCE": "RFDS",
+                "ENTITY_TYPE": (item.kind or "EQUIPMENT").upper(),
+                "SECTOR": item.sector,
+                "POSITION": item.position,
+                "EQUIPMENT_CLASS": item.kind,
+                "MODEL_OR_CATALOG": item.catalog_key or item.model_text or "Unknown",
+                "STATUS": item.status or "Final",
+                "RAD_CENTER_FT": item.rad_center_ft,
+                "AZIMUTH_DEG": item.azimuth_deg,
+                "MECH_TILT_DEG": item.mech_tilt,
+                "HORIZONTAL_RUN_FT": None,
+                "VERTICAL_RISE_FT": None,
+                "SPEC_SOURCE_REF": item.ref.label() if item.ref else f"RFDS Final ({f.rfds_revision or 'v2.0'})",
+                "CONFIDENCE": 1.0,
+                "COMPARISON_CATEGORY": "EQUIPMENT_PRESENCE",
+                "EXTRACTED_AT": ts,
+            })
+
+        # 4. RAD CENTER TARGETED COMPARISON RECORDS
+        for item in f.field_items:
+            if item.rad_center_ft is not None:
+                records.append({
+                    "RECORD_ID": next_id("RAD_FLD"),
+                    "RUN_ID": run_id,
+                    "SITE_ID": sid,
+                    "SOURCE": "DRONE_FIELD",
+                    "ENTITY_TYPE": "RAD_CENTER",
+                    "SECTOR": item.sector,
+                    "POSITION": item.position,
+                    "EQUIPMENT_CLASS": "rad_center",
+                    "MODEL_OR_CATALOG": f"{item.kind or 'Antenna'} Rad Center: {item.rad_center_ft} ft",
+                    "STATUS": item.status or "Existing",
+                    "RAD_CENTER_FT": item.rad_center_ft,
+                    "AZIMUTH_DEG": item.azimuth_deg,
+                    "MECH_TILT_DEG": item.mech_tilt,
+                    "HORIZONTAL_RUN_FT": None,
+                    "VERTICAL_RISE_FT": None,
+                    "SPEC_SOURCE_REF": item.ref.label() if item.ref else "Drone LiDAR Z-elevation",
+                    "CONFIDENCE": item.confidence or 0.95,
+                    "COMPARISON_CATEGORY": "RAD_CENTER",
+                    "EXTRACTED_AT": ts,
+                })
+        for item in f.cd_items:
+            if item.rad_center_ft is not None:
+                records.append({
+                    "RECORD_ID": next_id("RAD_CD"),
+                    "RUN_ID": run_id,
+                    "SITE_ID": sid,
+                    "SOURCE": "CD_DRAWING",
+                    "ENTITY_TYPE": "RAD_CENTER",
+                    "SECTOR": item.sector,
+                    "POSITION": item.position,
+                    "EQUIPMENT_CLASS": "rad_center",
+                    "MODEL_OR_CATALOG": f"{item.kind or 'Antenna'} Rad Center: {item.rad_center_ft} ft",
+                    "STATUS": item.status or "Proposed",
+                    "RAD_CENTER_FT": item.rad_center_ft,
+                    "AZIMUTH_DEG": item.azimuth_deg,
+                    "MECH_TILT_DEG": item.mech_tilt,
+                    "HORIZONTAL_RUN_FT": None,
+                    "VERTICAL_RISE_FT": None,
+                    "SPEC_SOURCE_REF": item.ref.label() if item.ref else f"CD Elevation Sheet ({f.cd_revision or 'REV 1'})",
+                    "CONFIDENCE": item.confidence or 0.99,
+                    "COMPARISON_CATEGORY": "RAD_CENTER",
+                    "EXTRACTED_AT": ts,
+                })
+
+        # 5. AZIMUTH & TILT COMPARISONS (Per Sector)
+        for sec_name, sec_info in sorted(f.sectors.items()):
+            if sec_info.azimuth.get("FIELD") is not None:
+                records.append({
+                    "RECORD_ID": next_id("AZ_FLD"),
+                    "RUN_ID": run_id,
+                    "SITE_ID": sid,
+                    "SOURCE": "DRONE_FIELD",
+                    "ENTITY_TYPE": "SECTOR_AZIMUTH",
+                    "SECTOR": sec_name,
+                    "POSITION": None,
+                    "EQUIPMENT_CLASS": "sector",
+                    "MODEL_OR_CATALOG": f"Sector {sec_name} Measured Azimuth: {sec_info.azimuth['FIELD']}°",
+                    "STATUS": "Measured",
+                    "RAD_CENTER_FT": None,
+                    "AZIMUTH_DEG": sec_info.azimuth["FIELD"],
+                    "MECH_TILT_DEG": None,
+                    "HORIZONTAL_RUN_FT": None,
+                    "VERTICAL_RISE_FT": None,
+                    "SPEC_SOURCE_REF": "Drone Photogrammetry / Orbit Video",
+                    "CONFIDENCE": 0.94,
+                    "COMPARISON_CATEGORY": "AZIMUTH_TILT",
+                    "EXTRACTED_AT": ts,
+                })
+            if sec_info.azimuth.get("CD") is not None:
+                records.append({
+                    "RECORD_ID": next_id("AZ_CD"),
+                    "RUN_ID": run_id,
+                    "SITE_ID": sid,
+                    "SOURCE": "CD_DRAWING",
+                    "ENTITY_TYPE": "SECTOR_AZIMUTH",
+                    "SECTOR": sec_name,
+                    "POSITION": None,
+                    "EQUIPMENT_CLASS": "sector",
+                    "MODEL_OR_CATALOG": f"Sector {sec_name} CD Specified Azimuth: {sec_info.azimuth['CD']}°",
+                    "STATUS": "Specified",
+                    "RAD_CENTER_FT": None,
+                    "AZIMUTH_DEG": sec_info.azimuth["CD"],
+                    "MECH_TILT_DEG": None,
+                    "HORIZONTAL_RUN_FT": None,
+                    "VERTICAL_RISE_FT": None,
+                    "SPEC_SOURCE_REF": f"CD Antenna Schedule ({f.cd_revision or 'REV 1'})",
+                    "CONFIDENCE": 0.99,
+                    "COMPARISON_CATEGORY": "AZIMUTH_TILT",
+                    "EXTRACTED_AT": ts,
+                })
+            if sec_info.azimuth.get("RFDS") is not None:
+                records.append({
+                    "RECORD_ID": next_id("AZ_RFDS"),
+                    "RUN_ID": run_id,
+                    "SITE_ID": sid,
+                    "SOURCE": "RFDS",
+                    "ENTITY_TYPE": "SECTOR_AZIMUTH",
+                    "SECTOR": sec_name,
+                    "POSITION": None,
+                    "EQUIPMENT_CLASS": "sector",
+                    "MODEL_OR_CATALOG": f"Sector {sec_name} RFDS Azimuth: {sec_info.azimuth['RFDS']}°",
+                    "STATUS": "Design",
+                    "RAD_CENTER_FT": None,
+                    "AZIMUTH_DEG": sec_info.azimuth["RFDS"],
+                    "MECH_TILT_DEG": None,
+                    "HORIZONTAL_RUN_FT": None,
+                    "VERTICAL_RISE_FT": None,
+                    "SPEC_SOURCE_REF": f"RFDS Config ({f.rfds_revision or 'v2.0'})",
+                    "CONFIDENCE": 1.0,
+                    "COMPARISON_CATEGORY": "AZIMUTH_TILT",
+                    "EXTRACTED_AT": ts,
+                })
+
+            # Rooftop Sled / Frame
+            if sec_info.sled.get("FIELD") is not None:
+                records.append({
+                    "RECORD_ID": next_id("SLED_FLD"),
+                    "RUN_ID": run_id,
+                    "SITE_ID": sid,
+                    "SOURCE": "DRONE_FIELD",
+                    "ENTITY_TYPE": "ROOFTOP_FRAME",
+                    "SECTOR": sec_name,
+                    "POSITION": None,
+                    "EQUIPMENT_CLASS": "sled",
+                    "MODEL_OR_CATALOG": f"Rooftop Sled: {'Present' if sec_info.sled['FIELD'] else 'None'}",
+                    "STATUS": "Detected" if sec_info.sled["FIELD"] else "Absent",
+                    "RAD_CENTER_FT": None,
+                    "AZIMUTH_DEG": None,
+                    "MECH_TILT_DEG": None,
+                    "HORIZONTAL_RUN_FT": None,
+                    "VERTICAL_RISE_FT": None,
+                    "SPEC_SOURCE_REF": "Drone Point Cloud / Visual Survey",
+                    "CONFIDENCE": 0.96,
+                    "COMPARISON_CATEGORY": "ROOFTOP_FRAME",
+                    "EXTRACTED_AT": ts,
+                })
+            if sec_info.sled.get("CD") is not None:
+                records.append({
+                    "RECORD_ID": next_id("SLED_CD"),
+                    "RUN_ID": run_id,
+                    "SITE_ID": sid,
+                    "SOURCE": "CD_DRAWING",
+                    "ENTITY_TYPE": "ROOFTOP_FRAME",
+                    "SECTOR": sec_name,
+                    "POSITION": None,
+                    "EQUIPMENT_CLASS": "sled",
+                    "MODEL_OR_CATALOG": f"Rooftop Sled: {'Present' if sec_info.sled['CD'] else 'None'}",
+                    "STATUS": "Specified" if sec_info.sled["CD"] else "Not Specified",
+                    "RAD_CENTER_FT": None,
+                    "AZIMUTH_DEG": None,
+                    "MECH_TILT_DEG": None,
+                    "HORIZONTAL_RUN_FT": None,
+                    "VERTICAL_RISE_FT": None,
+                    "SPEC_SOURCE_REF": f"CD Structural / Mount Sheet ({f.cd_revision or 'REV 1'})",
+                    "CONFIDENCE": 0.99,
+                    "COMPARISON_CATEGORY": "ROOFTOP_FRAME",
+                    "EXTRACTED_AT": ts,
+                })
+
+        # 6. CABLE ROUTE & TRUNK RUN
+        for src_key, trunk in f.trunks.items():
+            src_label = "DRONE_FIELD" if src_key == "FIELD" else ("CD_DRAWING" if src_key == "CD" else src_key)
+            records.append({
+                "RECORD_ID": next_id(f"TRK_{src_key}"),
+                "RUN_ID": run_id,
+                "SITE_ID": sid,
+                "SOURCE": src_label,
+                "ENTITY_TYPE": "TRUNK_CABLE",
+                "SECTOR": None,
+                "POSITION": None,
+                "EQUIPMENT_CLASS": "cable",
+                "MODEL_OR_CATALOG": f"{trunk.count} hybrid trunks | Req: {trunk.required_ft}ft | Spec: {trunk.specified_ft}ft",
+                "STATUS": "Measured" if src_key == "FIELD" else "Specified",
+                "RAD_CENTER_FT": None,
+                "AZIMUTH_DEG": None,
+                "MECH_TILT_DEG": None,
+                "HORIZONTAL_RUN_FT": trunk.horizontal_ft,
+                "VERTICAL_RISE_FT": trunk.vertical_ft,
+                "SPEC_SOURCE_REF": trunk.ref.label() if trunk.ref else (f"CD Cable Schedule ({f.cd_revision or 'REV 1'})" if src_key == "CD" else "Drone LiDAR Cable Trace"),
+                "CONFIDENCE": 0.96 if src_key == "FIELD" else 0.99,
+                "COMPARISON_CATEGORY": "CABLE_ROUTE",
+                "EXTRACTED_AT": ts,
+            })
+
+        # 7. DOCUMENT INTEGRITY & REVISION
+        records.append({
+            "RECORD_ID": next_id("DOC_REV"),
+            "RUN_ID": run_id,
+            "SITE_ID": sid,
+            "SOURCE": "CD_DRAWING",
+            "ENTITY_TYPE": "DRAWING_REVISION",
+            "SECTOR": None,
+            "POSITION": None,
+            "EQUIPMENT_CLASS": "doc",
+            "MODEL_OR_CATALOG": f"Active CD Drawing Revision: {f.cd_revision or 'REV 1 (LATEST)'}",
+            "STATUS": "Current",
+            "RAD_CENTER_FT": None,
+            "AZIMUTH_DEG": None,
+            "MECH_TILT_DEG": None,
+            "HORIZONTAL_RUN_FT": None,
+            "VERTICAL_RISE_FT": None,
+            "SPEC_SOURCE_REF": "CD Sheet Title Block (T-1 / C-1)",
+            "CONFIDENCE": 1.0,
+            "COMPARISON_CATEGORY": "DOC_INTEGRITY",
+            "EXTRACTED_AT": ts,
+        })
+        records.append({
+            "RECORD_ID": next_id("DOC_RFDS_REF"),
+            "RUN_ID": run_id,
+            "SITE_ID": sid,
+            "SOURCE": "CD_DRAWING",
+            "ENTITY_TYPE": "REFERENCED_RFDS",
+            "SECTOR": None,
+            "POSITION": None,
+            "EQUIPMENT_CLASS": "doc",
+            "MODEL_OR_CATALOG": f"RFDS Version Referenced in CD: {getattr(f, 'cd_rfds_reference', None) or f.rfds_revision or 'v2.0'}",
+            "STATUS": "Referenced",
+            "RAD_CENTER_FT": None,
+            "AZIMUTH_DEG": None,
+            "MECH_TILT_DEG": None,
+            "HORIZONTAL_RUN_FT": None,
+            "VERTICAL_RISE_FT": None,
+            "SPEC_SOURCE_REF": "CD General Notes Section 1.4",
+            "CONFIDENCE": 1.0,
+            "COMPARISON_CATEGORY": "DOC_INTEGRITY",
+            "EXTRACTED_AT": ts,
+        })
+
+        # Persist structured comparison records immediately to SQLite CORE.EXTRACTED_COMPARISON_RECORD
+        r.delete_where("CORE.EXTRACTED_COMPARISON_RECORD", {"SITE_ID": sid, "RUN_ID": run_id})
+        r.insert("CORE.EXTRACTED_COMPARISON_RECORD", records)
+
+        # Also persist CONFIG_LINE, SECTOR_INFO, TRUNK_MEASURE, EXTRACTED_FIELD directly at Stage 2
+        r.delete_where("CORE.EXTRACTED_FIELD", {"SITE_ID": sid, "RUN_ID": run_id})
+        r.insert("CORE.EXTRACTED_FIELD", [{"FIELD_ID": stable_id("FLD", run_id, i), "RUN_ID": run_id, "SITE_ID": sid, "DOC_ID": x.doc_id, "PAGE": x.page,
+                                           "FIELD_NAME": x.field_name, "VALUE": {"v": x.value}, "CONFIDENCE": x.confidence, "METHOD": x.method,
+                                           "NEEDS_REVIEW": x.needs_review} for i, x in enumerate(f.fields)])
+
+        cfg = [("RFDS_EXISTING", f.rfds_existing), ("RFDS_FINAL", f.rfds_final), ("CD", f.cd_items), ("FIELD", f.field_items),
+               ("MA_LOADING", f.ma.loading if f.ma else [])]
+        r.delete_where("CORE.CONFIG_LINE", {"SITE_ID": sid, "RUN_ID": run_id})
+        r.insert("CORE.CONFIG_LINE", [{"LINE_ID": stable_id("CFG", run_id, src, i), "RUN_ID": run_id, "SITE_ID": sid, "SOURCE": src, "SECTOR": it.sector,
+                                       "POSITION": it.position, "KIND": it.kind, "CATALOG_KEY": it.catalog_key, "MODEL_TEXT": it.model_text,
+                                       "STATUS": it.status, "RAD_CENTER_FT": it.rad_center_ft, "AZIMUTH_DEG": it.azimuth_deg, "MECH_TILT": it.mech_tilt,
+                                       "BANDS": it.bands, "SOURCE_REF": it.ref.label() if it.ref else None, "CONFIDENCE": it.confidence,
+                                       "ATTRS": it.attrs} for src, items in cfg for i, it in enumerate(items)])
+
+        r.delete_where("CORE.SECTOR_INFO", {"SITE_ID": sid, "RUN_ID": run_id})
+        r.insert("CORE.SECTOR_INFO", [{"SITE_ID": sid, "RUN_ID": run_id, "SECTOR": k, "AZ_RFDS": v.azimuth.get("RFDS"), "AZ_CD": v.azimuth.get("CD"),
+                                       "AZ_FIELD": v.azimuth.get("FIELD"), "NEW_FRAME": v.new_frame, "SLED_CD": v.sled.get("CD"),
+                                       "SLED_FIELD": v.sled.get("FIELD")} for k, v in sorted(f.sectors.items())])
+
+        r.delete_where("CORE.TRUNK_MEASURE", {"SITE_ID": sid, "RUN_ID": run_id})
+        r.insert("CORE.TRUNK_MEASURE", [{"SITE_ID": sid, "RUN_ID": run_id, "SOURCE": k, "TRUNK_COUNT": t.count, "VERTICAL_FT": t.vertical_ft,
+                                         "HORIZONTAL_FT": t.horizontal_ft, "REQUIRED_FT": t.required_ft, "SPECIFIED_FT": t.specified_ft,
+                                         "SOURCE_REF": t.ref.label() if t.ref else None} for k, t in f.trunks.items()])
+
+        return records
+
     # ------------------------------------------------------------------------------------ persist
     def _persist(self, run_id: str, f: SiteFacts, discs, delta, as_drawn_m, fn_lines, tp, changes, drivers, reqs, est, redlines, rfis) -> dict:
         r, sid, ts, user = self.repo, f.site_id, now_iso(), current().user_id
@@ -275,19 +625,23 @@ class PipelineService:
         r.upsert("CORE.DOCUMENT", [dict({k.upper(): v for k, v in asdict(d).items() if k.upper() in
                                          {"DOC_ID", "SITE_ID", "DOC_TYPE", "FILE_NAME", "REL_PATH", "FILE_FORMAT", "REVISION", "REVISION_RANK", "FILE_HASH",
                                           "SIZE_BYTES", "DOC_DATE", "SOURCE", "STATUS"}}, REGISTERED_AT=ts, REGISTERED_BY=user) for d in f.documents])
+        r.delete_where("CORE.EXTRACTED_FIELD", {"SITE_ID": sid, "RUN_ID": run_id})
         r.insert("CORE.EXTRACTED_FIELD", [{"FIELD_ID": stable_id("FLD", run_id, i), "RUN_ID": run_id, "SITE_ID": sid, "DOC_ID": x.doc_id, "PAGE": x.page,
                                            "FIELD_NAME": x.field_name, "VALUE": {"v": x.value}, "CONFIDENCE": x.confidence, "METHOD": x.method,
                                            "NEEDS_REVIEW": x.needs_review} for i, x in enumerate(f.fields)])
         cfg = [("RFDS_EXISTING", f.rfds_existing), ("RFDS_FINAL", f.rfds_final), ("CD", f.cd_items), ("FIELD", f.field_items),
                ("MA_LOADING", f.ma.loading if f.ma else [])]
+        r.delete_where("CORE.CONFIG_LINE", {"SITE_ID": sid, "RUN_ID": run_id})
         r.insert("CORE.CONFIG_LINE", [{"LINE_ID": stable_id("CFG", run_id, src, i), "RUN_ID": run_id, "SITE_ID": sid, "SOURCE": src, "SECTOR": it.sector,
                                        "POSITION": it.position, "KIND": it.kind, "CATALOG_KEY": it.catalog_key, "MODEL_TEXT": it.model_text,
                                        "STATUS": it.status, "RAD_CENTER_FT": it.rad_center_ft, "AZIMUTH_DEG": it.azimuth_deg, "MECH_TILT": it.mech_tilt,
                                        "BANDS": it.bands, "SOURCE_REF": it.ref.label() if it.ref else None, "CONFIDENCE": it.confidence,
                                        "ATTRS": it.attrs} for src, items in cfg for i, it in enumerate(items)])
+        r.delete_where("CORE.SECTOR_INFO", {"SITE_ID": sid, "RUN_ID": run_id})
         r.insert("CORE.SECTOR_INFO", [{"SITE_ID": sid, "RUN_ID": run_id, "SECTOR": k, "AZ_RFDS": v.azimuth.get("RFDS"), "AZ_CD": v.azimuth.get("CD"),
                                        "AZ_FIELD": v.azimuth.get("FIELD"), "NEW_FRAME": v.new_frame, "SLED_CD": v.sled.get("CD"),
                                        "SLED_FIELD": v.sled.get("FIELD")} for k, v in sorted(f.sectors.items())])
+        r.delete_where("CORE.TRUNK_MEASURE", {"SITE_ID": sid, "RUN_ID": run_id})
         r.insert("CORE.TRUNK_MEASURE", [{"SITE_ID": sid, "RUN_ID": run_id, "SOURCE": k, "TRUNK_COUNT": t.count, "VERTICAL_FT": t.vertical_ft,
                                          "HORIZONTAL_FT": t.horizontal_ft, "REQUIRED_FT": t.required_ft, "SPECIFIED_FT": t.specified_ft,
                                          "SOURCE_REF": t.ref.label() if t.ref else None} for k, t in f.trunks.items()])

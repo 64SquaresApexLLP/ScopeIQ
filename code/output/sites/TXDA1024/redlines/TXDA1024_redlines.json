@@ -9,6 +9,6 @@
     "markup": "DELETE (E) SPARE PIPE AT BETA POS 3 - NOT PRESENT PER DRONE SURVEY. ADD (P) MOUNT PIPE IF POSITION IS USED.",
     "change_from": "(E) pipe",
     "change_to": "none / (P) pipe",
-    "status": "DRAFT"
+    "status": "APPROVED"
   }
 ]

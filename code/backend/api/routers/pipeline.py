@@ -115,12 +115,140 @@ def step_detail(run_id: str, key: str, user: dict = Depends(current_user)):
     r, sid = repo(), run["SITE_ID"]
     by_run = {"SITE_ID": sid, "RUN_ID": run_id}
     if key == "INGEST":
-        return {"documents": r.select("CORE.DOCUMENT", {"SITE_ID": sid}, order_by="DOC_TYPE, REVISION_RANK")}
+        docs = r.select("CORE.DOCUMENT", {"SITE_ID": sid}, order_by="DOC_TYPE, REVISION_RANK DESC")
+        formats = sorted({d.get("FILE_FORMAT") for d in docs if d.get("FILE_FORMAT")})
+        current_docs = [d for d in docs if d.get("STATUS") == "CURRENT"]
+        superseded_docs = [d for d in docs if d.get("STATUS") == "SUPERSEDED"]
+        return {
+            "documents": docs,
+            "total": len(docs),
+            "formats": formats,
+            "current_count": len(current_docs),
+            "superseded_count": len(superseded_docs),
+        }
     if key == "EXTRACT":
         fields = r.select("CORE.EXTRACTED_FIELD", by_run)
         fields.sort(key=lambda f: (not f.get("NEEDS_REVIEW"), f.get("CONFIDENCE") or 0))
-        return {"total": len(fields), "needs_review": sum(1 for f in fields if f.get("NEEDS_REVIEW")), "fields": fields[:150],
-                "config_lines": r.select("CORE.CONFIG_LINE", by_run, order_by="SOURCE, SECTOR, POSITION")[:300]}
+        cfg_lines = r.select("CORE.CONFIG_LINE", by_run, order_by="SOURCE, SECTOR, POSITION")
+
+        # Dynamic documents for format check
+        site_docs = r.select("CORE.DOCUMENT", {"SITE_ID": sid}, order_by="DOC_TYPE, REVISION_RANK DESC")
+        drone_docs = [d for d in site_docs if d.get("DOC_TYPE", "").startswith("DRONE")]
+        cd_docs = [d for d in site_docs if d.get("DOC_TYPE") == "CD"]
+
+        # Drone tools and format inspection
+        drone_formats = sorted({d.get("FILE_FORMAT") for d in drone_docs if d.get("FILE_FORMAT")})
+        drone_pointcloud = next((d for d in drone_docs if d.get("DOC_TYPE") == "DRONE_POINTCLOUD"), None)
+        drone_video = next((d for d in drone_docs if d.get("DOC_TYPE") == "DRONE_VIDEO"), None)
+        drone_vendor = next((d for d in drone_docs if d.get("DOC_TYPE") == "DRONE_VENDOR"), None)
+        drone_meta = next((d for d in drone_docs if d.get("DOC_TYPE") == "DRONE_META"), None)
+
+        drone_tools = []
+        if drone_pointcloud:
+            fmt = drone_pointcloud.get("FILE_FORMAT", "LAZ").lower()
+            drone_tools.append({
+                "tool": "laspy + NumPy",
+                "format": f".{fmt} (LiDAR Point Cloud)",
+                "description": "Extracts 3D voxel clusters (ASPRS classes 64-68), detects mount pipes, and measures cable runs."
+            })
+        if drone_video:
+            fmt = drone_video.get("FILE_FORMAT", "MP4").lower()
+            drone_tools.append({
+                "tool": "OpenCV (cv2)",
+                "format": f".{fmt} (Orbit Video)",
+                "description": "Variance of Laplacian sharpness analyzer, equidistant 24-frame sampling, and sector bearing alignment."
+            })
+        if drone_vendor:
+            drone_tools.append({
+                "tool": "Python csv.DictReader",
+                "format": ".csv (Vendor Inventory)",
+                "description": "Parses pre-cataloged survey measurements, sector assignments, and antenna azimuths."
+            })
+        if drone_meta:
+            drone_tools.append({
+                "tool": "Python json",
+                "format": ".json (Flight Metadata)",
+                "description": "Ingests flight timestamp, sensor calibration, site coordinates, and drone model."
+            })
+
+        field_items = [c for c in cfg_lines if c.get("SOURCE") == "FIELD"]
+        field_objs = r.select("CORE.FIELD_OBJECT", {"SITE_ID": sid})
+        field_trunks = r.select("CORE.TRUNK_MEASURE", {"SITE_ID": sid, "RUN_ID": run_id, "SOURCE": "FIELD"})
+        frames = r.select("CORE.EVIDENCE_FRAME", {"SITE_ID": sid})
+
+        drone_extraction = {
+            "formats": drone_formats,
+            "tools": drone_tools,
+            "documents": drone_docs,
+            "method": "POINTCLOUD (LiDAR 3D)" if drone_pointcloud else ("VENDOR_CSV" if drone_vendor else "FIELD_SURVEY"),
+            "items_count": len(field_items),
+            "objects_count": len(field_objs) or len(field_items),
+            "trunk": field_trunks[0] if field_trunks else None,
+            "frames_count": len(frames),
+            "items": field_items,
+        }
+
+        # CD drawings tools and format inspection
+        cd_formats = sorted({d.get("FILE_FORMAT") for d in cd_docs if d.get("FILE_FORMAT")})
+        cd_dxf = next((d for d in cd_docs if d.get("FILE_FORMAT") == "DXF"), None)
+        cd_pdf = next((d for d in cd_docs if d.get("FILE_FORMAT") == "PDF"), None)
+
+        cd_tools = []
+        if cd_dxf:
+            cd_tools.append({
+                "tool": "ezdxf",
+                "format": ".dxf (CAD Model Space)",
+                "description": "Reads CAD block entities (ANT_PANEL, AAU, RRU, PIPE, SLED) and vector tables with 99% precision."
+            })
+        if cd_pdf:
+            cd_tools.append({
+                "tool": "PyMuPDF + OpenCV + Tesseract OCR",
+                "format": ".pdf (Drawing Sheets)",
+                "description": "Renders vector sheets, eliminates schedule gridlines via OpenCV morphology, and runs Tesseract OCR."
+            })
+
+        cd_items = [c for c in cfg_lines if c.get("SOURCE") == "CD"]
+        cd_trunks = r.select("CORE.TRUNK_MEASURE", {"SITE_ID": sid, "RUN_ID": run_id, "SOURCE": "CD"})
+        cd_rev = (cd_docs[0].get("REVISION") if cd_docs else None) or "REV 1"
+
+        cd_extraction = {
+            "formats": cd_formats,
+            "tools": cd_tools,
+            "documents": cd_docs,
+            "method": "DXF (CAD Model Blocks)" if cd_dxf else "PDF (Tesseract OCR)",
+            "revision": cd_rev,
+            "items_count": len(cd_items),
+            "trunk": cd_trunks[0] if cd_trunks else None,
+            "items": cd_items,
+        }
+
+        # Query structured comparison records stored directly in SQLite CORE.EXTRACTED_COMPARISON_RECORD
+        cmp_records = r.select("CORE.EXTRACTED_COMPARISON_RECORD", by_run, order_by="COMPARISON_CATEGORY, SOURCE, SECTOR, POSITION")
+        by_cat = {}
+        for cr in cmp_records:
+            cat = cr.get("COMPARISON_CATEGORY", "OTHER")
+            by_cat[cat] = by_cat.get(cat, 0) + 1
+        by_src = {}
+        for cr in cmp_records:
+            src = cr.get("SOURCE", "OTHER")
+            by_src[src] = by_src.get(src, 0) + 1
+
+        return {
+            "total": len(fields),
+            "needs_review": sum(1 for f in fields if f.get("NEEDS_REVIEW")),
+            "fields": fields[:150],
+            "config_lines": cfg_lines[:300],
+            "drone_extraction": drone_extraction,
+            "cd_extraction": cd_extraction,
+            "comparison_records": cmp_records,
+            "comparison_summary": {
+                "total": len(cmp_records),
+                "by_category": by_cat,
+                "by_source": by_src,
+                "db_table": "CORE.EXTRACTED_COMPARISON_RECORD",
+                "database": "SQLite (code/output/scopeiq_local.db)",
+            },
+        }
     if key == "RECONCILE":
         return {"discrepancies": r.select("CORE.DISCREPANCY", by_run, order_by="SEVERITY, RULE_ID")}
     if key == "DELTA":
@@ -142,3 +270,24 @@ def step_detail(run_id: str, key: str, user: dict = Depends(current_user)):
 @router.get("/sites")
 def available_sites(user: dict = Depends(current_user)):
     return pipeline().site_ids()
+
+
+@router.get("/runs/{run_id}/comparison-records")
+def run_comparison_records(run_id: str, category: str | None = None, source: str | None = None, user: dict = Depends(current_user)):
+    """Fetch structured comparison records stored in SQLite CORE.EXTRACTED_COMPARISON_RECORD."""
+    run = _run(run_id, user)
+    r, sid = repo(), run["SITE_ID"]
+    where = {"SITE_ID": sid, "RUN_ID": run_id}
+    if category:
+        where["COMPARISON_CATEGORY"] = category.upper()
+    if source:
+        where["SOURCE"] = source.upper()
+    records = r.select("CORE.EXTRACTED_COMPARISON_RECORD", where, order_by="COMPARISON_CATEGORY, SOURCE, SECTOR, POSITION")
+    return {
+        "run_id": run_id,
+        "site_id": sid,
+        "total": len(records),
+        "records": records,
+        "db_table": "CORE.EXTRACTED_COMPARISON_RECORD",
+        "database": "SQLite (output/scopeiq_local.db)",
+    }

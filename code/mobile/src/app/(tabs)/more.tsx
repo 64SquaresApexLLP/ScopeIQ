@@ -5,6 +5,7 @@ import { Button, Card, ErrorView, KV, Muted, Row, s, Section, Title } from '../.
 import { api, ApiError } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { settings } from '../../lib/config';
+import { roleLabel } from '../../lib/format';
 
 export default function More() {
   const { user, logout, can } = useAuth();
@@ -28,11 +29,8 @@ export default function More() {
   return (
     <ScrollView style={s.screen} contentContainerStyle={s.content}>
       <Card>
-        <Title>{user?.name}</Title>
+        <Title>{roleLabel(user?.role)}</Title>
         <KV k="Role" v={user?.role} />
-        <KV k="Persona" v={user?.persona} />
-        <KV k="Organisation" v={user?.organisation} />
-        <KV k="Key screens" v={user?.key_screens} />
       </Card>
       {can('SCOPER', 'REVIEWER') ? (
         <Section title="Pipeline">

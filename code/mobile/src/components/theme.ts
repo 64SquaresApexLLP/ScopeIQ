@@ -1,7 +1,15 @@
 export const colors = {
-  bg: '#F4F6FA', card: '#FFFFFF', text: '#1B2433', muted: '#5E6B7E', border: '#DCE2EA', primary: '#1F3864', accent: '#2F6FED',
-  danger: '#C62828', warn: '#B26A00', ok: '#2E7D32', info: '#1565C0', red: '#D50000',
+  bg: '#F4F6FB', card: '#FFFFFF', text: '#0F172A', muted: '#64748B', border: '#E3E8F2', primary: '#0F2A5F', accent: '#4F6BFF',
+  accent2: '#14B8A6', soft: '#EEF2FF', danger: '#DC2626', warn: '#D97706', ok: '#16A34A', info: '#2563EB', red: '#B91C1C',
+  surface: '#FFFFFF', surfaceAlt: '#F4F6FB',
 };
+// soft layered shadow (works on web and native)
+export const shadow = { boxShadow: '0 1px 2px rgba(15,23,42,0.05), 0 6px 20px rgba(15,23,42,0.06)' } as const;
+export const shadowLift = { boxShadow: '0 2px 4px rgba(15,23,42,0.06), 0 12px 28px rgba(79,107,255,0.16)' } as const;
+// linear gradient background; the solid colour is the fallback where gradients are unsupported
+export const gradient = (from: string, to: string, deg = 135) =>
+  ({ backgroundColor: from, experimental_backgroundImage: `linear-gradient(${deg}deg, ${from}, ${to})`, backgroundImage: `linear-gradient(${deg}deg, ${from}, ${to})` } as any);
+export const brandGradient = gradient('#0F2A5F', '#4F46E5');
 export const space = (n: number) => n * 4;
 
 const STATUS: Record<string, string> = {
