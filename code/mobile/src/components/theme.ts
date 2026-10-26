@@ -1,6 +1,7 @@
 export const colors = {
   bg: '#F4F6FB', card: '#FFFFFF', text: '#0F172A', muted: '#64748B', border: '#E3E8F2', primary: '#0F2A5F', accent: '#4F6BFF',
   accent2: '#14B8A6', soft: '#EEF2FF', danger: '#DC2626', warn: '#D97706', ok: '#16A34A', info: '#2563EB', red: '#B91C1C',
+  surface: '#FFFFFF', surfaceAlt: '#F4F6FB',
 };
 // soft layered shadow (works on web and native)
 export const shadow = { boxShadow: '0 1px 2px rgba(15,23,42,0.05), 0 6px 20px rgba(15,23,42,0.06)' } as const;

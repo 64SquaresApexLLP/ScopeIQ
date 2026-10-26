@@ -1,6 +1,6 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
-import { RefreshControl, ScrollView, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { BomRevisions } from '../../components/site/Bom';
 import { Delta } from '../../components/site/Delta';
 import { Discrepancies } from '../../components/site/Discrepancies';
@@ -10,7 +10,8 @@ import { Evidence } from '../../components/site/Evidence';
 import { Overview } from '../../components/site/Overview';
 import { Pipeline } from '../../components/site/Pipeline';
 import { Redlines } from '../../components/site/Redlines';
-import { Button, Chips, ErrorView, Loading, Row, s } from '../../components/ui';
+import { colors, space } from '../../components/theme';
+import { Button, Card, Chips, ErrorView, Icon, IconBadge, Loading, Row, s } from '../../components/ui';
 import { api, ApiError } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { SiteDetail } from '../../lib/types';
@@ -31,17 +32,26 @@ export default function Site() {
   const { can } = useAuth();
   const [running, setRunning] = useState(false);
   const [runErr, setRunErr] = useState<ApiError | null>(null);
+  const [runSuccess, setRunSuccess] = useState<string | null>(null);
 
-  // start the run in the background and follow it on the Pipeline tab
+  // Run the scoping pipeline dynamically and stay on the Pipeline tab to observe stage-by-stage execution
   const run = async () => {
     setRunning(true);
     setRunErr(null);
+    setRunSuccess(null);
+    setTab('pipeline');
     try {
       await api.post(`/pipeline/sites/${id}/start`);
-      setTab('pipeline');
+      await d.reload();
       setKey((k) => k + 1);
     } catch (e) {
-      setRunErr(e as ApiError);
+      try {
+        await api.post(`/pipeline/sites/${id}/run`);
+        await d.reload();
+        setKey((k) => k + 1);
+      } catch (err2) {
+        setRunErr(e as ApiError);
+      }
     } finally {
       setRunning(false);
     }
@@ -52,8 +62,30 @@ export default function Site() {
       <Stack.Screen options={{ title: id }} />
       <View style={{ paddingHorizontal: 16 }}><Chips<Tab> value={tab} onChange={setTab} options={TABS} /></View>
       <ScrollView contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={d.loading} onRefresh={() => { void d.reload(); setKey((k) => k + 1); }} />}>
-        {can('SCOPER', 'REVIEWER') && tab === 'overview' ? (
-          <Row style={{ marginBottom: 8 }}><Button small kind="secondary" title={running ? 'Starting...' : 'Re-run pipeline'} disabled={running} onPress={run} /></Row>
+        {can('SCOPER', 'REVIEWER', 'ADMIN') ? (
+          <Card style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: space(4), marginBottom: space(3.5), borderColor: '#CBD5E8', borderWidth: 1, backgroundColor: '#fff' }}>
+            <View style={{ flex: 1, marginRight: space(3) }}>
+              <Row style={{ alignItems: 'center', gap: space(2) }}>
+                <IconBadge name="cpu" color={colors.accent} size={32} />
+                <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>Scoping Pipeline</Text>
+              </Row>
+              <Text style={{ fontSize: 12.5, color: colors.muted, marginTop: 4 }}>
+                Runs document intake, enforces latest revision selection across drawings and specs, and executes cross-consistency rules.
+              </Text>
+            </View>
+            <Button
+              title={running ? 'Running Pipeline...' : 'Run Pipeline'}
+              disabled={running}
+              onPress={run}
+            />
+          </Card>
+        ) : null}
+        {runSuccess ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space(2.5), padding: space(3.5), borderRadius: 12, backgroundColor: '#F0FBF4', borderWidth: 1, borderColor: '#C6EBD3', marginBottom: space(3.5) }}>
+            <Icon name="check-circle" size={18} color={colors.ok} />
+            <Text style={{ color: '#2B6343', fontSize: 13, fontWeight: '700', flex: 1 }}>{runSuccess}</Text>
+            <Pressable onPress={() => setRunSuccess(null)} style={{ padding: 4 }}><Icon name="x" size={14} color="#2B6343" /></Pressable>
+          </View>
         ) : null}
         {runErr ? <ErrorView error={runErr} /> : null}
         {d.error ? <ErrorView error={d.error} onRetry={d.reload} /> : !d.data ? <Loading /> : (
