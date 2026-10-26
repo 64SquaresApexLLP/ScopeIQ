@@ -66,6 +66,21 @@ engine:
   ocr_enabled: true
   tesseract_cmd: ""           # empty = find tesseract on PATH; Windows: C:/Program Files/Tesseract-OCR/tesseract.exe
 
+sharepoint:
+  # Where site documents live. local = a folder that stands in for the SharePoint document library (works offline, used for
+  # the demo and tests); graph = the real SharePoint via Microsoft Graph (needs an Entra app registration, see docs/SHAREPOINT.md).
+  provider: local             # local | graph
+  library_root: Ericsson-Scoping/Sites     # folder inside the library; one sub-folder per site id
+  local_root: output/sharepoint            # only for provider=local (relative to code/)
+  max_upload_mb: 400
+  graph:                      # only for provider=graph; set the secret with SCOPEIQ__SHAREPOINT__GRAPH__CLIENT_SECRET (never commit it)
+    tenant_id: ""
+    client_id: ""
+    client_secret: ""
+    site_hostname: ""         # e.g. contoso.sharepoint.com
+    site_path: ""             # e.g. /sites/ScopeIQ
+    drive_name: Documents     # the document library
+
 api:
   host: 0.0.0.0
   port: 8000

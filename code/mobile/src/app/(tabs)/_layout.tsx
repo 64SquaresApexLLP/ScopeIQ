@@ -1,20 +1,58 @@
+import { Feather } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { ColorValue, Text } from 'react-native';
-import { colors } from '../../components/theme';
+import { ColorValue, Text, useWindowDimensions, View } from 'react-native';
+import { colors, space } from '../../components/theme';
+import { Avatar } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
+import { roleLabel } from '../../lib/format';
 
-const icon = (glyph: string) => ({ color }: { color: ColorValue }) => <Text style={{ color, fontSize: 18 }}>{glyph}</Text>;
+const icon = (name: React.ComponentProps<typeof Feather>['name']) => ({ color, size }: { color: ColorValue; size: number }) => <Feather name={name} size={size - 2} color={color as string} />;
+
+function UserChip() {
+  const { user } = useAuth();
+  if (!user) return null;
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: space(2), marginRight: space(4) }}>
+      <View style={{ alignItems: 'flex-end' }}>
+        <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>{roleLabel(user.role)}</Text>
+        <Text style={{ color: 'rgba(255,255,255,0.65)', fontSize: 11 }}>Signed in</Text>
+      </View>
+      <Avatar name={roleLabel(user.role)} size={34} />
+    </View>
+  );
+}
 
 export default function TabsLayout() {
   const { user } = useAuth();
+  const { width } = useWindowDimensions();
+  const wide = width >= 900;
   return (
-    <Tabs screenOptions={{ headerStyle: { backgroundColor: colors.primary }, headerTintColor: '#fff', tabBarActiveTintColor: colors.primary }}>
-      <Tabs.Screen name="index" options={{ title: 'Dashboard', tabBarIcon: icon('▦') }} />
-      <Tabs.Screen name="sites" options={{ title: 'Sites', tabBarIcon: icon('⌖') }} />
-      <Tabs.Screen name="queue" options={{ title: user?.role === 'CX_SP' ? 'Handshake' : 'Work queue', tabBarIcon: icon('☰') }} />
-      <Tabs.Screen name="inbox" options={{ title: 'Inbox', tabBarIcon: icon('✉') }} />
-      <Tabs.Screen name="more" options={{ title: 'More', tabBarIcon: icon('⋯') }} />
+    <Tabs
+      screenOptions={{
+        headerStyle: { backgroundColor: colors.primary, height: 64, shadowOpacity: 0, borderBottomWidth: 0 } as any,
+        headerTintColor: '#fff',
+        headerTitleStyle: { fontWeight: '800', fontSize: 18, letterSpacing: -0.3 },
+        headerRight: () => <UserChip />,
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.muted,
+        tabBarLabelStyle: { fontSize: wide ? 12 : 10.5, fontWeight: '700' },
+        tabBarPosition: wide ? 'left' : 'bottom',
+        tabBarVariant: 'uikit',
+        tabBarLabelPosition: wide ? 'beside-icon' : 'below-icon',
+        tabBarStyle: wide
+          ? ({ backgroundColor: '#fff', borderRightWidth: 1, borderRightColor: colors.border, paddingTop: space(3) } as any)
+          : ({ backgroundColor: '#fff', borderTopColor: colors.border, height: 62, paddingBottom: 6, paddingTop: 6 } as any),
+        tabBarActiveBackgroundColor: wide ? colors.soft : undefined,
+      } as any}
+    >
+      <Tabs.Screen name="index" options={{ title: 'Dashboard', tabBarLabel: wide ? 'Dashboard' : 'Home', tabBarIcon: icon('grid') }} />
+      <Tabs.Screen name="sites" options={{ title: 'Sites', tabBarIcon: icon('map-pin') }} />
+      <Tabs.Screen name="queue" options={{ title: user?.role === 'CX_SP' ? 'Handshake' : 'Work queue', tabBarLabel: wide ? undefined : 'Queue', tabBarIcon: icon('list') }} />
+      <Tabs.Screen name="inbox" options={{ title: 'Inbox', tabBarIcon: icon('inbox') }} />
+      <Tabs.Screen name="sharepoint" options={{ title: 'SharePoint', tabBarLabel: wide ? 'SharePoint' : 'Files', tabBarIcon: icon('upload-cloud') }} />
+      <Tabs.Screen name="admin" options={{ title: 'Admin', tabBarIcon: icon('settings'), href: user?.role === 'ADMIN' ? undefined : null }} />
+      <Tabs.Screen name="more" options={{ title: 'More', tabBarIcon: icon('more-horizontal') }} />
     </Tabs>
   );
 }
