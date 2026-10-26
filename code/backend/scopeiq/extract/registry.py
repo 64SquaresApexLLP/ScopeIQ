@@ -45,12 +45,18 @@ def classify(rel_path: str) -> str | None:
 
 
 def parse_revision(name: str) -> tuple[str, int]:
-    """'TXDA1024_RFDS_R3.xlsx' -> ('R3', 3); 'TXDA1024_CD_REV1.pdf' -> ('REV 1', 1)."""
+    """'TXDA1024_RFDS_R3.xlsx' -> ('R3', 3); 'TXDA1024_CD_REV1.pdf' -> ('REV 1', 1); 'TXDA1024_CD_REV0.pdf' -> ('REV 0', 0)."""
     stem = Path(name).stem
-    m = re.search(r"_R(\d+)(?:_|$)", stem, re.I)
+    m = re.search(r"(?:^|[-_\s])REV[ _-]?(\d+)(?:[-_\s]|$)", stem, re.I)
+    if m:
+        return f"REV {int(m.group(1))}", int(m.group(1))
+    m = re.search(r"(?:^|[-_\s])R(\d+)(?:[-_\s]|$)", stem, re.I)
     if m:
         return f"R{int(m.group(1))}", int(m.group(1))
-    m = re.search(r"_REV ?(\d+)", stem, re.I)
+    m = re.search(r"(?:^|[-_\s])V(\d+)(?:[-_\s]|$)", stem, re.I)
+    if m:
+        return f"V{int(m.group(1))}", int(m.group(1))
+    m = re.search(r"\bREV ?(\d+)\b", stem, re.I)
     if m:
         return f"REV {int(m.group(1))}", int(m.group(1))
     return "", 0
@@ -77,7 +83,10 @@ def make_document(site_id: str, path: Path, rel_path: str, *, source: str = "fol
 
 
 def resolve_current(docs: list[Document]) -> list[Document]:
-    """Mark duplicates (same hash) and superseded revisions; the highest revision per (type, format) is CURRENT."""
+    """Mark duplicates (same hash) and superseded revisions.
+    The highest revision per doc_type across all formats is CURRENT; any strictly lower revision rank is SUPERSEDED.
+    Ensures that if CD REV 0 and CD REV 1 exist, REV 1 is picked and REV 0 is superseded.
+    """
     seen: dict[str, Document] = {}
     for d in sorted(docs, key=lambda d: d.rel_path):
         if d.file_hash in seen:
@@ -85,10 +94,10 @@ def resolve_current(docs: list[Document]) -> list[Document]:
             continue
         seen[d.file_hash] = d
         d.status = "CURRENT"
-    groups: dict[tuple[str, str], list[Document]] = {}
+    groups: dict[str, list[Document]] = {}
     for d in docs:
         if d.status == "CURRENT" and d.doc_type in ("RFDS", "CD", "MA_SA", "BOM_REV0"):
-            groups.setdefault((d.doc_type, d.file_format), []).append(d)
+            groups.setdefault(d.doc_type, []).append(d)
     for grp in groups.values():
         top = max(x.revision_rank for x in grp)
         for d in grp:
@@ -100,15 +109,25 @@ def resolve_current(docs: list[Document]) -> list[Document]:
 @log_call()
 def register_site_folder(site_dir: Path, site_id: str | None = None, *, upload_dir: Path | None = None,
                          paths: dict | None = None) -> list[Document]:
-    """Register the site folder plus any app uploads for the site (same sub-folder layout). Uploaded revisions
+    """Register the site folder plus any app uploads and SharePoint files for the site (same sub-folder layout). Uploaded revisions
     take part in revision resolution, so a corrected CD REV 2 uploaded by the A&E supersedes REV 1.
     `paths` (optional) is filled with doc_id -> absolute file path."""
+    from scopeiq.config import get_settings
+    st = get_settings()
     site_dir = Path(site_dir)
     site_id = site_id or site_dir.name
     docs = []
     roots = [(site_dir, "sites", "folder")]
     if upload_dir and Path(upload_dir).is_dir():
         roots.append((Path(upload_dir), "uploads", "upload"))
+    try:
+        sp_local = st.path("sharepoint.local_root")
+        sp_lib = st.get("sharepoint.library_root", "Ericsson-Scoping/Sites")
+        sp_site_dir = Path(sp_local) / sp_lib / site_id
+        if sp_site_dir.is_dir():
+            roots.append((sp_site_dir, "sharepoint", "sharepoint"))
+    except Exception:
+        pass
     for root, prefix, source in roots:
         for p in sorted(root.rglob("*")):
             if not p.is_file() or p.name.startswith("."):

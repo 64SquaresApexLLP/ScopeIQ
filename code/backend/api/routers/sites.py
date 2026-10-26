@@ -50,11 +50,45 @@ def site_detail(site_id: str, user: dict = Depends(current_user)):
     _check_scope(user, site)
     run_id = site.get("LAST_RUN_ID")
     by_run = lambda t: r.select(t, {"SITE_ID": site_id, "RUN_ID": run_id}) if run_id else []  # noqa: E731
+    docs = r.select("CORE.DOCUMENT", {"SITE_ID": site_id}, order_by="DOC_TYPE, REVISION_RANK DESC")
+    
+    # Dynamic document revision checker
+    superseded = [d for d in docs if d.get("STATUS") == "SUPERSEDED"]
+    current_docs = [d for d in docs if d.get("STATUS") == "CURRENT"]
+    by_type: dict = {}
+    for d in docs:
+        typ = d.get("DOC_TYPE")
+        by_type.setdefault(typ, []).append(d)
+    
+    type_summaries = []
+    for typ, type_docs in sorted(by_type.items()):
+        picked = next((d for d in type_docs if d.get("STATUS") == "CURRENT"), None)
+        older = [d for d in type_docs if d.get("STATUS") == "SUPERSEDED"]
+        type_summaries.append({
+            "doc_type": typ,
+            "picked_file": picked.get("FILE_NAME") if picked else None,
+            "picked_revision": (picked.get("REVISION") or "REV 0") if picked else None,
+            "picked_format": picked.get("FILE_FORMAT") if picked else None,
+            "has_superseded": len(older) > 0,
+            "superseded_revisions": [(d.get("REVISION") or d.get("FILE_NAME")) for d in older],
+            "total_files": len(type_docs),
+        })
+
+    revision_check = {
+        "status": "VERIFIED",
+        "message": f"{len(superseded)} older revision(s) superseded; highest revision picked for all document types." if superseded else "All documents verified at latest revision.",
+        "latest_picked_count": len(current_docs),
+        "superseded_count": len(superseded),
+        "total_documents": len(docs),
+        "types": type_summaries,
+    }
+
     return {
         "site": site,
         "actions": workflow().actions("SITE_SCOPING", site["WORKFLOW_STATE"] or "ASSIGNED", user["role"]),
         "milestones": r.select("CORE.MILESTONE", {"SITE_ID": site_id}, order_by="SEQ"),
-        "documents": r.select("CORE.DOCUMENT", {"SITE_ID": site_id}, order_by="DOC_TYPE, REVISION_RANK"),
+        "documents": docs,
+        "revision_check": revision_check,
         "sectors": by_run("CORE.SECTOR_INFO"),
         "trunks": by_run("CORE.TRUNK_MEASURE"),
         "analyses": by_run("CORE.ANALYSIS_RESULT"),

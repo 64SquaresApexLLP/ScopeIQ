@@ -1,11 +1,11 @@
 // Dashboard: counts for the signed-in persona's sites (a CX SP sees only its own sites).
 import { router } from 'expo-router';
 import React from 'react';
-import { RefreshControl, ScrollView, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { colors, space, statusColor } from '../../components/theme';
-import { Badge, Card, ErrorView, Loading, Muted, Row, s, Section, Stat, Title } from '../../components/ui';
+import { Badge, Card, ErrorView, Hero, Icon, IconBadge, IconName, Loading, Muted, Row, s, Stat } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
-import { label, money } from '../../lib/format';
+import { label, money, roleLabel } from '../../lib/format';
 import { useApi } from '../../lib/useApi';
 
 interface Dash {
@@ -15,46 +15,71 @@ interface Dash {
 }
 
 function Counts({ data }: { data: Record<string, number> }) {
+  const entries = Object.entries(data).sort((a, b) => b[1] - a[1]);
+  if (!entries.length) return <Muted>None yet</Muted>;
+  return <Row>{entries.map(([k, v]) => <Badge key={k} text={`${label(k)} · ${v}`} color={statusColor(k)} />)}</Row>;
+}
+
+function Panel({ icon, title, hint, onPress, children }: { icon: IconName; title: string; hint?: string; onPress?: () => void; children: React.ReactNode }) {
   return (
-    <Row>
-      {Object.entries(data).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
-        <Badge key={k} text={`${k} ${v}`} color={statusColor(k)} />
-      ))}
-    </Row>
+    <View style={{ flexGrow: 1, flexBasis: 300, alignSelf: 'flex-start' }}>
+      <Card onPress={onPress}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space(3), marginBottom: space(3) }}>
+          <IconBadge name={icon} size={34} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontWeight: '700', fontSize: 15, color: colors.text }}>{title}</Text>
+            {hint ? <Text style={{ fontSize: 12, color: colors.muted }}>{hint}</Text> : null}
+          </View>
+          {onPress ? <Icon name="chevron-right" size={18} /> : null}
+        </View>
+        <View style={{ gap: space(2.5) }}>{children}</View>
+      </Card>
+    </View>
   );
 }
+
+const Sub = ({ children }: { children: string }) => <Text style={{ fontSize: 11, fontWeight: '800', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.8 }}>{children}</Text>;
 
 export default function Dashboard() {
   const { user } = useAuth();
   const d = useApi<Dash>('/sites/dashboard');
   return (
-    <ScrollView style={s.screen} contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={d.loading} onRefresh={d.reload} />}>
-      <Title>{`Hello, ${user?.name}`}</Title>
-      <Muted>{`${user?.persona} - ${user?.organisation}`}</Muted>
+    <ScrollView style={s.screen} contentContainerStyle={[s.content, { maxWidth: 1100, width: '100%', alignSelf: 'center' }]} refreshControl={<RefreshControl refreshing={d.loading} onRefresh={d.reload} />}>
+      <Hero icon="grid" title="Welcome back" subtitle={`Signed in as ${roleLabel(user?.role)}`} />
       {d.error ? <ErrorView error={d.error} onRetry={d.reload} /> : !d.data ? <Loading /> : (
         <>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space(2), marginTop: space(4) }}>
-            <Stat label="Sites" value={d.data.sites} />
-            <Stat label="Open discrepancies" value={d.data.discrepancies.by_status.OPEN ?? 0} color={colors.danger} />
-            <Stat label="Open EH&S alerts" value={d.data.ehs_open} color={d.data.ehs_open ? colors.warn : undefined} />
-            <Stat label="Unread inbox" value={d.data.inbox_unread} />
-            <Stat label="Estimated total" value={money(d.data.estimate_total_usd)} />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space(3), marginBottom: space(4) }}>
+            <Stat icon="map-pin" label="Sites" value={d.data.sites} />
+            <Stat icon="alert-circle" label="Open discrepancies" value={d.data.discrepancies.by_status.OPEN ?? 0} color={colors.danger} />
+            <Stat icon="shield" label="Open EH&S alerts" value={d.data.ehs_open} color={d.data.ehs_open ? colors.warn : colors.ok} />
+            <Stat icon="inbox" label="Unread inbox" value={d.data.inbox_unread} color={colors.info} />
+            <Stat icon="dollar-sign" label="Estimated total" value={money(d.data.estimate_total_usd)} color={colors.ok} />
           </View>
-          <Section title="Sites by workflow state">
-            <Card onPress={() => router.push('/(tabs)/sites')}><Counts data={d.data.by_state} /></Card>
-          </Section>
-          <Section title="Scoping streams"><Card><Counts data={d.data.by_stream} /></Card></Section>
-          <Section title="Discrepancies">
-            <Card onPress={() => router.push('/(tabs)/queue')}>
-              <Muted>By status</Muted><Counts data={d.data.discrepancies.by_status} />
-              <Muted style={{ marginTop: space(2) }}>By severity</Muted><Counts data={d.data.discrepancies.by_severity} />
-              <Muted style={{ marginTop: space(2) }}>By outcome</Muted>
-              <Row>{Object.entries(d.data.discrepancies.by_outcome).map(([k, v]) => <Badge key={k} text={`${label(k)} ${v}`} color={colors.primary} />)}</Row>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: space(3), alignItems: 'flex-start' }}>
+            <Panel icon="map-pin" title="Sites" hint="By workflow state" onPress={() => router.push('/(tabs)/sites')}>
+              <Counts data={d.data.by_state} />
+              <Sub>Streams</Sub>
+              <Counts data={d.data.by_stream} />
+            </Panel>
+            <Panel icon="alert-triangle" title="Discrepancies" hint="Findings waiting for a decision" onPress={() => router.push('/(tabs)/queue')}>
+              <Sub>Status</Sub><Counts data={d.data.discrepancies.by_status} />
+              <Sub>Severity</Sub><Counts data={d.data.discrepancies.by_severity} />
+            </Panel>
+            <Panel icon="edit-3" title="Redlines and RFIs" hint="Corrections and questions">
+              <Sub>Redlines</Sub><Counts data={d.data.redlines} />
+              <Sub>RFIs</Sub><Counts data={d.data.rfis} />
+            </Panel>
+          </View>
+          <Pressable onPress={() => router.push('/(tabs)/sharepoint')} accessibilityRole="button">
+            <Card style={{ flexDirection: 'row', alignItems: 'center', gap: space(3) }}>
+              <IconBadge name="upload-cloud" color={colors.accent2} size={40} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: '700', color: colors.text }}>Add documents to a site</Text>
+                <Muted>Upload RFDS, drawings, MA/SA, BOM and drone files to SharePoint</Muted>
+              </View>
+              <Icon name="arrow-right" size={18} color={colors.accent} />
             </Card>
-          </Section>
-          <Section title="Redlines and RFIs">
-            <Card><Muted>Redlines</Muted><Counts data={d.data.redlines} /><Muted style={{ marginTop: space(2) }}>RFIs</Muted><Counts data={d.data.rfis} /></Card>
-          </Section>
+          </Pressable>
         </>
       )}
     </ScrollView>

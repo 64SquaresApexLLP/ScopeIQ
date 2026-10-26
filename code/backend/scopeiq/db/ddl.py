@@ -31,6 +31,7 @@ def sqlite_ddl() -> str:
             cols.append(f"PRIMARY KEY ({', '.join(t.pk)})")
         out.append(f"CREATE TABLE IF NOT EXISTS {t.layer}__{t.name} ({', '.join(cols)});")
     idx = [("CORE__DISCREPANCY", "SITE_ID"), ("CORE__BOM_LINE", "BOM_REV_ID"), ("CORE__CONFIG_LINE", "SITE_ID, RUN_ID"),
+           ("CORE__EXTRACTED_COMPARISON_RECORD", "SITE_ID, RUN_ID"),
            ("CORE__EXTRACTED_FIELD", "SITE_ID, RUN_ID"), ("WF__WORKFLOW_EVENT", "ENTITY_TYPE, ENTITY_ID"), ("AUDIT__AUDIT_LOG", "ENTITY_TYPE, ENTITY_ID"),
            ("WF__NOTIFICATION", "ROLE_CODE, READ_AT")]
     out += [f"CREATE INDEX IF NOT EXISTS IX_{t}_{i.replace(', ', '_')} ON {t} ({i});" for t, i in idx]

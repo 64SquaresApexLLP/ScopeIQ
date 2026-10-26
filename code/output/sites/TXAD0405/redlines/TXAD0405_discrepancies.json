@@ -1,66 +1,5 @@
 [
   {
-    "disc_id": "DSC-4EB45DEF2660",
-    "site_id": "TXAD0405",
-    "rule_id": "EXT-01",
-    "family": "EXTRACTION",
-    "severity": "MEDIUM",
-    "outcome": "REVIEW",
-    "title": "6 value(s) need review in TXAD0405_CD_REV1.pdf",
-    "description": "Read below the confidence threshold or not matched to the catalog: CD:A1:pipe=Mount pipe (0.70); CD:A2:pipe=Mount pipe (0.70); CD:A3:pipe=Mount pipe (0.70); CD:B1:pipe=Mount pipe (0.70); CD:B2:pipe=Mount pipe (0.70); CD:B3:pipe=Mount pipe (0.70)",
-    "sector": null,
-    "position": null,
-    "expected": null,
-    "found": [
-      {
-        "field": "CD:A1:pipe",
-        "value": "Mount pipe",
-        "confidence": 0.7,
-        "page": "A-3"
-      },
-      {
-        "field": "CD:A2:pipe",
-        "value": "Mount pipe",
-        "confidence": 0.7,
-        "page": "A-3"
-      },
-      {
-        "field": "CD:A3:pipe",
-        "value": "Mount pipe",
-        "confidence": 0.7,
-        "page": "A-3"
-      },
-      {
-        "field": "CD:B1:pipe",
-        "value": "Mount pipe",
-        "confidence": 0.7,
-        "page": "A-3"
-      },
-      {
-        "field": "CD:B2:pipe",
-        "value": "Mount pipe",
-        "confidence": 0.7,
-        "page": "A-3"
-      },
-      {
-        "field": "CD:B3:pipe",
-        "value": "Mount pipe",
-        "confidence": 0.7,
-        "page": "A-3"
-      }
-    ],
-    "governing": "",
-    "sources": [
-      "CD"
-    ],
-    "target_doc": "ANY",
-    "target_sheet": "",
-    "bom_impact": "",
-    "evidence": [],
-    "status": "OPEN",
-    "confidence": 0.7
-  },
-  {
     "disc_id": "DSC-D1A2091B2847",
     "site_id": "TXAD0405",
     "rule_id": "EXT-01",
@@ -98,53 +37,6 @@
     "confidence": 0.769
   },
   {
-    "disc_id": "DSC-BB0308EC877C",
-    "site_id": "TXAD0405",
-    "rule_id": "RFC-04",
-    "family": "RFDS_VS_CD",
-    "severity": "MEDIUM",
-    "outcome": "RFI",
-    "title": "Beta positions differ RFDS vs CD",
-    "description": "Beta: Radio 4480 B71 B85 RFDS pos 2 vs CD pos 3; NNH4-65B-R6 RFDS pos 1/2 vs CD pos 1/3; AIR 6419 B41 RFDS pos 3 vs CD pos 2. RFDS governs placement: raise an RFI and redline CD A-3.",
-    "sector": "B",
-    "position": null,
-    "expected": {
-      "R4480": [
-        2
-      ],
-      "NNH4": [
-        1,
-        2
-      ],
-      "AIR6419": [
-        3
-      ]
-    },
-    "found": {
-      "R4480": [
-        3
-      ],
-      "NNH4": [
-        1,
-        3
-      ],
-      "AIR6419": [
-        2
-      ]
-    },
-    "governing": "RFDS",
-    "sources": [
-      "RFDS R3 Final Config",
-      "CD REV 1 A-3"
-    ],
-    "target_doc": "CD",
-    "target_sheet": "A-3",
-    "bom_impact": "None",
-    "evidence": [],
-    "status": "OPEN",
-    "confidence": 1.0
-  },
-  {
     "disc_id": "DSC-5A99342D3F40",
     "site_id": "TXAD0405",
     "rule_id": "FLD-03",
@@ -163,17 +55,1295 @@
     ],
     "governing": "FIELD",
     "sources": [
-      "CD REV 1 A-2",
+      "CD  A-2",
       "Drone survey (point cloud)"
     ],
     "target_doc": "CD",
     "target_sheet": "A-2",
     "bom_impact": "None unless the trunk step changes",
     "evidence": [
-      "G:\\64Squares Work\\ScopeIQ\\code\\output\\evidence\\TXAD0405\\TXAD0405_f000.jpg",
-      "G:\\64Squares Work\\ScopeIQ\\code\\output\\evidence\\TXAD0405\\TXAD0405_f006.jpg",
-      "G:\\64Squares Work\\ScopeIQ\\code\\output\\evidence\\TXAD0405\\TXAD0405_f039.jpg"
+      "D:\\visual_code\\ScopeIQ-POC\\ScopeIQ\\code\\output\\evidence\\TXAD0405\\TXAD0405_f000.jpg",
+      "D:\\visual_code\\ScopeIQ-POC\\ScopeIQ\\code\\output\\evidence\\TXAD0405\\TXAD0405_f006.jpg",
+      "D:\\visual_code\\ScopeIQ-POC\\ScopeIQ\\code\\output\\evidence\\TXAD0405\\TXAD0405_f039.jpg"
     ],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-352BEE84E396",
+    "site_id": "TXAD0405",
+    "rule_id": "CBL-01",
+    "family": "CABLE",
+    "severity": "HIGH",
+    "outcome": "RFI",
+    "title": "Trunk route length not documented",
+    "description": "New powered equipment needs hybrid trunks but no route length is on the CD or measured in the field. The length is never assumed: the trunk line is held until the A&E answers.",
+    "sector": null,
+    "position": null,
+    "expected": null,
+    "found": null,
+    "governing": "CD",
+    "sources": [
+      "CD  A-4"
+    ],
+    "target_doc": "CD",
+    "target_sheet": "A-4",
+    "bom_impact": "Trunk lines held",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-EB74708A7F67",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra AIR 6419 B41 on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha AIR 6419 B41 (R-EQ-01): REV 0 1 vs rules 0; Beta AIR 6419 B41 (R-EQ-01): REV 0 1 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": null,
+    "position": null,
+    "expected": [
+      {
+        "sector": "A",
+        "part": "AIR6419",
+        "qty": 0,
+        "rule": "R-EQ-01"
+      },
+      {
+        "sector": "B",
+        "part": "AIR6419",
+        "qty": 0,
+        "rule": "R-EQ-01"
+      }
+    ],
+    "found": [
+      {
+        "sector": "A",
+        "part": "AIR6419",
+        "qty": 1.0,
+        "rule": "R-EQ-01"
+      },
+      {
+        "sector": "B",
+        "part": "AIR6419",
+        "qty": 1.0,
+        "rule": "R-EQ-01"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-2 AIR6419",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-AE24D8929B6B",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra AIR mount bracket kit on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha AIR mount bracket kit (R-AIR-01): REV 0 1 vs rules 0; Beta AIR mount bracket kit (R-AIR-01): REV 0 1 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": null,
+    "position": null,
+    "expected": [
+      {
+        "sector": "A",
+        "part": "AIRBRKT",
+        "qty": 0,
+        "rule": "R-AIR-01"
+      },
+      {
+        "sector": "B",
+        "part": "AIRBRKT",
+        "qty": 0,
+        "rule": "R-AIR-01"
+      }
+    ],
+    "found": [
+      {
+        "sector": "A",
+        "part": "AIRBRKT",
+        "qty": 1.0,
+        "rule": "R-AIR-01"
+      },
+      {
+        "sector": "B",
+        "part": "AIRBRKT",
+        "qty": 1.0,
+        "rule": "R-AIR-01"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-2 AIRBRKT",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-AEF39E2AF51D",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra APXVSPP18-C-A20 on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha APXVSPP18-C-A20 (R-RMV-01): REV 0 1 vs rules 0; Beta APXVSPP18-C-A20 (R-RMV-01): REV 0 1 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": null,
+    "position": null,
+    "expected": [
+      {
+        "sector": "A",
+        "part": "APXV",
+        "qty": 0,
+        "rule": "R-RMV-01"
+      },
+      {
+        "sector": "B",
+        "part": "APXV",
+        "qty": 0,
+        "rule": "R-RMV-01"
+      }
+    ],
+    "found": [
+      {
+        "sector": "A",
+        "part": "APXV",
+        "qty": 1.0,
+        "rule": "R-RMV-01"
+      },
+      {
+        "sector": "B",
+        "part": "APXV",
+        "qty": 1.0,
+        "rule": "R-RMV-01"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-2 APXV",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-99DDC412A179",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra DCB-30A on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha DCB-30A (R-RAD-09): REV 0 1 vs rules 0; Beta DCB-30A (R-RAD-09): REV 0 1 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": null,
+    "position": null,
+    "expected": [
+      {
+        "sector": "A",
+        "part": "BRK30",
+        "qty": 0,
+        "rule": "R-RAD-09"
+      },
+      {
+        "sector": "B",
+        "part": "BRK30",
+        "qty": 0,
+        "rule": "R-RAD-09"
+      }
+    ],
+    "found": [
+      {
+        "sector": "A",
+        "part": "BRK30",
+        "qty": 1.0,
+        "rule": "R-RAD-09"
+      },
+      {
+        "sector": "B",
+        "part": "BRK30",
+        "qty": 1.0,
+        "rule": "R-RAD-09"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-2 BRK30",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-2C8FF60A886D",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra DCB-60A on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha DCB-60A (R-AIR-08): REV 0 1 vs rules 0; Beta DCB-60A (R-AIR-08): REV 0 1 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": null,
+    "position": null,
+    "expected": [
+      {
+        "sector": "A",
+        "part": "BRK60",
+        "qty": 0,
+        "rule": "R-AIR-08"
+      },
+      {
+        "sector": "B",
+        "part": "BRK60",
+        "qty": 0,
+        "rule": "R-AIR-08"
+      }
+    ],
+    "found": [
+      {
+        "sector": "A",
+        "part": "BRK60",
+        "qty": 1.0,
+        "rule": "R-AIR-08"
+      },
+      {
+        "sector": "B",
+        "part": "BRK60",
+        "qty": 1.0,
+        "rule": "R-AIR-08"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-2 BRK60",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-24C2DA0F2BE0",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra DCJ-8AWG-15 on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha DCJ-8AWG-15 (R-RAD-02): REV 0 1 vs rules 0; Beta DCJ-8AWG-15 (R-RAD-02): REV 0 1 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": null,
+    "position": null,
+    "expected": [
+      {
+        "sector": "A",
+        "part": "DCJ15",
+        "qty": 0,
+        "rule": "R-RAD-02"
+      },
+      {
+        "sector": "B",
+        "part": "DCJ15",
+        "qty": 0,
+        "rule": "R-RAD-02"
+      }
+    ],
+    "found": [
+      {
+        "sector": "A",
+        "part": "DCJ15",
+        "qty": 1.0,
+        "rule": "R-RAD-02"
+      },
+      {
+        "sector": "B",
+        "part": "DCJ15",
+        "qty": 1.0,
+        "rule": "R-RAD-02"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-2 DCJ15",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-D74BAE072276",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra DCJ-8AWG-20 on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha DCJ-8AWG-20 (R-AIR-02): REV 0 1 vs rules 0; Beta DCJ-8AWG-20 (R-AIR-02): REV 0 1 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": null,
+    "position": null,
+    "expected": [
+      {
+        "sector": "A",
+        "part": "DCJ20",
+        "qty": 0,
+        "rule": "R-AIR-02"
+      },
+      {
+        "sector": "B",
+        "part": "DCJ20",
+        "qty": 0,
+        "rule": "R-AIR-02"
+      }
+    ],
+    "found": [
+      {
+        "sector": "A",
+        "part": "DCJ20",
+        "qty": 1.0,
+        "rule": "R-AIR-02"
+      },
+      {
+        "sector": "B",
+        "part": "DCJ20",
+        "qty": 1.0,
+        "rule": "R-AIR-02"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-2 DCJ20",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-140C547FCE2D",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra FJ-LCLC-OD-15 on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha FJ-LCLC-OD-15 (R-RAD-03): REV 0 1 vs rules 0; Beta FJ-LCLC-OD-15 (R-RAD-03): REV 0 1 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": null,
+    "position": null,
+    "expected": [
+      {
+        "sector": "A",
+        "part": "FJ15",
+        "qty": 0,
+        "rule": "R-RAD-03"
+      },
+      {
+        "sector": "B",
+        "part": "FJ15",
+        "qty": 0,
+        "rule": "R-RAD-03"
+      }
+    ],
+    "found": [
+      {
+        "sector": "A",
+        "part": "FJ15",
+        "qty": 1.0,
+        "rule": "R-RAD-03"
+      },
+      {
+        "sector": "B",
+        "part": "FJ15",
+        "qty": 1.0,
+        "rule": "R-RAD-03"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-2 FJ15",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-A8EA0F63D1DE",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra FJ-LCLC-OD-20 on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha FJ-LCLC-OD-20 (R-AIR-03): REV 0 1 vs rules 0; Beta FJ-LCLC-OD-20 (R-AIR-03): REV 0 1 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": null,
+    "position": null,
+    "expected": [
+      {
+        "sector": "A",
+        "part": "FJ20",
+        "qty": 0,
+        "rule": "R-AIR-03"
+      },
+      {
+        "sector": "B",
+        "part": "FJ20",
+        "qty": 0,
+        "rule": "R-AIR-03"
+      }
+    ],
+    "found": [
+      {
+        "sector": "A",
+        "part": "FJ20",
+        "qty": 1.0,
+        "rule": "R-AIR-03"
+      },
+      {
+        "sector": "B",
+        "part": "FJ20",
+        "qty": 1.0,
+        "rule": "R-AIR-03"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-2 FJ20",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-7A4CB05F82CD",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra GB-20-TT on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha GB-20-TT (R-GND-01): REV 0 1 vs rules 0; Beta GB-20-TT (R-GND-01): REV 0 1 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": null,
+    "position": null,
+    "expected": [
+      {
+        "sector": "A",
+        "part": "GBAR",
+        "qty": 0,
+        "rule": "R-GND-01"
+      },
+      {
+        "sector": "B",
+        "part": "GBAR",
+        "qty": 0,
+        "rule": "R-GND-01"
+      }
+    ],
+    "found": [
+      {
+        "sector": "A",
+        "part": "GBAR",
+        "qty": 1.0,
+        "rule": "R-GND-01"
+      },
+      {
+        "sector": "B",
+        "part": "GBAR",
+        "qty": 1.0,
+        "rule": "R-GND-01"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-2 GBAR",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-6F8EFBE9FCA8",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra GK-6-TW on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha GK-6-TW (R-AIR-05): REV 0 1 vs rules 0; Beta GK-6-TW (R-AIR-05): REV 0 1 vs rules 0; Site GK-6-TW (R-OVP-01): REV 0 2 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": null,
+    "position": null,
+    "expected": [
+      {
+        "sector": "A",
+        "part": "GK6",
+        "qty": 0,
+        "rule": "R-AIR-05"
+      },
+      {
+        "sector": "B",
+        "part": "GK6",
+        "qty": 0,
+        "rule": "R-AIR-05"
+      },
+      {
+        "sector": "SITE",
+        "part": "GK6",
+        "qty": 0,
+        "rule": "R-OVP-01"
+      }
+    ],
+    "found": [
+      {
+        "sector": "A",
+        "part": "GK6",
+        "qty": 1.0,
+        "rule": "R-AIR-05"
+      },
+      {
+        "sector": "B",
+        "part": "GK6",
+        "qty": 1.0,
+        "rule": "R-AIR-05"
+      },
+      {
+        "sector": "SITE",
+        "part": "GK6",
+        "qty": 2.0,
+        "rule": "R-OVP-01"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-4 GK6",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-B14FE144CB71",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra LBL-SET-RF on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha LBL-SET-RF (R-AIR-07): REV 0 1 vs rules 0; Beta LBL-SET-RF (R-AIR-07): REV 0 1 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": null,
+    "position": null,
+    "expected": [
+      {
+        "sector": "A",
+        "part": "LABEL",
+        "qty": 0,
+        "rule": "R-AIR-07"
+      },
+      {
+        "sector": "B",
+        "part": "LABEL",
+        "qty": 0,
+        "rule": "R-AIR-07"
+      }
+    ],
+    "found": [
+      {
+        "sector": "A",
+        "part": "LABEL",
+        "qty": 1.0,
+        "rule": "R-AIR-07"
+      },
+      {
+        "sector": "B",
+        "part": "LABEL",
+        "qty": 1.0,
+        "rule": "R-AIR-07"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-2 LABEL",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-A92199977CD3",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra NNH4-65B-R6 on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha NNH4-65B-R6 (R-EQ-01): REV 0 1 vs rules 0; Beta NNH4-65B-R6 (R-EQ-01): REV 0 1 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": null,
+    "position": null,
+    "expected": [
+      {
+        "sector": "A",
+        "part": "NNH4",
+        "qty": 0,
+        "rule": "R-EQ-01"
+      },
+      {
+        "sector": "B",
+        "part": "NNH4",
+        "qty": 0,
+        "rule": "R-EQ-01"
+      }
+    ],
+    "found": [
+      {
+        "sector": "A",
+        "part": "NNH4",
+        "qty": 1.0,
+        "rule": "R-EQ-01"
+      },
+      {
+        "sector": "B",
+        "part": "NNH4",
+        "qty": 1.0,
+        "rule": "R-EQ-01"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-2 NNH4",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-A6F92D94D770",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra Radio 2217 B66A on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha Radio 2217 B66A (R-RMV-01): REV 0 1 vs rules 0; Beta Radio 2217 B66A (R-RMV-01): REV 0 1 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": null,
+    "position": null,
+    "expected": [
+      {
+        "sector": "A",
+        "part": "R2217",
+        "qty": 0,
+        "rule": "R-RMV-01"
+      },
+      {
+        "sector": "B",
+        "part": "R2217",
+        "qty": 0,
+        "rule": "R-RMV-01"
+      }
+    ],
+    "found": [
+      {
+        "sector": "A",
+        "part": "R2217",
+        "qty": 1.0,
+        "rule": "R-RMV-01"
+      },
+      {
+        "sector": "B",
+        "part": "R2217",
+        "qty": 1.0,
+        "rule": "R-RMV-01"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-2 R2217",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-11FF4B7714ED",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra Radio 4480 B71 B85 on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha Radio 4480 B71 B85 (R-EQ-01): REV 0 1 vs rules 0; Beta Radio 4480 B71 B85 (R-EQ-01): REV 0 1 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": null,
+    "position": null,
+    "expected": [
+      {
+        "sector": "A",
+        "part": "R4480",
+        "qty": 0,
+        "rule": "R-EQ-01"
+      },
+      {
+        "sector": "B",
+        "part": "R4480",
+        "qty": 0,
+        "rule": "R-EQ-01"
+      }
+    ],
+    "found": [
+      {
+        "sector": "A",
+        "part": "R4480",
+        "qty": 1.0,
+        "rule": "R-EQ-01"
+      },
+      {
+        "sector": "B",
+        "part": "R4480",
+        "qty": 1.0,
+        "rule": "R-EQ-01"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-2 R4480",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-D77422D911E3",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra RFJ-43-6 on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha RFJ-43-6 (R-RAD-06): REV 0 4 vs rules 0; Beta RFJ-43-6 (R-RAD-06): REV 0 4 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": null,
+    "position": null,
+    "expected": [
+      {
+        "sector": "A",
+        "part": "RFJ6",
+        "qty": 0,
+        "rule": "R-RAD-06"
+      },
+      {
+        "sector": "B",
+        "part": "RFJ6",
+        "qty": 0,
+        "rule": "R-RAD-06"
+      }
+    ],
+    "found": [
+      {
+        "sector": "A",
+        "part": "RFJ6",
+        "qty": 4.0,
+        "rule": "R-RAD-06"
+      },
+      {
+        "sector": "B",
+        "part": "RFJ6",
+        "qty": 4.0,
+        "rule": "R-RAD-06"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-8 RFJ6",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-4DA02245927A",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra RRU-MK-2 on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha RRU-MK-2 (R-RAD-01): REV 0 1 vs rules 0; Beta RRU-MK-2 (R-RAD-01): REV 0 1 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": null,
+    "position": null,
+    "expected": [
+      {
+        "sector": "A",
+        "part": "RRUMNT",
+        "qty": 0,
+        "rule": "R-RAD-01"
+      },
+      {
+        "sector": "B",
+        "part": "RRUMNT",
+        "qty": 0,
+        "rule": "R-RAD-01"
+      }
+    ],
+    "found": [
+      {
+        "sector": "A",
+        "part": "RRUMNT",
+        "qty": 1.0,
+        "rule": "R-RAD-01"
+      },
+      {
+        "sector": "B",
+        "part": "RRUMNT",
+        "qty": 1.0,
+        "rule": "R-RAD-01"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-2 RRUMNT",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-402EC55CEBF8",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra SFP+ 10G LR on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha SFP+ 10G LR (R-RAD-04): REV 0 2 vs rules 0; Beta SFP+ 10G LR (R-RAD-04): REV 0 2 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": null,
+    "position": null,
+    "expected": [
+      {
+        "sector": "A",
+        "part": "SFP10",
+        "qty": 0,
+        "rule": "R-RAD-04"
+      },
+      {
+        "sector": "B",
+        "part": "SFP10",
+        "qty": 0,
+        "rule": "R-RAD-04"
+      }
+    ],
+    "found": [
+      {
+        "sector": "A",
+        "part": "SFP10",
+        "qty": 2.0,
+        "rule": "R-RAD-04"
+      },
+      {
+        "sector": "B",
+        "part": "SFP10",
+        "qty": 2.0,
+        "rule": "R-RAD-04"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-4 SFP10",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-55EF3A302C67",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra SFP28 25G LR on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha SFP28 25G LR (R-AIR-04): REV 0 2 vs rules 0; Beta SFP28 25G LR (R-AIR-04): REV 0 2 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": null,
+    "position": null,
+    "expected": [
+      {
+        "sector": "A",
+        "part": "SFP25",
+        "qty": 0,
+        "rule": "R-AIR-04"
+      },
+      {
+        "sector": "B",
+        "part": "SFP25",
+        "qty": 0,
+        "rule": "R-AIR-04"
+      }
+    ],
+    "found": [
+      {
+        "sector": "A",
+        "part": "SFP25",
+        "qty": 2.0,
+        "rule": "R-AIR-04"
+      },
+      {
+        "sector": "B",
+        "part": "SFP25",
+        "qty": 2.0,
+        "rule": "R-AIR-04"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-4 SFP25",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-0DEA2FC1A9F1",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra GK-TRK-12 on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Site GK-TRK-12 (R-TRK-06): REV 0 2 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": "SITE",
+    "position": null,
+    "expected": [
+      {
+        "sector": "SITE",
+        "part": "GKT",
+        "qty": 0,
+        "rule": "R-TRK-06"
+      }
+    ],
+    "found": [
+      {
+        "sector": "SITE",
+        "part": "GKT",
+        "qty": 2.0,
+        "rule": "R-TRK-06"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-2 GKT",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-711A3897D409",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra SNAP-3S on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Site SNAP-3S (R-TRK-04): REV 0 34 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": "SITE",
+    "position": null,
+    "expected": [
+      {
+        "sector": "SITE",
+        "part": "HANGER",
+        "qty": 0,
+        "rule": "R-TRK-04"
+      }
+    ],
+    "found": [
+      {
+        "sector": "SITE",
+        "part": "HANGER",
+        "qty": 34.0,
+        "rule": "R-TRK-04"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-34 HANGER",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-7B96DA8BAC79",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra HG-125 on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Site HG-125 (R-TRK-05): REV 0 1 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": "SITE",
+    "position": null,
+    "expected": [
+      {
+        "sector": "SITE",
+        "part": "HOIST",
+        "qty": 0,
+        "rule": "R-TRK-05"
+      }
+    ],
+    "found": [
+      {
+        "sector": "SITE",
+        "part": "HOIST",
+        "qty": 1.0,
+        "rule": "R-TRK-05"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-1 HOIST",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-BE2479E38342",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra HYB-6x12-100 on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Site HYB-6x12-100 (R-TRK-01): REV 0 1 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": "SITE",
+    "position": null,
+    "expected": [
+      {
+        "sector": "SITE",
+        "part": "HYB100",
+        "qty": 0,
+        "rule": "R-TRK-01"
+      }
+    ],
+    "found": [
+      {
+        "sector": "SITE",
+        "part": "HYB100",
+        "qty": 1.0,
+        "rule": "R-TRK-01"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-1 HYB100",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-4E3EA02519B5",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra RC-OVP-6-BASE on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Site RC-OVP-6-BASE (R-TRK-03): REV 0 1 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": "SITE",
+    "position": null,
+    "expected": [
+      {
+        "sector": "SITE",
+        "part": "OVPB",
+        "qty": 0,
+        "rule": "R-TRK-03"
+      }
+    ],
+    "found": [
+      {
+        "sector": "SITE",
+        "part": "OVPB",
+        "qty": 1.0,
+        "rule": "R-TRK-03"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-1 OVPB",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-E45EA5A9C93C",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra RC-OVP-6-TOP on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Site RC-OVP-6-TOP (R-TRK-02): REV 0 1 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": "SITE",
+    "position": null,
+    "expected": [
+      {
+        "sector": "SITE",
+        "part": "OVPT",
+        "qty": 0,
+        "rule": "R-TRK-02"
+      }
+    ],
+    "found": [
+      {
+        "sector": "SITE",
+        "part": "OVPT",
+        "qty": 1.0,
+        "rule": "R-TRK-02"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-1 OVPT",
+    "evidence": [],
+    "status": "OPEN",
+    "confidence": 1.0
+  },
+  {
+    "disc_id": "DSC-C091BE0ED23A",
+    "site_id": "TXAD0405",
+    "rule_id": "BOM-05",
+    "family": "REV0_BOM",
+    "severity": "LOW",
+    "outcome": "BOM_CHANGE",
+    "title": "Extra PSU 3000 48V on REV 0",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Site PSU 3000 48V (R-PWR-01): REV 0 1 vs rules 0. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": "SITE",
+    "position": null,
+    "expected": [
+      {
+        "sector": "SITE",
+        "part": "RECT3K",
+        "qty": 0,
+        "rule": "R-PWR-01"
+      }
+    ],
+    "found": [
+      {
+        "sector": "SITE",
+        "part": "RECT3K",
+        "qty": 1.0,
+        "rule": "R-PWR-01"
+      }
+    ],
+    "governing": "KIT_RULES",
+    "sources": [
+      "BOM REV 0",
+      "Kit rules on CD as drawn"
+    ],
+    "target_doc": "BOM_REV0",
+    "target_sheet": "",
+    "bom_impact": "-1 RECT3K",
+    "evidence": [],
     "status": "OPEN",
     "confidence": 1.0
   },
@@ -184,84 +1354,24 @@
     "family": "REV0_BOM",
     "severity": "MEDIUM",
     "outcome": "BOM_CHANGE",
-    "title": "WPK-UNIV missing from REV 0 (Alpha, Beta, Site)",
-    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha WPK-UNIV (R-AIR-06): REV 0 0 vs rules 1; Alpha WPK-UNIV (R-RAD-07): REV 0 0 vs rules 1; Beta WPK-UNIV (R-AIR-06): REV 0 0 vs rules 1; Beta WPK-UNIV (R-RAD-07): REV 0 0 vs rules 1; Site WPK-UNIV (R-SITE-05): REV 0 0 vs rules 1; Site WPK-UNIV (R-TRK-07): REV 0 0 vs rules 2. Corrected on REV 1 (RC-REV0-ERR).",
-    "sector": null,
+    "title": "WPK-UNIV missing from REV 0 (Site)",
+    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Site WPK-UNIV (R-SITE-05): REV 0 0 vs rules 1. Corrected on REV 1 (RC-REV0-ERR).",
+    "sector": "SITE",
     "position": null,
     "expected": [
-      {
-        "sector": "A",
-        "part": "WPK",
-        "qty": 1.0,
-        "rule": "R-AIR-06"
-      },
-      {
-        "sector": "A",
-        "part": "WPK",
-        "qty": 1.0,
-        "rule": "R-RAD-07"
-      },
-      {
-        "sector": "B",
-        "part": "WPK",
-        "qty": 1.0,
-        "rule": "R-AIR-06"
-      },
-      {
-        "sector": "B",
-        "part": "WPK",
-        "qty": 1.0,
-        "rule": "R-RAD-07"
-      },
       {
         "sector": "SITE",
         "part": "WPK",
         "qty": 1.0,
         "rule": "R-SITE-05"
-      },
-      {
-        "sector": "SITE",
-        "part": "WPK",
-        "qty": 2.0,
-        "rule": "R-TRK-07"
       }
     ],
     "found": [
       {
-        "sector": "A",
-        "part": "WPK",
-        "qty": 0,
-        "rule": "R-AIR-06"
-      },
-      {
-        "sector": "A",
-        "part": "WPK",
-        "qty": 0,
-        "rule": "R-RAD-07"
-      },
-      {
-        "sector": "B",
-        "part": "WPK",
-        "qty": 0,
-        "rule": "R-AIR-06"
-      },
-      {
-        "sector": "B",
-        "part": "WPK",
-        "qty": 0,
-        "rule": "R-RAD-07"
-      },
-      {
         "sector": "SITE",
         "part": "WPK",
         "qty": 0,
         "rule": "R-SITE-05"
-      },
-      {
-        "sector": "SITE",
-        "part": "WPK",
-        "qty": 0,
-        "rule": "R-TRK-07"
       }
     ],
     "governing": "KIT_RULES",
@@ -271,7 +1381,7 @@
     ],
     "target_doc": "BOM_REV0",
     "target_sheet": "",
-    "bom_impact": "+7 WPK",
+    "bom_impact": "+1 WPK",
     "evidence": [],
     "status": "OPEN",
     "confidence": 1.0

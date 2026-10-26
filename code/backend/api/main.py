@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from api.routers import admin, auth, bom, discrepancies, documents, estimate, pipeline, redlines, sites, workflow
+from api.routers import admin, auth, bom, discrepancies, documents, estimate, pipeline, redlines, sharepoint, sites, workflow
 from scopeiq.common.context import RunContext, current, reset_context, set_context
 from scopeiq.common.errors import AppError, ErrorRecorder
 from scopeiq.common.logging import configure_logging, get_logger, payloads_enabled
@@ -87,7 +87,7 @@ def create_app() -> FastAPI:
         return JSONResponse({"error": {"code": "SIQ-SYS-500", "message": "Unexpected error - quote the correlation id to support",
                                        "correlation_id": current().correlation_id}}, status_code=500)
 
-    for r in (auth, sites, documents, pipeline, discrepancies, redlines, bom, estimate, workflow, admin):
+    for r in (auth, sites, documents, pipeline, discrepancies, redlines, bom, estimate, workflow, admin, sharepoint):
         app.include_router(r.router)
 
     out = Path(st.path("paths.output_dir"))

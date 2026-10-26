@@ -141,6 +141,7 @@ output/exports/
 output/uploads/
 code/output/exports/
 code/output/uploads/
+code/output/sharepoint/
 
 # ------------------------------------------------------------------------------
 # 7. Python Runtime & Virtual Environments

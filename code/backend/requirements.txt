@@ -14,6 +14,6 @@ pytesseract>=0.3.10   # OCR (needs the Tesseract program, see INSTALL.md)
 pypdf>=4.0            # redlined CD output
 reportlab>=4.0
 pillow>=10.0
+httpx>=0.27           # Microsoft Graph client (SharePoint provider); also used by the API tests
 # tests
 pytest>=8.0
-httpx>=0.27
