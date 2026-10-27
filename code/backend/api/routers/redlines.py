@@ -57,9 +57,10 @@ def list_rfis(site_id: str | None = None, status: str | None = None, user: dict 
 def rfi_transition(rfi_id: str, body: TransitionIn, user: dict = Depends(current_user)):
     if body.action.upper() == "ANSWER":
         raise ValidationError("Use POST /rfis/{id}/answer to answer an RFI")
-    return workflow().transition("RFI", rfi_id, body.action, reason_code=body.reason_code, comment=body.comment)
+    action = "SUBMIT" if body.action.upper() == "SEND" else body.action
+    return workflow().transition("RFI", rfi_id, action, reason_code=body.reason_code, comment=body.comment)
 
 
 @router.post("/rfis/{rfi_id}/answer")
-def answer_rfi(rfi_id: str, body: RfiAnswerIn, user: dict = Depends(require("ERICSSON"))):
+def answer_rfi(rfi_id: str, body: RfiAnswerIn, user: dict = Depends(require("ERICSSON", "AE_ENGINEER"))):
     return workflow().transition("RFI", rfi_id, "ANSWER", comment=body.answer, extra_updates={"ANSWER": body.answer, "UPDATED_AT": now_iso()})

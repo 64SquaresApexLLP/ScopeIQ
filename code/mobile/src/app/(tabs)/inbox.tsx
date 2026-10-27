@@ -15,7 +15,8 @@ export default function Inbox() {
     if (!n.READ_AT) await api.post(`/workflow/inbox/${n.NOTIFICATION_ID}/read`).catch(() => undefined);
     if (n.ENTITY_TYPE === 'DISCREPANCY') router.push({ pathname: '/discrepancy/[id]', params: { id: n.ENTITY_ID } });
     else if (n.ENTITY_TYPE === 'BOM_REVISION') router.push({ pathname: '/bom/[revId]', params: { revId: n.ENTITY_ID } });
-    else if (n.SITE_ID) router.push({ pathname: '/site/[id]', params: { id: n.SITE_ID } });
+    else if (n.ENTITY_TYPE === 'RFI') router.push('/rfis');
+    else if (n.SITE_ID) router.push({ pathname: '/site/[id]', params: { id: n.SITE_ID, tab: n.ENTITY_TYPE === 'REDLINE' ? 'redlines' : undefined } });
     void inbox.reload();
   };
   const markAll = async () => {

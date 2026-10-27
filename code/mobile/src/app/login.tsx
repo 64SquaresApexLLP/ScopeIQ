@@ -13,6 +13,7 @@ interface DemoUser { user_id: string; name: string; role: string; organisation: 
 
 const ROLES = [
   { role: 'SCOPER', blurb: 'Upload documents, run the pipeline and review findings' },
+  { role: 'AE_ENGINEER', blurb: 'Review drawings, respond to RFIs and acknowledge redlines' },
   { role: 'ADMIN', blurb: 'Create sites and manage the platform' },
 ];
 
