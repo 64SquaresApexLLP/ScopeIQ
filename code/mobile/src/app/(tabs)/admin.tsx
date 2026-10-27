@@ -1,13 +1,15 @@
 // Admin: create a site. This creates its SharePoint folder and the site record; the site then appears for uploads.
+import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { ScoperLogins } from '../../components/admin/ScoperLogins';
 import { colors, space } from '../../components/theme';
 import { Badge, Button, Card, Chips, ErrorView, Hero, Icon, IconBadge, Muted, s } from '../../components/ui';
 import { api, ApiError } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { getLogger } from '../../lib/logger';
 import { Row as R } from '../../lib/types';
-import { useApi } from '../../lib/useApi';
+import { mutateApi, useApi } from '../../lib/useApi';
 
 const log = getLogger('admin');
 const STREAMS = ['BOM', 'DESIGN', 'DEPLOYMENT'] as const;
@@ -156,6 +158,7 @@ export default function Admin() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const [created, setCreated] = useState<{ id: string; path: string; lat?: number | null; lon?: number | null } | null>(null);
+  const [section, setSection] = useState<'sites' | 'logins'>('sites');
 
   // Geolocation state
   const [resolvingGeo, setResolvingGeo] = useState(false);
@@ -331,6 +334,8 @@ export default function Admin() {
       setIsAutoSiteId(false);
       setIsUserEditedId(false);
       sites.reload();
+      mutateApi('/sites');
+      mutateApi('/sharepoint/sites');
     } catch (e) {
       setError(e as ApiError);
     } finally {
@@ -341,6 +346,10 @@ export default function Admin() {
   return (
     <ScrollView style={s.screen} contentContainerStyle={[s.content, { maxWidth: 820, width: '100%', alignSelf: 'center' }]}
       refreshControl={<RefreshControl refreshing={sites.loading} onRefresh={sites.reload} />}>
+      <View style={{ marginBottom: space(4) }}>
+        <Chips value={section} onChange={setSection} options={[{ key: 'sites', label: 'Sites' }, { key: 'logins', label: 'Scoper logins' }]} />
+      </View>
+      {section === 'logins' ? <ScoperLogins /> : <>
       <Hero icon="settings" title="Create a site" subtitle="Adds the site with geolocation and its SharePoint folder so documents can be uploaded." />
 
       <Card style={{ padding: space(5) }}>
@@ -549,6 +558,12 @@ export default function Admin() {
                 {created.lat && created.lon ? ` · GPS: ${created.lat}, ${created.lon}` : ''}
               </Text>
             </View>
+            <Button
+              title="View in Sites"
+              kind="secondary"
+              small
+              onPress={() => router.push('/(tabs)/sites')}
+            />
           </View>
         ) : null}
       </Card>
@@ -570,6 +585,7 @@ export default function Admin() {
           <Badge text={`${x.files} file${x.files === 1 ? '' : 's'}`} color={x.files ? colors.ok : colors.muted} />
         </Card>
       ))}
+      </>}
     </ScrollView>
   );
 }

@@ -5,8 +5,21 @@ from pydantic import BaseModel, Field
 
 
 class LoginIn(BaseModel):
-    user_id: str
-    password: str = Field(default="demo", description="Mock login: any non-empty password")
+    user_id: str | None = Field(default=None, description="Demo account (roles that do not sign in with a password yet)")
+    username: str | None = Field(default=None, description="Username created by the admin (roles in auth.password_roles)")
+    password: str = Field(min_length=1, max_length=200)
+
+
+class LoginCreateIn(BaseModel):
+    username: str = Field(min_length=3, max_length=40, pattern=r"^[A-Za-z0-9._-]+$")
+    display_name: str = Field(min_length=2, max_length=80)
+    password: str = Field(max_length=200)
+    role: str = "SCOPER"
+
+
+class LoginUpdateIn(BaseModel):
+    active: bool | None = None
+    password: str | None = Field(default=None, max_length=200)
 
 
 class TransitionIn(BaseModel):

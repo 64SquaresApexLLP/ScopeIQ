@@ -237,7 +237,12 @@ def download(doc_id: str, user: dict = Depends(current_user)):
     d = repo().get("CORE.DOCUMENT", DOC_ID=doc_id)
     st = get_settings()
     prefix, _, rest = (d["REL_PATH"] or "").partition("/")
-    base = st.path("paths.sites_dir") if prefix == "sites" else st.path("paths.upload_dir")
+    if prefix == "sites":
+        base = st.path("paths.sites_dir")
+    elif prefix == "sharepoint":
+        base = st.path("sharepoint.local_root") / st.get("sharepoint.library_root", "Ericsson-Scoping/Sites")
+    else:
+        base = st.path("paths.upload_dir")
     path = base / rest
     if not path.is_file():
         raise NotFound(f"File for {doc_id} is not available on this server")

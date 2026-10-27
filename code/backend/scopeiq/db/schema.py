@@ -152,6 +152,8 @@ table("CORE", "REDLINE", "REDLINE_ID S PK, SITE_ID S NN, DISC_ID S, DOC_TYPE S, 
       "STATUS S, PDF_PATH S, CREATED_AT T, UPDATED_AT T, UPDATED_BY S", "Redlines to apply to CD / MA documents")
 table("CORE", "RFI", "RFI_ID S PK, SITE_ID S NN, TO_PARTY S, SUBJECT S, QUESTION S, PROPOSED_ANSWER S, ANSWER S, DISC_IDS V, STATUS S, CREATED_AT T, "
       "UPDATED_AT T, UPDATED_BY S", "Requests for information")
+table("CORE", "USER_LOGIN", "USERNAME S PK, ROLE_CODE S NN, DISPLAY_NAME S, ORGANISATION S, PASSWORD_HASH S NN, ACTIVE B, CREATED_AT T, "
+      "CREATED_BY S, UPDATED_AT T, UPDATED_BY S", "Sign-in credentials created by the admin (salted PBKDF2 hash, never the password)")
 
 # ------------------------------------------------------------------ WF
 table("WF", "WORKFLOW_EVENT", "EVENT_ID S PK, ENTITY_TYPE S NN, ENTITY_ID S NN, SITE_ID S, FROM_STATE S, ACTION S, TO_STATE S, ACTOR_USER_ID S, "

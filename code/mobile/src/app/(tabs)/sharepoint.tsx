@@ -1,7 +1,8 @@
 // SharePoint upload. Pick one site, drop or choose files, upload. Files go only into the selected site's folder.
 // Nothing selected -> "Please select one site" and no upload controls.
 import * as DocumentPicker from 'expo-document-picker';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { colors, shadow, space } from '../../components/theme';
 import { Badge, Button, Card, Chips, ErrorView, Hero, Icon, IconBadge, Muted, Row, s } from '../../components/ui';
@@ -10,7 +11,7 @@ import { useAuth } from '../../lib/auth';
 import { computeFileSha256 } from '../../lib/hash';
 import { getLogger } from '../../lib/logger';
 import { Row as R } from '../../lib/types';
-import { useApi } from '../../lib/useApi';
+import { mutateApi, useApi } from '../../lib/useApi';
 
 const log = getLogger('sharepoint');
 const TYPES = [
@@ -70,6 +71,18 @@ export default function SharePoint() {
   const { can } = useAuth();
   const isAdmin = can('ADMIN');
   const sites = useApi<{ location: string; sites: R[] }>(isAdmin ? '/sharepoint/sites' : null);
+  const firstFocus = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (firstFocus.current) {
+        firstFocus.current = false;
+        return;
+      }
+      if (isAdmin) {
+        sites.reload(true);
+      }
+    }, [isAdmin, sites.reload]),
+  );
   const [siteId, setSiteId] = useState<string | null>(null);
   const [type, setType] = useState<T>('AUTO');
   const [showType, setShowType] = useState(false);
@@ -245,6 +258,7 @@ export default function SharePoint() {
     setBusy(false);
     files.reload();
     sites.reload();
+    mutateApi('/sites');
   };
 
   const okCount = results.filter((r) => r.ok).length;

@@ -1,6 +1,6 @@
 // Dashboard: counts for the signed-in persona's sites (a CX SP sees only its own sites).
-import { router } from 'expo-router';
-import React from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import React, { useCallback, useRef } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { colors, space, statusColor } from '../../components/theme';
 import { Badge, Card, ErrorView, Hero, Icon, IconBadge, IconName, Loading, Muted, Row, s, Stat } from '../../components/ui';
@@ -43,6 +43,16 @@ const Sub = ({ children }: { children: string }) => <Text style={{ fontSize: 11,
 export default function Dashboard() {
   const { user, can } = useAuth();
   const d = useApi<Dash>('/sites/dashboard');
+  const firstFocus = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (firstFocus.current) {
+        firstFocus.current = false;
+        return;
+      }
+      d.reload(true);
+    }, [d.reload]),
+  );
   return (
     <ScrollView style={s.screen} contentContainerStyle={[s.content, { maxWidth: 1100, width: '100%', alignSelf: 'center' }]} refreshControl={<RefreshControl refreshing={d.loading} onRefresh={d.reload} />}>
       <Hero icon="grid" title="Welcome back" subtitle={`Signed in as ${roleLabel(user?.role)}`} />

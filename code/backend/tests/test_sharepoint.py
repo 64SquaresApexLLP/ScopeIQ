@@ -33,8 +33,17 @@ def client(env):
         yield c
 
 
+TEST_PASSWORD = "test-password-1"
+
+
 def login(client, user_id):
-    r = client.post("/auth/login", json={"user_id": user_id, "password": "demo"})
+    """Demo accounts sign in directly; SCOPER signs in with a username + password, which the admin creates first."""
+    if user_id.startswith("scoper"):
+        admin = login(client, "admin")
+        client.post("/admin/logins", json={"username": user_id, "display_name": user_id, "password": TEST_PASSWORD}, headers=admin)
+        r = client.post("/auth/login", json={"username": user_id, "password": TEST_PASSWORD})
+    else:
+        r = client.post("/auth/login", json={"user_id": user_id, "password": "demo"})
     assert r.status_code == 200, r.text
     return {"Authorization": f"Bearer {r.json()['token']}"}
 
