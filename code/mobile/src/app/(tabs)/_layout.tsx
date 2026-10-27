@@ -15,10 +15,10 @@ function UserChip() {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: space(2), marginRight: space(4) }}>
       <View style={{ alignItems: 'flex-end' }}>
-        <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>{roleLabel(user.role)}</Text>
-        <Text style={{ color: 'rgba(255,255,255,0.65)', fontSize: 11 }}>Signed in</Text>
+        <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>{user.name || roleLabel(user.role)}</Text>
+        <Text style={{ color: 'rgba(255,255,255,0.65)', fontSize: 11 }}>{roleLabel(user.role)}</Text>
       </View>
-      <Avatar name={roleLabel(user.role)} size={34} />
+      <Avatar name={user.name || roleLabel(user.role)} size={34} />
     </View>
   );
 }
@@ -50,7 +50,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="sites" options={{ title: 'Sites', tabBarIcon: icon('map-pin') }} />
       <Tabs.Screen name="queue" options={{ title: user?.role === 'CX_SP' ? 'Handshake' : 'Work queue', tabBarLabel: wide ? undefined : 'Queue', tabBarIcon: icon('list') }} />
       <Tabs.Screen name="inbox" options={{ title: 'Inbox', tabBarIcon: icon('inbox') }} />
-      <Tabs.Screen name="sharepoint" options={{ title: 'SharePoint', tabBarLabel: wide ? 'SharePoint' : 'Files', tabBarIcon: icon('upload-cloud') }} />
+      <Tabs.Screen name="sharepoint" options={{ title: 'SharePoint', tabBarLabel: wide ? 'SharePoint' : 'Files', tabBarIcon: icon('upload-cloud'), href: user?.role === 'ADMIN' ? undefined : null }} />
       <Tabs.Screen name="admin" options={{ title: 'Admin', tabBarIcon: icon('settings'), href: user?.role === 'ADMIN' ? undefined : null }} />
       <Tabs.Screen name="more" options={{ title: 'More', tabBarIcon: icon('more-horizontal') }} />
     </Tabs>

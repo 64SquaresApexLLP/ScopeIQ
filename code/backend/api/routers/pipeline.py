@@ -127,6 +127,9 @@ def step_detail(run_id: str, key: str, user: dict = Depends(current_user)):
             "superseded_count": len(superseded_docs),
         }
     if key == "EXTRACT":
+        from pathlib import Path as _Path
+        from scopeiq.config import get_settings as _get_settings
+
         fields = r.select("CORE.EXTRACTED_FIELD", by_run)
         fields.sort(key=lambda f: (not f.get("NEEDS_REVIEW"), f.get("CONFIDENCE") or 0))
         cfg_lines = r.select("CORE.CONFIG_LINE", by_run, order_by="SOURCE, SECTOR, POSITION")
@@ -136,55 +139,79 @@ def step_detail(run_id: str, key: str, user: dict = Depends(current_user)):
         drone_docs = [d for d in site_docs if d.get("DOC_TYPE", "").startswith("DRONE")]
         cd_docs = [d for d in site_docs if d.get("DOC_TYPE") == "CD"]
 
-        # Drone tools and format inspection
-        drone_formats = sorted({d.get("FILE_FORMAT") for d in drone_docs if d.get("FILE_FORMAT")})
+        # --- Real data format check: inspect actual files on disk dynamically ---
+        _st = _get_settings()
+        _sites_dir = _st.path("paths.sites_dir")
+        _site_dir = _Path(_sites_dir) / sid
+
+        detected_drone_formats: list = []
+        _seen_fmt: set = set()
+        for _doc in drone_docs:
+            _fmt = (_doc.get("FILE_FORMAT") or "").upper()
+            _rel_path = _doc.get("REL_PATH") or ""
+            _file_path = None
+            if _rel_path:
+                _parts = _Path(_rel_path).parts
+                _candidate = _site_dir / _Path(*_parts[2:]) if len(_parts) > 2 else _site_dir / _rel_path
+                if _candidate.exists():
+                    _file_path = _candidate
+            if _fmt and _fmt not in _seen_fmt:
+                _seen_fmt.add(_fmt)
+                _size_kb = round(_file_path.stat().st_size / 1024, 1) if _file_path and _file_path.exists() else None
+                detected_drone_formats.append({
+                    "format": _fmt,
+                    "doc_type": _doc.get("DOC_TYPE", ""),
+                    "file_name": _doc.get("FILE_NAME", ""),
+                    "size_kb": _size_kb,
+                    "on_disk": bool(_file_path and _file_path.exists()),
+                })
+
+        # Drone document pointers
         drone_pointcloud = next((d for d in drone_docs if d.get("DOC_TYPE") == "DRONE_POINTCLOUD"), None)
-        drone_video = next((d for d in drone_docs if d.get("DOC_TYPE") == "DRONE_VIDEO"), None)
         drone_vendor = next((d for d in drone_docs if d.get("DOC_TYPE") == "DRONE_VENDOR"), None)
-        drone_meta = next((d for d in drone_docs if d.get("DOC_TYPE") == "DRONE_META"), None)
 
-        drone_tools = []
-        if drone_pointcloud:
-            fmt = drone_pointcloud.get("FILE_FORMAT", "LAZ").lower()
-            drone_tools.append({
-                "tool": "laspy + NumPy",
-                "format": f".{fmt} (LiDAR Point Cloud)",
-                "description": "Extracts 3D voxel clusters (ASPRS classes 64-68), detects mount pipes, and measures cable runs."
-            })
-        if drone_video:
-            fmt = drone_video.get("FILE_FORMAT", "MP4").lower()
-            drone_tools.append({
-                "tool": "OpenCV (cv2)",
-                "format": f".{fmt} (Orbit Video)",
-                "description": "Variance of Laplacian sharpness analyzer, equidistant 24-frame sampling, and sector bearing alignment."
-            })
-        if drone_vendor:
-            drone_tools.append({
-                "tool": "Python csv.DictReader",
-                "format": ".csv (Vendor Inventory)",
-                "description": "Parses pre-cataloged survey measurements, sector assignments, and antenna azimuths."
-            })
-        if drone_meta:
-            drone_tools.append({
-                "tool": "Python json",
-                "format": ".json (Flight Metadata)",
-                "description": "Ingests flight timestamp, sensor calibration, site coordinates, and drone model."
-            })
+        # Drone format list (for compatibility)
+        drone_formats = sorted({d.get("FILE_FORMAT") for d in drone_docs if d.get("FILE_FORMAT")})
 
+        # Field items and identified objects from CORE.FIELD_OBJECT (real LAZ extraction output)
         field_items = [c for c in cfg_lines if c.get("SOURCE") == "FIELD"]
-        field_objs = r.select("CORE.FIELD_OBJECT", {"SITE_ID": sid})
+        field_objs = r.select("CORE.FIELD_OBJECT", {"SITE_ID": sid, "RUN_ID": run_id})
         field_trunks = r.select("CORE.TRUNK_MEASURE", {"SITE_ID": sid, "RUN_ID": run_id, "SOURCE": "FIELD"})
-        frames = r.select("CORE.EVIDENCE_FRAME", {"SITE_ID": sid})
+
+        # Build structured identified-objects list from FIELD_OBJECT table (real LAZ output, dynamic)
+        identified_objects: list = []
+        for _obj in field_objs:
+            identified_objects.append({
+                "object_id": _obj.get("OBJECT_ID"),
+                "object_type": _obj.get("OBJECT_TYPE"),
+                "sector": _obj.get("SECTOR"),
+                "position": _obj.get("POSITION"),
+                "center_height_ft": _obj.get("CENTER_HEIGHT_FT"),
+                "facing_az_deg": _obj.get("FACING_AZ_DEG"),
+                "bearing_deg": _obj.get("BEARING_DEG"),
+                "dims_in": _obj.get("DIMS_IN"),
+                "model_guess": _obj.get("MODEL_GUESS") or "",
+                "confidence": _obj.get("CONFIDENCE"),
+                "route_length_ft": _obj.get("ROUTE_LENGTH_FT"),
+                "method": _obj.get("METHOD"),
+            })
+
+        # Summary by object type
+        obj_type_counts: dict = {}
+        for _obj in identified_objects:
+            _t = _obj.get("object_type") or "Unknown"
+            obj_type_counts[_t] = obj_type_counts.get(_t, 0) + 1
 
         drone_extraction = {
             "formats": drone_formats,
-            "tools": drone_tools,
+            "detected_formats": detected_drone_formats,
             "documents": drone_docs,
             "method": "POINTCLOUD (LiDAR 3D)" if drone_pointcloud else ("VENDOR_CSV" if drone_vendor else "FIELD_SURVEY"),
             "items_count": len(field_items),
-            "objects_count": len(field_objs) or len(field_items),
+            "objects_count": len(identified_objects) or len(field_items),
             "trunk": field_trunks[0] if field_trunks else None,
-            "frames_count": len(frames),
+            "identified_objects": identified_objects,
+            "obj_type_counts": obj_type_counts,
             "items": field_items,
         }
 
@@ -192,6 +219,27 @@ def step_detail(run_id: str, key: str, user: dict = Depends(current_user)):
         cd_formats = sorted({d.get("FILE_FORMAT") for d in cd_docs if d.get("FILE_FORMAT")})
         cd_dxf = next((d for d in cd_docs if d.get("FILE_FORMAT") == "DXF"), None)
         cd_pdf = next((d for d in cd_docs if d.get("FILE_FORMAT") == "PDF"), None)
+        _cd_current = [d for d in cd_docs if (d.get("STATUS") or "CURRENT") == "CURRENT"]   # the revision actually read
+
+        # Real per-file format check for the drawings (every CD file registered for the site, with its status)
+        detected_cd_formats: list = []
+        for _doc in cd_docs:
+            _rel_path = _doc.get("REL_PATH") or ""
+            _file_path = None
+            if _rel_path:
+                _parts = _Path(_rel_path).parts
+                _candidate = _site_dir / _Path(*_parts[2:]) if len(_parts) > 2 else _site_dir / _rel_path
+                if _candidate.exists():
+                    _file_path = _candidate
+            detected_cd_formats.append({
+                "format": (_doc.get("FILE_FORMAT") or "").upper(),
+                "doc_type": _doc.get("DOC_TYPE", ""),
+                "file_name": _doc.get("FILE_NAME", ""),
+                "revision": _doc.get("REVISION") or "",
+                "status": _doc.get("STATUS") or "",
+                "size_kb": round(_file_path.stat().st_size / 1024, 1) if _file_path else None,
+                "on_disk": bool(_file_path),
+            })
 
         cd_tools = []
         if cd_dxf:
@@ -213,9 +261,11 @@ def step_detail(run_id: str, key: str, user: dict = Depends(current_user)):
 
         cd_extraction = {
             "formats": cd_formats,
+            "detected_formats": detected_cd_formats,
             "tools": cd_tools,
             "documents": cd_docs,
-            "method": "DXF (CAD Model Blocks)" if cd_dxf else "PDF (Tesseract OCR)",
+            "method": ("DXF (CAD Model Blocks)" if any(d.get("FILE_FORMAT") == "DXF" for d in _cd_current)
+                       else "PDF (Tesseract OCR)"),
             "revision": cd_rev,
             "items_count": len(cd_items),
             "trunk": cd_trunks[0] if cd_trunks else None,

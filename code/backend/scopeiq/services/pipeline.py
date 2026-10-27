@@ -194,7 +194,7 @@ class PipelineService:
                                              on_ingested=ingested)
                     review = sum(1 for x in facts.fields if x.needs_review)
                     cmp_records = self._store_extracted_comparison_values(run_id, facts)
-                    prog.finish("EXTRACT", f"{len(facts.fields)} value(s) read, {len(cmp_records)} comparison record(s) stored in local DB, {review} need review",
+                    prog.finish("EXTRACT", f"{len(facts.fields)} value(s) read, {len(cmp_records)} comparison record(s) extracted, {review} need review",
                                 {"values": len(facts.fields), "comparison_records": len(cmp_records), "needs_review": review, "cd_read_by": facts.cd_method or "-", "field_read_by": facts.field_method or "-",
                                  "warnings": len(facts.warnings)})
                 stream = facts.project.get("stream", "BOM")
@@ -602,6 +602,14 @@ class PipelineService:
                                          "HORIZONTAL_FT": t.horizontal_ft, "REQUIRED_FT": t.required_ft, "SPECIFIED_FT": t.specified_ft,
                                          "SOURCE_REF": t.ref.label() if t.ref else None} for k, t in f.trunks.items()])
 
+        # Persist identified drone field objects directly at Stage 2 for downstream stages
+        r.delete_where("CORE.FIELD_OBJECT", {"SITE_ID": sid, "RUN_ID": run_id})
+        r.insert("CORE.FIELD_OBJECT", [{"SITE_ID": sid, "RUN_ID": run_id, "OBJECT_ID": o.object_id, "OBJECT_TYPE": o.object_type, "SECTOR": o.sector,
+                                        "POSITION": o.position, "BEARING_DEG": o.bearing_deg, "FACING_AZ_DEG": o.facing_az_deg,
+                                        "CENTER_HEIGHT_FT": o.center_height_ft, "DIMS_IN": list(o.dims_in) if o.dims_in else None,
+                                        "MODEL_GUESS": o.model_guess, "CONFIDENCE": o.confidence, "ROUTE_LENGTH_FT": o.route_length_ft,
+                                        "METHOD": o.method} for o in f.field_objects])
+
         return records
 
     # ------------------------------------------------------------------------------------ persist
@@ -609,20 +617,45 @@ class PipelineService:
         r, sid, ts, user = self.repo, f.site_id, now_iso(), current().user_id
         s, p = f.site, f.project
         existing_site = r.select("CORE.SITE", {"SITE_ID": sid})
-        wf_state = existing_site[0]["WORKFLOW_STATE"] if existing_site and existing_site[0].get("WORKFLOW_STATE") else self.wf.initial_state("SITE_SCOPING")
+        ex = existing_site[0] if existing_site else {}
+        wf_state = ex.get("WORKFLOW_STATE") or self.wf.initial_state("SITE_SCOPING")
         r.upsert("CORE.SITE", [{
-            "SITE_ID": sid, "SF_ID": s.get("sf_id"), "SITE_NAME": s.get("site_name") or s.get("rfds_site_name"), "MARKET": s.get("market"),
-            "CUSTOMER": s.get("customer"), "ADDRESS": s.get("address"), "CITY": s.get("city"), "STATE": s.get("state"), "ZIP": s.get("zip"),
-            "LATITUDE": s.get("latitude"), "LONGITUDE": s.get("longitude"), "STRUCTURE_TYPE": s.get("structure_type"), "HEIGHT_FT": s.get("height_ft"),
-            "STRUCTURE_OWNER": s.get("structure_owner"), "SITE_STATUS": s.get("site_status"), "STREAM": p.get("stream"),
-            "PROJECT_SF_ID": p.get("project_sf_id"), "PROJECT_NAME": p.get("project_name"), "PROJECT_TYPE": p.get("project_type"),
-            "SERVICE_LINE": p.get("service_line"), "CX_SP": p.get("cx_sp"), "ASSIGNED_DATE": p.get("assigned_date"),
-            "SCOPING_FORECAST": p.get("scoping_forecast"), "SCOPING_ACTUAL": p.get("scoping_actual"), "FBA_DATE": p.get("fba_date"),
-            "CURRENT_BOM_REV": p.get("current_bom_rev"), "WORKFLOW_STATE": wf_state,
-            "ASSIGNED_TO": existing_site[0].get("ASSIGNED_TO") if existing_site else None, "LAST_RUN_ID": run_id, "UPDATED_AT": ts, "UPDATED_BY": user}])
+            "SITE_ID": sid,
+            "SF_ID": s.get("sf_id") or ex.get("SF_ID"),
+            "SITE_NAME": s.get("site_name") or s.get("rfds_site_name") or ex.get("SITE_NAME"),
+            "MARKET": s.get("market") or ex.get("MARKET"),
+            "CUSTOMER": s.get("customer") or ex.get("CUSTOMER"),
+            "ADDRESS": s.get("address") or ex.get("ADDRESS"),
+            "CITY": s.get("city") or ex.get("CITY"),
+            "STATE": s.get("state") or ex.get("STATE"),
+            "ZIP": s.get("zip") or ex.get("ZIP"),
+            "LATITUDE": s.get("latitude") if s.get("latitude") is not None else ex.get("LATITUDE"),
+            "LONGITUDE": s.get("longitude") if s.get("longitude") is not None else ex.get("LONGITUDE"),
+            "STRUCTURE_TYPE": s.get("structure_type") or ex.get("STRUCTURE_TYPE"),
+            "HEIGHT_FT": s.get("height_ft") if s.get("height_ft") is not None else ex.get("HEIGHT_FT"),
+            "STRUCTURE_OWNER": s.get("structure_owner") or ex.get("STRUCTURE_OWNER"),
+            "SITE_STATUS": s.get("site_status") or ex.get("SITE_STATUS"),
+            "STREAM": p.get("stream") or ex.get("STREAM"),
+            "PROJECT_SF_ID": p.get("project_sf_id") or ex.get("PROJECT_SF_ID"),
+            "PROJECT_NAME": p.get("project_name") or ex.get("PROJECT_NAME"),
+            "PROJECT_TYPE": p.get("project_type") or ex.get("PROJECT_TYPE"),
+            "SERVICE_LINE": p.get("service_line") or ex.get("SERVICE_LINE"),
+            "CX_SP": p.get("cx_sp") or ex.get("CX_SP"),
+            "ASSIGNED_DATE": p.get("assigned_date") or ex.get("ASSIGNED_DATE"),
+            "SCOPING_FORECAST": p.get("scoping_forecast") or ex.get("SCOPING_FORECAST"),
+            "SCOPING_ACTUAL": p.get("scoping_actual") or ex.get("SCOPING_ACTUAL"),
+            "FBA_DATE": p.get("fba_date") or ex.get("FBA_DATE"),
+            "CURRENT_BOM_REV": p.get("current_bom_rev") or ex.get("CURRENT_BOM_REV"),
+            "WORKFLOW_STATE": wf_state,
+            "ASSIGNED_TO": ex.get("ASSIGNED_TO"),
+            "LAST_RUN_ID": run_id,
+            "UPDATED_AT": ts,
+            "UPDATED_BY": user,
+        }])
         r.upsert("CORE.MILESTONE", [{"MILESTONE_SF_ID": m["milestone_sf_id"], "SITE_ID": sid, "NAME": m["name"], "SEQ": m["seq"],
                                      "FORECAST": m["forecast"], "ACTUAL": m["actual"], "STATUS": m["status"]} for m in f.milestones])
-        r.upsert("CORE.DOCUMENT", [dict({k.upper(): v for k, v in asdict(d).items() if k.upper() in
+        r.delete_where("CORE.DOCUMENT", {"SITE_ID": sid})
+        r.insert("CORE.DOCUMENT", [dict({k.upper(): v for k, v in asdict(d).items() if k.upper() in
                                          {"DOC_ID", "SITE_ID", "DOC_TYPE", "FILE_NAME", "REL_PATH", "FILE_FORMAT", "REVISION", "REVISION_RANK", "FILE_HASH",
                                           "SIZE_BYTES", "DOC_DATE", "SOURCE", "STATUS"}}, REGISTERED_AT=ts, REGISTERED_BY=user) for d in f.documents])
         r.delete_where("CORE.EXTRACTED_FIELD", {"SITE_ID": sid, "RUN_ID": run_id})
@@ -652,6 +685,7 @@ class PipelineService:
         r.insert("CORE.REV0_LINE", [{"SITE_ID": sid, "RUN_ID": run_id, "ROW_NUM": l.row, "SECTOR": l.sector, "CATALOG_KEY": l.catalog_key, "MODEL": l.model,
                                      "MFR_PN": l.mfr_pn, "CUSTOMER_PN": l.customer_pn, "DESIGN_QTY": l.design_qty, "SPARE_QTY": l.spare_qty,
                                      "ACTION": l.action, "RULE_ID": l.rule_id, "SOURCE": l.source} for l in f.rev0])
+        r.delete_where("CORE.FIELD_OBJECT", {"SITE_ID": sid, "RUN_ID": run_id})       # already saved during extraction: replace, do not duplicate
         r.insert("CORE.FIELD_OBJECT", [{"SITE_ID": sid, "RUN_ID": run_id, "OBJECT_ID": o.object_id, "OBJECT_TYPE": o.object_type, "SECTOR": o.sector,
                                         "POSITION": o.position, "BEARING_DEG": o.bearing_deg, "FACING_AZ_DEG": o.facing_az_deg,
                                         "CENTER_HEIGHT_FT": o.center_height_ft, "DIMS_IN": list(o.dims_in) if o.dims_in else None,

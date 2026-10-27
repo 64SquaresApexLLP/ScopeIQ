@@ -1,6 +1,6 @@
 // Dashboard: counts for the signed-in persona's sites (a CX SP sees only its own sites).
-import { router } from 'expo-router';
-import React from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import React, { useCallback, useRef } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { colors, space, statusColor } from '../../components/theme';
 import { Badge, Card, ErrorView, Hero, Icon, IconBadge, IconName, Loading, Muted, Row, s, Stat } from '../../components/ui';
@@ -41,8 +41,18 @@ function Panel({ icon, title, hint, onPress, children }: { icon: IconName; title
 const Sub = ({ children }: { children: string }) => <Text style={{ fontSize: 11, fontWeight: '800', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.8 }}>{children}</Text>;
 
 export default function Dashboard() {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const d = useApi<Dash>('/sites/dashboard');
+  const firstFocus = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (firstFocus.current) {
+        firstFocus.current = false;
+        return;
+      }
+      d.reload(true);
+    }, [d.reload]),
+  );
   return (
     <ScrollView style={s.screen} contentContainerStyle={[s.content, { maxWidth: 1100, width: '100%', alignSelf: 'center' }]} refreshControl={<RefreshControl refreshing={d.loading} onRefresh={d.reload} />}>
       <Hero icon="grid" title="Welcome back" subtitle={`Signed in as ${roleLabel(user?.role)}`} />
@@ -70,16 +80,18 @@ export default function Dashboard() {
               <Sub>RFIs</Sub><Counts data={d.data.rfis} />
             </Panel>
           </View>
-          <Pressable onPress={() => router.push('/(tabs)/sharepoint')} accessibilityRole="button">
-            <Card style={{ flexDirection: 'row', alignItems: 'center', gap: space(3) }}>
-              <IconBadge name="upload-cloud" color={colors.accent2} size={40} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontWeight: '700', color: colors.text }}>Add documents to a site</Text>
-                <Muted>Upload RFDS, drawings, MA/SA, BOM and drone files to SharePoint</Muted>
-              </View>
-              <Icon name="arrow-right" size={18} color={colors.accent} />
-            </Card>
-          </Pressable>
+          {can('ADMIN') ? (
+            <Pressable onPress={() => router.push('/(tabs)/sharepoint')} accessibilityRole="button">
+              <Card style={{ flexDirection: 'row', alignItems: 'center', gap: space(3) }}>
+                <IconBadge name="upload-cloud" color={colors.accent2} size={40} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontWeight: '700', color: colors.text }}>Add documents to a site</Text>
+                  <Muted>Upload RFDS, drawings, MA/SA, BOM and drone files to SharePoint</Muted>
+                </View>
+                <Icon name="arrow-right" size={18} color={colors.accent} />
+              </Card>
+            </Pressable>
+          ) : null}
         </>
       )}
     </ScrollView>

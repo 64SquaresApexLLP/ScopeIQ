@@ -1,14 +1,17 @@
 // SharePoint upload. Pick one site, drop or choose files, upload. Files go only into the selected site's folder.
 // Nothing selected -> "Please select one site" and no upload controls.
 import * as DocumentPicker from 'expo-document-picker';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { colors, shadow, space } from '../../components/theme';
-import { Badge, Button, Card, Chips, ErrorView, Hero, Icon, IconBadge, Muted, s } from '../../components/ui';
+import { Badge, Button, Card, Chips, ErrorView, Hero, Icon, IconBadge, Muted, Row, s } from '../../components/ui';
 import { api, ApiError } from '../../lib/api';
+import { useAuth } from '../../lib/auth';
+import { computeFileSha256 } from '../../lib/hash';
 import { getLogger } from '../../lib/logger';
 import { Row as R } from '../../lib/types';
-import { useApi } from '../../lib/useApi';
+import { mutateApi, useApi } from '../../lib/useApi';
 
 const log = getLogger('sharepoint');
 const TYPES = [
@@ -17,8 +20,32 @@ const TYPES = [
   { key: 'DRONE_IMAGE', label: 'Photo' }, { key: 'DRONE_VIDEO', label: 'Video' }, { key: 'DRONE_META', label: 'Metadata' },
 ] as const;
 type T = (typeof TYPES)[number]['key'];
-type Picked = { name: string; size?: number; uri: string; mimeType?: string; file?: File };
-type Result = { name: string; ok: boolean; message: string };
+type Picked = {
+  name: string;
+  size?: number;
+  uri: string;
+  mimeType?: string;
+  file?: File;
+  hash?: string | null;
+  duplicateOf?: string | null;
+  isDuplicate?: boolean;
+  isUpdated?: boolean;
+  updatedFrom?: string | null;
+  diffSummary?: string | null;
+  additions?: string[];
+  replace?: boolean;
+};
+type Result = {
+  name: string;
+  ok: boolean;
+  message: string;
+  isDuplicate?: boolean;
+  duplicateOf?: string | null;
+  isUpdated?: boolean;
+  updatedFrom?: string | null;
+  replaced?: boolean;
+  hash?: string | null;
+};
 
 const kb = (n?: number) => (!n ? '' : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 const fileIcon = (name: string) => (/\.(jpe?g|png|tif)$/i.test(name) ? 'image' : /\.(mp4|mov|avi)$/i.test(name) ? 'video' : /\.(xlsx|csv)$/i.test(name) ? 'grid' : /\.(laz|las)$/i.test(name) ? 'box' : 'file-text') as any;
@@ -41,7 +68,21 @@ function Step({ n, title, hint, children }: { n: number; title: string; hint?: s
 }
 
 export default function SharePoint() {
-  const sites = useApi<{ location: string; sites: R[] }>('/sharepoint/sites');
+  const { can } = useAuth();
+  const isAdmin = can('ADMIN');
+  const sites = useApi<{ location: string; sites: R[] }>(isAdmin ? '/sharepoint/sites' : null);
+  const firstFocus = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (firstFocus.current) {
+        firstFocus.current = false;
+        return;
+      }
+      if (isAdmin) {
+        sites.reload(true);
+      }
+    }, [isAdmin, sites.reload]),
+  );
   const [siteId, setSiteId] = useState<string | null>(null);
   const [type, setType] = useState<T>('AUTO');
   const [showType, setShowType] = useState(false);
@@ -51,8 +92,18 @@ export default function SharePoint() {
   const [results, setResults] = useState<Result[]>([]);
   const [error, setError] = useState<ApiError | null>(null);
   const [hover, setHover] = useState(false);
-  const files = useApi<{ files: R[] }>(siteId ? `/sharepoint/sites/${siteId}/files` : null);
+  const files = useApi<{ files: R[] }>(isAdmin && siteId ? `/sharepoint/sites/${siteId}/files` : null);
   const dropRef = useRef<any>(null);
+
+  if (!isAdmin) {
+    return (
+      <View style={[s.screen, { alignItems: 'center', justifyContent: 'center', padding: space(8) }]}>
+        <IconBadge name="lock" color={colors.muted} size={56} />
+        <Text style={{ fontWeight: '800', fontSize: 18, color: colors.text, marginTop: space(3) }}>Administrators only</Text>
+        <Muted>SharePoint document library access is restricted to administrators only and is not accessible to Scopers.</Muted>
+      </View>
+    );
+  }
 
   const selected = sites.data?.sites.find((x) => x.site_id === siteId) ?? null;
   const grouped = useMemo(() => {
@@ -61,7 +112,58 @@ export default function SharePoint() {
     return g;
   }, [files.data]);
 
-  const addFiles = (list: Picked[]) => { setPicked((p) => [...p, ...list.filter((n) => !p.some((o) => o.name === n.name))]); setResults([]); };
+  const addFiles = async (list: Picked[]) => {
+    const existing = files.data?.files ?? [];
+    const enriched: Picked[] = await Promise.all(
+      list.map(async (item) => {
+        const hash = await computeFileSha256(item);
+        const match = hash ? existing.find((ef: any) => ef.hash === hash) : null;
+        const nameMatch = existing.find((ef: any) => ef.name?.toLowerCase() === item.name?.toLowerCase());
+        let isDup = Boolean(match || nameMatch);
+        let dupOf = match ? (match.name as string) : nameMatch ? (nameMatch.name as string) : null;
+        let isUpd = false;
+        let updFrom: string | null = null;
+        let diffSum: string | null = null;
+        let additionsList: string[] = [];
+
+        if (siteId) {
+          try {
+            const form = new FormData();
+            if (type !== 'AUTO') form.append('doc_type', type);
+            if (Platform.OS === 'web' && item.file) form.append('file', item.file, item.name);
+            else form.append('file', { uri: item.uri, name: item.name, type: item.mimeType ?? 'application/octet-stream' } as unknown as Blob);
+            const insp = await api.upload<any>(`/sharepoint/sites/${siteId}/check-content`, form);
+            if (insp) {
+              if (insp.status === 'DUPLICATE') {
+                isDup = true;
+                dupOf = insp.duplicate_of || insp.existing_file || dupOf;
+              } else if (insp.status === 'UPDATED') {
+                isUpd = true;
+                isDup = false;
+                updFrom = insp.updated_from || insp.existing_file;
+                diffSum = insp.diff?.summary;
+                additionsList = insp.diff?.additions || [];
+              }
+            }
+          } catch {}
+        }
+
+        return {
+          ...item,
+          hash,
+          isDuplicate: isDup,
+          duplicateOf: dupOf,
+          isUpdated: isUpd,
+          updatedFrom: updFrom,
+          diffSummary: diffSum,
+          additions: additionsList,
+          replace: isUpd, // ONLY files with changes can be replaced; duplicate (same data) is blocked
+        };
+      })
+    );
+    setPicked((p) => [...p, ...enriched.filter((n) => !p.some((o) => o.name === n.name))]);
+    setResults([]);
+  };
 
   useEffect(() => {      // drag and drop (web only)
     const el = dropRef.current as HTMLElement | null;
@@ -75,7 +177,7 @@ export default function SharePoint() {
     };
     el.addEventListener('dragover', over); el.addEventListener('dragleave', leave); el.addEventListener('drop', drop);
     return () => { el.removeEventListener('dragover', over); el.removeEventListener('dragleave', leave); el.removeEventListener('drop', drop); };
-  }, [siteId]);
+  }, [siteId, files.data]);
 
   const choose = (id: string) => { setSiteId(id === siteId ? null : id); setPicked([]); setResults([]); setError(null); };
 
@@ -84,6 +186,9 @@ export default function SharePoint() {
     if (!r.canceled) addFiles(r.assets.map((a) => ({ name: a.name, size: a.size, uri: a.uri, mimeType: a.mimeType, file: a.file })));
   };
 
+  const uploadableFiles = picked.filter((f) => !f.isDuplicate && !f.duplicateOf);
+  const allDuplicates = picked.length > 0 && uploadableFiles.length === 0;
+
   const upload = async () => {
     if (!siteId || !picked.length) return;
     setBusy(true);
@@ -91,13 +196,57 @@ export default function SharePoint() {
     setError(null);
     const out: Result[] = [];
     for (const f of picked) {
+      if (f.isDuplicate || f.duplicateOf) {
+        // Do NOT upload same/duplicate file to the site
+        out.push({
+          name: f.name,
+          ok: false,
+          isDuplicate: true,
+          duplicateOf: f.duplicateOf || undefined,
+          hash: f.hash,
+          message: `Upload blocked: Same file already exists on this site ("${f.duplicateOf || f.name}").`,
+        });
+        setDone((n) => n + 1);
+        continue;
+      }
       try {
         const form = new FormData();
         if (type !== 'AUTO') form.append('doc_type', type);
+        if (f.replace) {
+          form.append('action', 'REPLACE');
+          const target = f.updatedFrom || f.duplicateOf;
+          if (target) form.append('replace_file', target);
+        }
         if (Platform.OS === 'web' && f.file) form.append('file', f.file, f.name);
         else form.append('file', { uri: f.uri, name: f.name, type: f.mimeType ?? 'application/octet-stream' } as unknown as Blob);
         const res = await api.upload<R>(`/sharepoint/sites/${siteId}/upload`, form);
-        out.push({ name: f.name, ok: true, message: `Saved in ${res.folder}${res.replaced ? ' (replaced older file)' : ''}${res.duplicate_of ? ` - same content as ${res.duplicate_of}` : ''}` });
+        const dupName = (res.duplicate_of as string) || f.duplicateOf;
+        const isDup = Boolean(dupName || res.is_duplicate);
+        const isUpd = Boolean(res.is_updated || f.isUpdated);
+        const updName = (res.updated_from as string) || f.updatedFrom;
+        const wasReplaced = Boolean(res.replaced || f.replace);
+        const hashVal = (res.hash as string) || f.hash;
+
+        let msg = `Saved in ${res.folder}`;
+        if (wasReplaced) {
+          msg = `Replaced existing file "${updName || dupName || f.name}" in ${res.folder}`;
+        } else if (isDup) {
+          msg = `Already exists: File with identical data already exists as "${dupName}".`;
+        } else if (isUpd) {
+          msg = `Updated document saved in ${res.folder} (based on ${updName})`;
+        }
+
+        out.push({
+          name: f.name,
+          ok: true,
+          isDuplicate: isDup,
+          duplicateOf: dupName,
+          isUpdated: isUpd,
+          updatedFrom: updName,
+          replaced: wasReplaced,
+          hash: hashVal,
+          message: msg,
+        });
         log.info(`uploaded ${f.name} to ${siteId}/${res.folder}`);
       } catch (e) {
         out.push({ name: f.name, ok: false, message: (e as ApiError).message });
@@ -109,9 +258,11 @@ export default function SharePoint() {
     setBusy(false);
     files.reload();
     sites.reload();
+    mutateApi('/sites');
   };
 
   const okCount = results.filter((r) => r.ok).length;
+  const dupCount = results.filter((r) => r.isDuplicate).length;
 
   return (
     <ScrollView style={s.screen} contentContainerStyle={[s.content, { maxWidth: 820, width: '100%', alignSelf: 'center' }]}
@@ -162,16 +313,104 @@ export default function SharePoint() {
 
             {picked.length > 0 ? (
               <View style={{ marginTop: space(4), borderRadius: 12, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' }}>
-                {picked.map((f, i) => (
-                  <View key={f.name} style={{ flexDirection: 'row', alignItems: 'center', gap: space(3), padding: space(3), borderTopWidth: i ? 1 : 0, borderTopColor: colors.border }}>
-                    <IconBadge name={fileIcon(f.name)} size={34} />
-                    <Text style={{ flex: 1, color: colors.text, fontWeight: '600' }} numberOfLines={1}>{f.name}</Text>
-                    <Muted>{kb(f.size)}</Muted>
-                    <Pressable onPress={() => setPicked((p) => p.filter((x) => x.name !== f.name))} accessibilityLabel={`Remove ${f.name}`} style={{ padding: 4 }}>
-                      <Icon name="x" size={16} />
-                    </Pressable>
-                  </View>
-                ))}
+                {picked.map((f, i) => {
+                  const isDup = Boolean(f.isDuplicate || f.duplicateOf);
+                  const isUpd = Boolean(f.isUpdated);
+                  return (
+                    <View
+                      key={f.name}
+                      style={{
+                        padding: space(3.5),
+                        borderTopWidth: i ? 1 : 0,
+                        borderTopColor: colors.border,
+                        backgroundColor: isDup ? '#FFFBEB' : isUpd ? '#EFF6FF' : '#FFFFFF',
+                        gap: space(2),
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space(3) }}>
+                        <IconBadge name={fileIcon(f.name)} size={34} color={isDup ? colors.danger : isUpd ? '#2563EB' : undefined} />
+                        <View style={{ flex: 1 }}>
+                          <Row style={{ alignItems: 'center', gap: space(2) }}>
+                            <Text style={{ color: colors.text, fontWeight: '700' }} numberOfLines={1}>
+                              {f.name}
+                            </Text>
+                            {isDup ? <Badge text="ALREADY EXISTS · WILL NOT UPLOAD" color={colors.danger} /> : null}
+                            {isUpd ? <Badge text="CHANGES DETECTED" color="#2563EB" /> : null}
+                          </Row>
+                          {isDup ? (
+                            <Text style={{ fontSize: 12, color: colors.danger, fontWeight: '600', marginTop: 2 }}>
+                              ⚠️ File already exists with identical data (matches &quot;{f.duplicateOf}&quot;) — upload blocked
+                            </Text>
+                          ) : isUpd ? (
+                            <Text style={{ fontSize: 12, color: '#1E40AF', fontWeight: '600', marginTop: 2 }}>
+                              ✨ Changes detected compared to &quot;{f.updatedFrom}&quot; ({f.diffSummary || 'modified content'})
+                            </Text>
+                          ) : f.hash ? (
+                            <Text style={{ fontSize: 11, fontFamily: 'monospace', color: colors.muted, marginTop: 2 }}>
+                              SHA-256: {f.hash.slice(0, 16)}...
+                            </Text>
+                          ) : null}
+                        </View>
+                        <Muted>{kb(f.size)}</Muted>
+                        <Pressable onPress={() => setPicked((p) => p.filter((x) => x.name !== f.name))} accessibilityLabel={`Remove ${f.name}`} style={{ padding: 4 }}>
+                          <Icon name="x" size={16} />
+                        </Pressable>
+                      </View>
+
+                      {/* Same data detected: Already exists banner - NO replace option */}
+                      {isDup ? (
+                        <View
+                          style={{
+                            backgroundColor: '#FEF2F2',
+                            borderWidth: 1,
+                            borderColor: '#FECACA',
+                            padding: space(2),
+                            borderRadius: 6,
+                            marginTop: space(1),
+                          }}
+                        >
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#B91C1C' }}>
+                            File already exists on this site. Same file will not be uploaded.
+                          </Text>
+                        </View>
+                      ) : null}
+
+                      {/* Changes detected: Replace choice prompt ONLY for files with changes */}
+                      {isUpd ? (
+                        <Pressable
+                          onPress={() => setPicked((p) => p.map((x) => (x.name === f.name ? { ...x, replace: !x.replace } : x)))}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: space(2),
+                            backgroundColor: '#DBEAFE',
+                            padding: space(2),
+                            borderRadius: 6,
+                            marginTop: space(1),
+                          }}
+                        >
+                          <View
+                            style={{
+                              width: 18,
+                              height: 18,
+                              borderRadius: 4,
+                              borderWidth: 1.5,
+                              borderColor: '#2563EB',
+                              backgroundColor: f.replace ? '#2563EB' : '#FFFFFF',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            {f.replace ? <Icon name="check" size={12} color="#FFFFFF" /> : null}
+                          </View>
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#1E40AF', flex: 1 }}>
+                            Replace existing file &quot;{f.updatedFrom}&quot; with this updated file
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  );
+                })}
               </View>
             ) : null}
 
@@ -182,22 +421,76 @@ export default function SharePoint() {
             {showType ? <Chips<T> value={type} onChange={setType} options={TYPES.map((t) => ({ key: t.key, label: t.label }))} /> : null}
 
             <View style={{ marginTop: space(5) }}>
-              <Button title={busy ? `Uploading ${done}/${picked.length}...` : picked.length ? `Upload ${picked.length} file${picked.length === 1 ? '' : 's'} to ${siteId}` : `Upload to ${siteId}`} disabled={!picked.length || busy} onPress={upload} />
+              <Button
+                title={
+                  busy
+                    ? `Uploading ${done}/${uploadableFiles.length}...`
+                    : allDuplicates
+                    ? 'Cannot upload: identical file(s) already exist'
+                    : uploadableFiles.length < picked.length
+                    ? `Upload ${uploadableFiles.length} file${uploadableFiles.length === 1 ? '' : 's'} to ${siteId} (${picked.length - uploadableFiles.length} duplicate skipped)`
+                    : picked.length
+                    ? `Upload ${picked.length} file${picked.length === 1 ? '' : 's'} to ${siteId}`
+                    : `Upload to ${siteId}`
+                }
+                disabled={!uploadableFiles.length || busy}
+                onPress={upload}
+              />
             </View>
             {error ? <ErrorView error={error} /> : null}
 
             {results.length > 0 ? (
               <View style={{ marginTop: space(5) }}>
-                <Text style={{ fontWeight: '800', color: colors.text, marginBottom: space(2) }}>{okCount} of {results.length} uploaded</Text>
-                {results.map((r) => (
-                  <View key={r.name} style={{ flexDirection: 'row', gap: space(3), padding: space(3), marginBottom: space(2), borderRadius: 12, backgroundColor: r.ok ? '#F0FBF4' : '#FEF2F2', borderWidth: 1, borderColor: r.ok ? '#C6EBD3' : '#FAD0D0' }}>
-                    <Icon name={r.ok ? 'check-circle' : 'x-circle'} size={20} color={r.ok ? colors.ok : colors.danger} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontWeight: '700', color: colors.text }}>{r.name}</Text>
-                      <Text style={{ fontSize: 12.5, color: r.ok ? '#3C6B4E' : colors.danger }}>{r.message}</Text>
+                <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: space(2) }}>
+                  <Text style={{ fontWeight: '800', color: colors.text }}>
+                    {okCount} of {results.length} uploaded
+                  </Text>
+                  {results.some((r) => r.isDuplicate) ? (
+                    <Badge text={`${results.filter((r) => r.isDuplicate).length} duplicate${results.filter((r) => r.isDuplicate).length === 1 ? '' : 's'} blocked`} color={colors.danger} />
+                  ) : null}
+                </Row>
+                {results.map((r) => {
+                  const isWarn = r.ok && r.isDuplicate;
+                  const isBlocked = !r.ok && r.isDuplicate;
+                  const bg = isBlocked ? '#FEF2F2' : !r.ok ? '#FEF2F2' : isWarn ? '#FFFBEB' : '#F0FBF4';
+                  const border = isBlocked ? '#FECACA' : !r.ok ? '#FAD0D0' : isWarn ? '#FDE68A' : '#C6EBD3';
+                  const iconName = isBlocked ? 'x-circle' : !r.ok ? 'x-circle' : isWarn ? 'alert-triangle' : 'check-circle';
+                  const iconColor = isBlocked ? colors.danger : !r.ok ? colors.danger : isWarn ? colors.warn : colors.ok;
+                  const msgColor = isBlocked ? '#B91C1C' : !r.ok ? colors.danger : isWarn ? '#92400E' : '#3C6B4E';
+                  return (
+                    <View
+                      key={r.name}
+                      style={{
+                        flexDirection: 'row',
+                        gap: space(3),
+                        padding: space(3.5),
+                        marginBottom: space(2),
+                        borderRadius: 12,
+                        backgroundColor: bg,
+                        borderWidth: 1,
+                        borderColor: border,
+                      }}
+                    >
+                      <Icon name={iconName} size={20} color={iconColor} />
+                      <View style={{ flex: 1 }}>
+                        <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Text style={{ fontWeight: '700', color: colors.text }}>{r.name}</Text>
+                          {isBlocked ? (
+                            <Badge text="NOT UPLOADED · DUPLICATE" color={colors.danger} />
+                          ) : isWarn ? (
+                            <Badge text="DUPLICATE WARNING" color={colors.warn} />
+                          ) : null}
+                        </Row>
+                        <Text style={{ fontSize: 12.5, color: msgColor, marginTop: 2, lineHeight: 17 }}>{r.message}</Text>
+                        {r.hash ? (
+                          <Text style={{ fontSize: 11, fontFamily: 'monospace', color: colors.muted, marginTop: 3 }}>
+                            SHA-256: {r.hash.slice(0, 16)}...
+                          </Text>
+                        ) : null}
+                      </View>
                     </View>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             ) : null}
           </Step>

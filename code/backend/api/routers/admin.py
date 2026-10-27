@@ -5,10 +5,13 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from api.deps import current_user, ref, reload_reference, repo, require
+from api.schemas import LoginCreateIn, LoginUpdateIn
 from scopeiq.common.audit import AuditTrail
-from scopeiq.common.errors import NotFound
+from scopeiq.common.errors import Conflict, NotFound, ValidationError
 from scopeiq.common.logging import get_logger
+from scopeiq.common.passwords import hash_password
 from scopeiq.config import get_settings
+from scopeiq.db.repository import now_iso
 from scopeiq.reference.loader import TABLES
 from scopeiq.services.seed import load_reference_tables
 
@@ -64,6 +67,61 @@ def runtime_config(user: dict = Depends(require("ADMIN"))):
     st = get_settings()
     return {"env": st.env, "logging": st.section("logging"), "database_backend": st.get("database.backend"),
             "engine": st.section("engine"), "reference_source": st.get("reference.source", "csv")}
+
+
+# ------------------------------------------------------------------ sign-in credentials (CORE.USER_LOGIN)
+_LOGIN_FIELDS = ("USERNAME", "ROLE_CODE", "DISPLAY_NAME", "ORGANISATION", "ACTIVE", "CREATED_AT", "CREATED_BY", "UPDATED_AT", "UPDATED_BY")
+
+
+def _check_password(password: str) -> None:
+    n = int(get_settings().get("auth.min_password_length", 8))
+    if len(password) < n:
+        raise ValidationError(f"Password must be at least {n} characters")
+
+
+@router.get("/admin/logins")
+def list_logins(user: dict = Depends(require("ADMIN"))):
+    """Logins the admin created. The password hash is never returned."""
+    return [{k: r.get(k) for k in _LOGIN_FIELDS} for r in repo().select("CORE.USER_LOGIN", None, order_by="USERNAME")]
+
+
+@router.post("/admin/logins")
+def create_login(body: LoginCreateIn, user: dict = Depends(require("ADMIN"))):
+    """Admin: create a username + password for a role that signs in with a password (auth.password_roles, e.g. SCOPER)."""
+    role, username = body.role.upper(), body.username.strip().lower()
+    if role not in set(get_settings().get("auth.password_roles", []) or []):
+        raise ValidationError(f"Role {role} does not sign in with a password", details={"allowed": get_settings().get("auth.password_roles", [])})
+    _check_password(body.password)
+    r = repo()
+    if r.select("CORE.USER_LOGIN", {"USERNAME": username}):
+        raise Conflict(f"Username {username} already exists")
+    org = next((u["ORGANISATION"] for u in ref().rows("users") if u["ROLE_CODE"] == role), "")
+    row = {"USERNAME": username, "ROLE_CODE": role, "DISPLAY_NAME": body.display_name.strip(), "ORGANISATION": org,
+           "PASSWORD_HASH": hash_password(body.password), "ACTIVE": True, "CREATED_AT": now_iso(), "CREATED_BY": user["sub"],
+           "UPDATED_AT": now_iso(), "UPDATED_BY": user["sub"]}
+    r.insert("CORE.USER_LOGIN", [row])
+    AuditTrail.record(entity_type="USER_LOGIN", entity_id=username, action="CREATE", after={"role": role, "display_name": row["DISPLAY_NAME"]},
+                      source="api")
+    return {k: row[k] for k in _LOGIN_FIELDS}
+
+
+@router.patch("/admin/logins/{username}")
+def update_login(username: str, body: LoginUpdateIn, user: dict = Depends(require("ADMIN"))):
+    """Admin: disable / enable a login, or set a new password."""
+    r, username = repo(), username.strip().lower()
+    if not r.select("CORE.USER_LOGIN", {"USERNAME": username}):
+        raise NotFound(f"Username {username} not found")
+    values: dict = {"UPDATED_AT": now_iso(), "UPDATED_BY": user["sub"]}
+    if body.active is not None:
+        values["ACTIVE"] = body.active
+    if body.password is not None:
+        _check_password(body.password)
+        values["PASSWORD_HASH"] = hash_password(body.password)
+    r.update("CORE.USER_LOGIN", values, {"USERNAME": username})
+    actions = ([("ENABLE" if body.active else "DISABLE")] if body.active is not None else []) + (["PASSWORD_RESET"] if body.password is not None else [])
+    for action in actions:                                        # account actions, not business edits, so no reason code
+        AuditTrail.record(entity_type="USER_LOGIN", entity_id=username, action=action, source="api")
+    return {k: r.get("CORE.USER_LOGIN", USERNAME=username).get(k) for k in _LOGIN_FIELDS}
 
 
 class ClientLogIn(BaseModel):

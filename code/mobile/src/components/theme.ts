@@ -19,6 +19,6 @@ const STATUS: Record<string, string> = {
   HIGH: colors.danger, MEDIUM: colors.warn, LOW: colors.info, CRITICAL: colors.red, ACK: colors.ok,
   SUCCEEDED: colors.ok, FAILED: colors.danger, SUCCEEDED_WITH_WARNINGS: colors.warn, RUNNING: colors.info,
   NEW: colors.ok, REMOVED: colors.danger, EXISTING: colors.muted, RELOCATED: colors.warn, REUSED: colors.info,
-  Install: colors.ok, Remove: colors.danger,
+  Install: colors.ok, Remove: colors.danger, DUPLICATE: colors.warn,
 };
 export const statusColor = (s?: string | null) => (s && STATUS[s]) || colors.accent;

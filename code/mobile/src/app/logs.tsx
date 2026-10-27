@@ -18,15 +18,15 @@ export default function Logs() {
         <Card>{Object.entries(d.data).map(([k, val]) => <KV key={k} k={k} v={show(val)} />)}</Card>
       ) : null}
       {v !== 'config' && !d.loading && !rows.length ? <Empty text="Nothing logged." /> : null}
-      {v === 'errors' && rows.map((e) => (
-        <Card key={e.ERROR_ID}>
+      {v === 'errors' && rows.map((e, idx) => (
+        <Card key={e.ERROR_ID || e.error_id || `err-${idx}`}>
           <Row style={{ justifyContent: 'space-between' }}><Title>{e.ERROR_CODE ?? e.EXCEPTION_TYPE}</Title><Muted>{when(e.ERROR_TS)}</Muted></Row>
           <Muted>{e.MESSAGE}</Muted>
           <Muted>{`${e.WHERE_RAISED ?? ''} - ref ${e.CORRELATION_ID ?? '-'}${e.SITE_ID ? ` - ${e.SITE_ID}` : ''}`}</Muted>
         </Card>
       ))}
-      {v === 'app' && rows.map((e) => (
-        <Card key={e.LOG_ID}>
+      {v === 'app' && rows.map((e, idx) => (
+        <Card key={e.LOG_ID || e.log_id || `app-${idx}`}>
           <Row><Badge text={e.LEVEL} /><Muted>{`${when(e.LOG_TS)} ${e.LOGGER}`}</Muted></Row>
           <Muted>{e.MESSAGE}</Muted>
         </Card>
