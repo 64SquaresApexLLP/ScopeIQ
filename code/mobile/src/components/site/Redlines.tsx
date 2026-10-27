@@ -7,7 +7,6 @@ import { useApi } from '../../lib/useApi';
 import { colors, space } from '../theme';
 import { Badge, Button, Card, Empty, ErrorView, IconBadge, KV, Loading, Muted, Row, s, Section, Title } from '../ui';
 import { WorkflowActions } from '../WorkflowActions';
-import { ImplementChanges } from './ImplementChanges';
 
 function RfiCard({ r, reload }: { r: R; reload: () => void }) {
   const { can } = useAuth();
@@ -47,14 +46,24 @@ function RfiCard({ r, reload }: { r: R; reload: () => void }) {
 /** The drone footage that backs a redline: the video frame (or still) that looks at the place the redline is about. */
 function ProofStrip({ proof }: { proof: R[] }) {
   const [big, setBig] = useState<R | null>(null);
-  if (!proof.length) {
-    return <Muted style={{ marginTop: space(2) }}>No drone footage faces this place, so there is no picture to attach.</Muted>;
-  }
+  const sheet = proof.find((p) => p.KIND === 'SHEET');       // the drawing sheet with this redline marked
+  const drone = proof.filter((p) => p.KIND !== 'SHEET');
   return (
-    <View style={{ marginTop: space(3), gap: space(2) }}>
+    <View style={{ marginTop: space(3), gap: space(3) }}>
+      {sheet ? (
+        <View style={{ gap: space(2) }}>
+          <Muted style={{ fontWeight: '700', color: colors.text }}>Sheet with this redline marked</Muted>
+          <Pressable onPress={() => setBig(sheet)} accessibilityRole="button" accessibilityLabel={`Enlarge: ${sheet.CAPTION}`} style={{ maxWidth: 760 }}>
+            <Image source={{ uri: authedUrl(sheet.URL) }} resizeMode="contain" style={{ width: '100%', aspectRatio: 1224 / 792, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: '#fff' }} />
+          </Pressable>
+          <Muted>{`${sheet.CAPTION}. Tap to enlarge.`}</Muted>
+        </View>
+      ) : null}
+      {!drone.length ? <Muted>No drone footage faces this place, so there is no picture to attach.</Muted> : (
+      <View style={{ gap: space(2) }}>
       <Muted style={{ fontWeight: '700', color: colors.text }}>Proof from the drone survey</Muted>
       <Row style={{ flexWrap: 'wrap', alignItems: 'flex-start', gap: space(3) }}>
-        {proof.map((p) => (
+        {drone.map((p) => (
           <Pressable key={p.PROOF_ID} onPress={() => setBig(p)} accessibilityRole="button" accessibilityLabel={`Enlarge: ${p.CAPTION}`} style={{ width: 280, gap: 4 }}>
             <Image source={{ uri: authedUrl(p.URL) }} resizeMode="cover" style={{ width: 280, height: 158, borderRadius: 10, backgroundColor: colors.border }} />
             <Badge text={p.KIND === 'VIDEO' ? 'Drone video' : 'Drone still'} />
@@ -63,6 +72,8 @@ function ProofStrip({ proof }: { proof: R[] }) {
           </Pressable>
         ))}
       </Row>
+      </View>
+      )}
       <Modal visible={!!big} transparent animationType="fade" onRequestClose={() => setBig(null)}>
         <Pressable onPress={() => setBig(null)} style={{ flex: 1, backgroundColor: '#000d', justifyContent: 'center', alignItems: 'center', padding: space(4) }}>
           {big ? <Image source={{ uri: authedUrl(big.URL) }} resizeMode="contain" style={{ width: '100%', height: '85%' }} /> : null}
@@ -118,8 +129,6 @@ export function Redlines({ siteId }: { siteId: string }) {
   return (
     <View>
       {pdf ? <PdfPreview path={pdf} /> : null}
-      {/* re-read the approved count when a redline changes */}
-      <ImplementChanges key={red.data.map((x) => x.STATUS).join(',')} siteId={siteId} />
       <Section title={`Redlines (${red.data.length})`}>
         {!red.data.length ? <Empty text="No redlines for this site." /> : null}
         {red.data.map((x, i) => (

@@ -218,3 +218,13 @@ def test_every_redline_of_a_site_with_footage_carries_proof(pipeline_results, re
             proof = repo.select("CORE.REDLINE_PROOF", {"REDLINE_ID": r["REDLINE_ID"]})
             assert proof, (sid, r["REDLINE_ID"])
             assert all((out / p["PATH"]).exists() and p["CAPTION"] and p["BASIS"] for p in proof), sid
+            if r["DOC_TYPE"] == "CD" and r["PDF_PATH"]:
+                assert any(p["KIND"] == "SHEET" for p in proof), (sid, r["REDLINE_ID"])      # the marked sheet is attached too
+
+
+def test_rfi_wording_shows_plain_numbers_for_a_list_of_measurements(ref):
+    import numpy as np
+    f = SiteFacts("TXAA0001")
+    d = _disc("FLD-03", "RFI", sector=None, position=None, expected=[63.0], found=[np.float64(67.9)])
+    _, rfis = draft_redlines_and_rfis(f, [d], ref)
+    assert rfis and "67.9 ft rad center vs 63 ft" in rfis[0].question and "np." not in rfis[0].question

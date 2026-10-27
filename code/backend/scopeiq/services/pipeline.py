@@ -32,13 +32,13 @@ from scopeiq.engine.design import AS_DRAWN, FINAL, build_model, compute_delta
 from scopeiq.engine.drivers import build_drivers, estimate, site_requirements
 from scopeiq.engine.facts import build_site_facts
 from scopeiq.engine.reconcile import reconcile
-from scopeiq.engine.proof import attach_proofs, read_stills, remove_proofs
+from scopeiq.engine.proof import Proof, attach_proofs, read_stills, remove_proofs
 from scopeiq.engine.redlines import decide, draft_redlines_and_rfis
 from scopeiq.engine.revisions import build_rev1, validate_rev0
 from scopeiq.extract.sitetracker import SiteTracker
 from scopeiq.outputs.cd_revision import write_revised_cd
 from scopeiq.outputs.exports import write_bom_xlsx, write_site_package
-from scopeiq.outputs.redline_markup import remove_redlined_cd, write_redlined_cd
+from scopeiq.outputs.redline_markup import remove_redlined_cd, render_sheet_previews, write_redlined_cd
 from scopeiq.reference.loader import ReferenceData
 from scopeiq.workflow.engine import WorkflowEngine
 
@@ -329,13 +329,19 @@ class PipelineService:
         """Stage 4: write the redlined CD drawing only if the decision says the drawing has to change, and save the redlines and RFIs."""
         out = self.output_dir / "sites" / f.site_id / "redlines"
         files: dict[str, str] = {}
+        pages: dict[str, int] = {}
         if decision.required:
             dxf, pdf = self._cd_source_paths(f)
-            files.update(write_redlined_cd(facts=f, discs=discs, redlines=redlines, dxf_path=dxf, pdf_path=pdf, out_dir=out, ref=self.ref))
+            files.update(write_redlined_cd(facts=f, discs=discs, redlines=redlines, dxf_path=dxf, pdf_path=pdf, out_dir=out, ref=self.ref, pages=pages))
         else:
             remove_redlined_cd(out, f)                 # an earlier run's redlined drawing is out of date now
         remove_proofs(out)
         proofs = attach_proofs(f, discs, redlines, out, self._drone_stills(f))
+        sheets = render_sheet_previews(files["redlined_cd_pdf"], redlines, pages, out / "proof") if "redlined_cd_pdf" in files else {}
+        by_id = {x.redline_id: x for x in redlines}
+        proofs += [Proof(rid, 0, "SHEET", str(img), f"Sheet {by_id[rid].sheet} with this redline marked",
+                         f"The {by_id[rid].sheet} page of the redlined CD drawing, with the markup for this finding.", None, None, None, None)
+                   for rid, img in sheets.items()]
         self._persist_redlines(run_id, f, redlines, rfis, _rel(files["redlined_cd_pdf"], self.output_dir) if "redlined_cd_pdf" in files else None, proofs)
         files.update(write_site_package(out, f.site_id, discs, redlines, rfis))
         return {k: _rel(v, self.output_dir) for k, v in files.items()}

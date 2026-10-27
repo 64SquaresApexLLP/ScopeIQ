@@ -399,7 +399,8 @@ def remove_redlined_cd(out_dir: Path, facts: SiteFacts) -> None:
 
 @log_call()
 def write_redlined_cd(*, facts: SiteFacts, discs: list[Discrepancy], redlines: list[Redline], dxf_path: Path | None, pdf_path: Path | None,
-                      out_dir: Path, ref: ReferenceData, prepared_by: str = "ScopeIQ") -> dict[str, str]:
+                      out_dir: Path, ref: ReferenceData, prepared_by: str = "ScopeIQ", pages: dict[str, int] | None = None) -> dict[str, str]:
+    """Write the redlined CD. `pages`, if given, is filled with the page of the written PDF that holds each sheet."""
     cd = [r for r in redlines if r.doc_type == "CD"]
     out_dir = Path(out_dir)
     if not cd or not (dxf_path or pdf_path):
@@ -433,6 +434,7 @@ def write_redlined_cd(*, facts: SiteFacts, discs: list[Discrepancy], redlines: l
         tmp = out_dir / f".{name}.render.pdf"
         rv.render_pdf(tmp, title=f"{facts.site_id} CD {facts.cd_revision} - redlines")
         reader = PdfReader(str(tmp))
+        page_index = {s: 1 + i for i, s in enumerate(SHEETS)}          # page 0 of the written PDF is the summary
         files["redlined_cd_dxf"] = str(rv.save(out_dir / f"{name}.dxf"))
     else:
         reader = PdfReader(str(source))
@@ -453,6 +455,9 @@ def write_redlined_cd(*, facts: SiteFacts, discs: list[Discrepancy], redlines: l
             buf.seek(0)
             page.merge_page(PdfReader(buf).pages[0])
         base.close()
+        page_index = {s: 1 + i for s, i in page_of.items()}
+    if pages is not None:
+        pages.update(page_index)
     p0 = reader.pages[0]
     writer.add_page(_summary_page(float(p0.mediabox.width), float(p0.mediabox.height), facts.site_id, facts.cd_revision, numbered, stamp).pages[0])
     for pg in reader.pages:
@@ -465,3 +470,24 @@ def write_redlined_cd(*, facts: SiteFacts, discs: list[Discrepancy], redlines: l
     files["redlined_cd_pdf"] = str(pdf_out)
     log.info("redlined CD written: %s (%d markups, from %s)", pdf_out.name, len(cd), source.name, extra={"site_id": facts.site_id})
     return files
+
+
+def render_sheet_previews(pdf_path: Path, redlines: list[Redline], pages: dict[str, int], out_dir: Path, width_px: int = 1700) -> dict[str, Path]:
+    """One picture per CD redline: the sheet of the redlined drawing that carries its markup, so it can be seen without opening the PDF."""
+    import pymupdf
+
+    out: dict[str, Path] = {}
+    wanted = {r.redline_id: r.sheet for r in redlines if r.doc_type == "CD" and r.sheet in pages}
+    if not wanted or not Path(pdf_path).exists():
+        return out
+    Path(out_dir).mkdir(parents=True, exist_ok=True)
+    with pymupdf.open(str(pdf_path)) as doc:
+        for sheet in sorted(set(wanted.values())):
+            if pages[sheet] >= len(doc):
+                continue
+            page = doc[pages[sheet]]
+            pix = page.get_pixmap(matrix=pymupdf.Matrix(width_px / page.rect.width, width_px / page.rect.width), alpha=False)
+            img = Path(out_dir) / f"sheet_{sheet}.jpg"
+            pix.save(str(img), jpg_quality=88)
+            out.update({rid: img for rid, sh in wanted.items() if sh == sheet})
+    return out

@@ -166,6 +166,11 @@ RFI_TO = {"RFC-01": "ERICSSON", "RFC-02": "ERICSSON", "RFC-03": "ERICSSON", "RFC
           "CBL-01": "AE_ENGINEER", "SA-01": "ERICSSON"}
 
 
+def _nums(v) -> str:
+    """A measured value or a list of them as plain numbers (a finding keeps a list when several antennas differ)."""
+    return "/".join(f"{float(x):g}" for x in (v if isinstance(v, (list, tuple)) else [v]))
+
+
 def _rfi_text(d: Discrepancy, f: SiteFacts) -> tuple[str, str]:
     r = d.rule_id
     if r == "RFC-01":
@@ -178,7 +183,7 @@ def _rfi_text(d: Discrepancy, f: SiteFacts) -> tuple[str, str]:
         return (f"{SECTOR_NAMES.get(d.sector)} antennas measure {d.found:.0f} deg in the field vs {d.expected:g} deg designed. "
                 "Please confirm re-orientation to the design azimuth."), "Re-orient to design azimuth during construction."
     if r == "FLD-03":
-        return (f"Existing antennas measure {d.found} ft rad center vs {d.expected} ft on the CD/RFDS. Please confirm and revise the elevation."), \
+        return (f"Existing antennas measure {_nums(d.found)} ft rad center vs {_nums(d.expected)} ft on the CD/RFDS. Please confirm and revise the elevation."), \
             "Revise CD A-2 to measured rad centers."
     return d.description, d.bom_impact or ""
 
