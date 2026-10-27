@@ -205,6 +205,9 @@ def extract_cd_pdf_ocr(path: Path, *, site_id: str, doc_id: str, revision: str, 
         import pytesseract
         from scopeiq.config import get_settings
         cmd = get_settings().get("engine.tesseract_cmd")
+        if not cmd:                               # not on PATH after a default Windows install: try the usual folder
+            default = Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
+            cmd = str(default) if default.exists() else None
         if cmd:                                   # e.g. C:\Program Files\Tesseract-OCR\tesseract.exe on Windows
             pytesseract.pytesseract.tesseract_cmd = str(cmd)
         pytesseract.get_tesseract_version()

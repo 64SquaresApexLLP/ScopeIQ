@@ -194,7 +194,7 @@ class PipelineService:
                                              on_ingested=ingested)
                     review = sum(1 for x in facts.fields if x.needs_review)
                     cmp_records = self._store_extracted_comparison_values(run_id, facts)
-                    prog.finish("EXTRACT", f"{len(facts.fields)} value(s) read, {len(cmp_records)} comparison record(s) stored in local DB, {review} need review",
+                    prog.finish("EXTRACT", f"{len(facts.fields)} value(s) read, {len(cmp_records)} comparison record(s) extracted, {review} need review",
                                 {"values": len(facts.fields), "comparison_records": len(cmp_records), "needs_review": review, "cd_read_by": facts.cd_method or "-", "field_read_by": facts.field_method or "-",
                                  "warnings": len(facts.warnings)})
                 stream = facts.project.get("stream", "BOM")
@@ -685,6 +685,7 @@ class PipelineService:
         r.insert("CORE.REV0_LINE", [{"SITE_ID": sid, "RUN_ID": run_id, "ROW_NUM": l.row, "SECTOR": l.sector, "CATALOG_KEY": l.catalog_key, "MODEL": l.model,
                                      "MFR_PN": l.mfr_pn, "CUSTOMER_PN": l.customer_pn, "DESIGN_QTY": l.design_qty, "SPARE_QTY": l.spare_qty,
                                      "ACTION": l.action, "RULE_ID": l.rule_id, "SOURCE": l.source} for l in f.rev0])
+        r.delete_where("CORE.FIELD_OBJECT", {"SITE_ID": sid, "RUN_ID": run_id})       # already saved during extraction: replace, do not duplicate
         r.insert("CORE.FIELD_OBJECT", [{"SITE_ID": sid, "RUN_ID": run_id, "OBJECT_ID": o.object_id, "OBJECT_TYPE": o.object_type, "SECTOR": o.sector,
                                         "POSITION": o.position, "BEARING_DEG": o.bearing_deg, "FACING_AZ_DEG": o.facing_az_deg,
                                         "CENTER_HEIGHT_FT": o.center_height_ft, "DIMS_IN": list(o.dims_in) if o.dims_in else None,

@@ -75,26 +75,18 @@ export function Pipeline({ siteId, onFinished }: { siteId: string; onFinished?: 
     <View>
       {/* Prominent Action Card: Run Pipeline */}
       <Card style={{ marginBottom: space(3), borderColor: running ? colors.info : isFailed ? colors.danger : colors.primary, borderWidth: 1.5, backgroundColor: colors.surface }}>
-        <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: space(1) }}>
-          <Title style={{ fontSize: 18 }}>Automated Scoping Pipeline</Title>
-          <Badge
-            text={running ? 'RUNNING' : isFailed ? 'FAILED' : r?.STATUS ?? 'READY'}
-            color={running ? colors.info : isFailed ? colors.danger : r?.STATUS === 'SUCCEEDED' ? colors.ok : colors.primary}
-          />
-        </Row>
-        <Muted style={{ marginBottom: space(2) }}>
-          Executes multi-stage automated scoping: (1) Ingests registered site documents with latest revision check, (2) Extracts Drone point cloud / video and CD CAD / drawing data in parallel, (3) Reconciles discrepancies, and (4) Generates BOM & redlines.
-        </Muted>
-
         {canRun ? (
-          <Row style={{ alignItems: 'center', gap: space(2), flexWrap: 'wrap' }}>
+          <Row style={{ alignItems: 'center', justifyContent: 'space-between', gap: space(2), flexWrap: 'wrap' }}>
             <Button
               kind="primary"
               title={running ? 'Running Pipeline...' : isFailed ? '▶ Re-run Pipeline (Retry)' : r ? '▶ Run Pipeline (Re-run)' : '▶ Run Pipeline'}
               disabled={running}
               onPress={start}
             />
-            {r?.RUN_ID ? <Muted style={{ fontSize: 12 }}>{`Run ID: ${r.RUN_ID} (${when(r.STARTED_AT)})`}</Muted> : null}
+            <Badge
+              text={running ? 'RUNNING' : isFailed ? 'FAILED' : r?.STATUS ?? 'READY'}
+              color={running ? colors.info : isFailed ? colors.danger : r?.STATUS === 'SUCCEEDED' ? colors.ok : colors.primary}
+            />
           </Row>
         ) : (
           <Muted style={{ color: colors.warn }}>Scoper or Reviewer role required to execute the pipeline.</Muted>
@@ -109,21 +101,21 @@ export function Pipeline({ siteId, onFinished }: { siteId: string; onFinished?: 
               <Text style={{ fontSize: 14, fontWeight: '700', color: colors.info }}>
                 {`Viewing Historical Run: ${id}`}
               </Text>
-              <Muted style={{ fontSize: 12 }}>You are inspecting a past run stored in SQLite. You can review its stages and extracted comparison records below.</Muted>
+              <Muted style={{ fontSize: 12 }}>You are looking at a past run. You can review its stages and extracted records below.</Muted>
             </View>
             <Button small kind="secondary" title="Return to Latest Run" onPress={() => setSelectedRunId(null)} />
           </Row>
         </Card>
       ) : null}
 
-      {/* Run History: Stored in SQLite CORE.PIPELINE_RUN */}
+      {/* Run history */}
       {history.data && history.data.length > 0 ? (
         <Card style={{ marginBottom: space(3), backgroundColor: colors.surface }}>
           <Pressable onPress={() => setShowHistory(!showHistory)} accessibilityRole="button">
             <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <Row style={{ alignItems: 'center', gap: space(1) }}>
                 <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>📜 Pipeline Run History</Text>
-                <Badge text={`${history.data.length} Stored Runs (SQLite)`} color={colors.primary} />
+                <Badge text={`${history.data.length} run${history.data.length === 1 ? '' : 's'}`} color={colors.primary} />
               </Row>
               <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '700' }}>{showHistory ? 'Hide ▲' : 'Show ▼'}</Text>
             </Row>
@@ -132,7 +124,7 @@ export function Pipeline({ siteId, onFinished }: { siteId: string; onFinished?: 
           {showHistory ? (
             <View style={{ marginTop: space(2) }}>
               <Muted style={{ fontSize: 12, marginBottom: space(1.5) }}>
-                Every execution progress and final result is persisted in the local SQLite database (<Text style={{ fontFamily: 'monospace' }}>CORE.PIPELINE_RUN</Text>). Tap any run to inspect its stages.
+                Tap any run to inspect its stages.
               </Muted>
               {history.data.map((h) => {
                 const isSelected = h.RUN_ID === id;

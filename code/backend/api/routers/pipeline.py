@@ -219,6 +219,27 @@ def step_detail(run_id: str, key: str, user: dict = Depends(current_user)):
         cd_formats = sorted({d.get("FILE_FORMAT") for d in cd_docs if d.get("FILE_FORMAT")})
         cd_dxf = next((d for d in cd_docs if d.get("FILE_FORMAT") == "DXF"), None)
         cd_pdf = next((d for d in cd_docs if d.get("FILE_FORMAT") == "PDF"), None)
+        _cd_current = [d for d in cd_docs if (d.get("STATUS") or "CURRENT") == "CURRENT"]   # the revision actually read
+
+        # Real per-file format check for the drawings (every CD file registered for the site, with its status)
+        detected_cd_formats: list = []
+        for _doc in cd_docs:
+            _rel_path = _doc.get("REL_PATH") or ""
+            _file_path = None
+            if _rel_path:
+                _parts = _Path(_rel_path).parts
+                _candidate = _site_dir / _Path(*_parts[2:]) if len(_parts) > 2 else _site_dir / _rel_path
+                if _candidate.exists():
+                    _file_path = _candidate
+            detected_cd_formats.append({
+                "format": (_doc.get("FILE_FORMAT") or "").upper(),
+                "doc_type": _doc.get("DOC_TYPE", ""),
+                "file_name": _doc.get("FILE_NAME", ""),
+                "revision": _doc.get("REVISION") or "",
+                "status": _doc.get("STATUS") or "",
+                "size_kb": round(_file_path.stat().st_size / 1024, 1) if _file_path else None,
+                "on_disk": bool(_file_path),
+            })
 
         cd_tools = []
         if cd_dxf:
@@ -240,9 +261,11 @@ def step_detail(run_id: str, key: str, user: dict = Depends(current_user)):
 
         cd_extraction = {
             "formats": cd_formats,
+            "detected_formats": detected_cd_formats,
             "tools": cd_tools,
             "documents": cd_docs,
-            "method": "DXF (CAD Model Blocks)" if cd_dxf else "PDF (Tesseract OCR)",
+            "method": ("DXF (CAD Model Blocks)" if any(d.get("FILE_FORMAT") == "DXF" for d in _cd_current)
+                       else "PDF (Tesseract OCR)"),
             "revision": cd_rev,
             "items_count": len(cd_items),
             "trunk": cd_trunks[0] if cd_trunks else None,

@@ -334,20 +334,122 @@ function DroneDataCard({ drone, isRunning }: { drone: any; isRunning?: boolean }
               </View>
             ))}
 
-            {/* DB stored confirmation */}
-            <View style={{ marginTop: space(1.5), flexDirection: 'row', alignItems: 'center', gap: space(1) }}>
-              <Text style={{ fontSize: 13 }}>💾</Text>
-              <Muted style={{ fontSize: 11, flex: 1 }}>
-                {`${identifiedObjects.length} object(s) stored in `}
-                <Text style={{ fontFamily: 'monospace', fontSize: 11 }}>CORE.FIELD_OBJECT</Text>
-                {' for downstream stages.'}
-              </Muted>
-            </View>
           </>
         ) : isRunning ? (
           <Muted style={{ fontSize: 12 }}>Identifying objects from point cloud...</Muted>
         ) : (
           <Muted style={{ fontSize: 12 }}>No objects identified. Ensure a .laz file is available for this site.</Muted>
+        )}
+      </View>
+    </Card>
+  );
+}
+
+// Plain-language labels for the equipment read from the drawings
+const CD_KIND: Record<string, string> = { passive: 'Antenna', air: 'Active antenna (AAU)', radio: 'Radio', pipe: 'Mount pipe', sled: 'Roof sled' };
+const CD_STATUS: Record<string, string> = { Existing: 'Existing', New: 'New', Remove: 'Remove' };
+const CD_PLURAL: Record<string, string> = { passive: 'Antennas', air: 'Active antennas (AAU)', radio: 'Radios', pipe: 'Mount pipes', sled: 'Roof sleds' };
+const CD_ORDER = ['passive', 'air', 'radio', 'pipe', 'sled'];
+const CD_PREVIEW_ROWS = 8;
+const cdRank = (k: string) => { const i = CD_ORDER.indexOf(k); return i < 0 ? 99 : i; };
+
+function CdDataCard({ cd, isRunning }: { cd: any; isRunning?: boolean }) {
+  const detectedFormats: Array<{ format: string; file_name: string; size_kb: number | null; on_disk: boolean; revision: string; status: string }> = cd.detected_formats ?? [];
+  const items: R[] = [...(cd.items ?? [])].sort((a, b) => cdRank(a.KIND) - cdRank(b.KIND) || String(a.SECTOR).localeCompare(String(b.SECTOR)) || (a.POSITION ?? 0) - (b.POSITION ?? 0));
+  const counts: Record<string, number> = {};
+  for (const it of items) { const k = CD_PLURAL[it.KIND] ?? 'Other'; counts[k] = (counts[k] ?? 0) + 1; }
+  const main = items.filter((it) => it.KIND !== 'pipe' && it.KIND !== 'sled');
+  const [expanded, setExpanded] = useState(false);
+  const shown = expanded ? main : main.slice(0, CD_PREVIEW_ROWS);
+  const how = String(cd.method ?? '').startsWith('DXF') ? 'Read from the CAD file' : 'Read from the drawing sheets';
+
+  return (
+    <Card style={{ flex: 1, minWidth: 320, borderColor: colors.primary, borderWidth: 1.5 }}>
+      <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: space(2) }}>
+        <Title style={{ fontSize: 16 }}>📐 Extraction of CD Drawing Data</Title>
+        <Row style={{ gap: space(1) }}>
+          <Badge text={cd.revision ?? 'REV 1'} color={colors.ok} />
+          <Badge text={isRunning ? 'EXTRACTION IN PROGRESS...' : how} color={colors.primary} />
+        </Row>
+      </Row>
+
+      {isRunning ? (
+        <View style={{ marginBottom: space(2), padding: space(2), backgroundColor: '#EFF6FF', borderRadius: 8, borderWidth: 1, borderColor: colors.primary }}>
+          <Row style={{ alignItems: 'center', gap: space(1) }}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.primary }}>Reading the construction drawings...</Text>
+          </Row>
+        </View>
+      ) : null}
+
+      {/* 1. Data Format Check: the real drawing files found for this site */}
+      <View style={{ marginBottom: space(2), padding: space(2), backgroundColor: colors.surfaceAlt, borderRadius: 8 }}>
+        <Muted style={{ fontWeight: '700', color: colors.text, marginBottom: 6 }}>1. Data Format Check</Muted>
+        {detectedFormats.length > 0 ? (
+          detectedFormats.map((df, idx) => {
+            const used = df.status === 'CURRENT' || !df.status;
+            return (
+              <Row key={idx} style={{ justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4, borderBottomWidth: idx < detectedFormats.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
+                <Row style={{ alignItems: 'center', gap: space(1), flex: 1, flexWrap: 'wrap' }}>
+                  <Badge text={`.${df.format}`} color={used ? colors.primary : colors.muted} />
+                  <Muted style={{ fontSize: 12, flex: 1 }} numberOfLines={1}>{df.file_name}</Muted>
+                </Row>
+                <Muted style={{ fontSize: 11 }}>{used ? (df.size_kb != null ? `${df.size_kb} KB` : 'Registered') : (df.status === 'SUPERSEDED' ? 'Older revision' : 'Not used')}</Muted>
+              </Row>
+            );
+          })
+        ) : (
+          <Muted style={{ fontSize: 12 }}>No drawing files detected yet.</Muted>
+        )}
+      </View>
+
+      {/* 2. Extracted CD Drawing Data: same layout as the drone card */}
+      <View style={{ padding: space(2), backgroundColor: colors.surfaceAlt, borderRadius: 8 }}>
+        <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: space(1) }}>
+          <Muted style={{ fontWeight: '700', color: colors.text }}>2. Extracted CD Drawing Data</Muted>
+          <Badge text={`${items.length} total`} color={colors.primary} />
+        </Row>
+
+        {Object.keys(counts).length > 0 ? (
+          <Row style={{ gap: space(1), flexWrap: 'wrap', marginBottom: space(1.5) }}>
+            {Object.entries(counts).map(([type, count]) => <Badge key={type} text={`${type}: ${count}`} color={colors.muted} />)}
+          </Row>
+        ) : null}
+
+        {shown.length > 0 ? (
+          <>
+            <View style={{ flexDirection: 'row', paddingVertical: 4, borderBottomWidth: 2, borderBottomColor: colors.border, marginBottom: 2 }}>
+              <Muted style={{ flex: 2, fontWeight: '700', fontSize: 11 }}>Equipment / Model</Muted>
+              <Muted style={{ width: 56, fontWeight: '700', fontSize: 11, textAlign: 'center' }}>Sector</Muted>
+              <Muted style={{ width: 52, fontWeight: '700', fontSize: 11, textAlign: 'center' }}>Ht (ft)</Muted>
+              <Muted style={{ width: 72, fontWeight: '700', fontSize: 11, textAlign: 'center' }}>Status</Muted>
+            </View>
+            {shown.map((it, idx) => (
+              <View key={it.LINE_ID ?? idx} style={{ flexDirection: 'row', paddingVertical: 5, borderBottomWidth: idx < shown.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
+                <View style={{ flex: 2 }}>
+                  <Muted style={{ fontWeight: '600', color: colors.text, fontSize: 12 }}>{CD_KIND[it.KIND] ?? 'Equipment'}{it.MODEL_TEXT ? ` — ${it.MODEL_TEXT}` : ''}</Muted>
+                  {it.AZIMUTH_DEG != null ? <Muted style={{ fontSize: 11 }}>{`Az ${it.AZIMUTH_DEG}°`}</Muted> : null}
+                </View>
+                <Muted style={{ width: 56, textAlign: 'center', fontSize: 12 }}>{it.SECTOR ? `${it.SECTOR}${it.POSITION != null ? `-P${it.POSITION}` : ''}` : '—'}</Muted>
+                <Muted style={{ width: 52, textAlign: 'center', fontSize: 12 }}>{it.RAD_CENTER_FT != null ? it.RAD_CENTER_FT : '—'}</Muted>
+                <View style={{ width: 72, alignItems: 'center' }}>
+                  <Badge text={CD_STATUS[it.STATUS] ?? it.STATUS ?? '—'} color={it.STATUS === 'New' ? colors.ok : it.STATUS === 'Remove' ? colors.danger : colors.muted} />
+                </View>
+              </View>
+            ))}
+            {main.length > CD_PREVIEW_ROWS ? (
+              <Pressable onPress={() => setExpanded((v) => !v)} accessibilityRole="button" style={{ marginTop: space(1), paddingVertical: 6 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.primary }}>
+                  {expanded ? 'Show less' : `+ ${main.length - CD_PREVIEW_ROWS} more antennas and radios — tap to show`}
+                </Text>
+              </Pressable>
+            ) : null}
+            {cd.trunk?.SPECIFIED_FT ? <Muted style={{ fontSize: 12, marginTop: space(1) }}>{`Cable run on the drawings: ${cd.trunk.SPECIFIED_FT} ft`}</Muted> : null}
+          </>
+        ) : isRunning ? (
+          <Muted style={{ fontSize: 12 }}>Reading equipment from the drawings...</Muted>
+        ) : (
+          <Muted style={{ fontSize: 12 }}>No equipment was read. Check that a construction drawing is available for this site.</Muted>
         )}
       </View>
     </Card>
@@ -367,13 +469,10 @@ function Extracted({ x, isRunning }: { x: any; isRunning?: boolean }) {
   };
 
   const cd = x.cd_extraction || {
-    formats: ['DXF', 'PDF'],
-    tools: [
-      { tool: 'ezdxf', format: '.dxf (CAD Model Space)', description: 'Reads CAD block entities (ANT_PANEL, AAU, RRU, PIPE, SLED) with 99% precision.' },
-      { tool: 'PyMuPDF + OpenCV + Tesseract OCR', format: '.pdf (Drawing Sheets)', description: 'Renders vector sheets, removes schedule gridlines via OpenCV morphology.' },
-    ],
+    formats: [],
+    detected_formats: [],
     revision: 'REV 1',
-    method: 'DXF (CAD Model Blocks)',
+    method: 'DXF',
     items_count: x.config_lines?.filter((c: R) => c.SOURCE === 'CD').length ?? 0,
     items: x.config_lines?.filter((c: R) => c.SOURCE === 'CD') ?? [],
   };
@@ -392,97 +491,8 @@ function Extracted({ x, isRunning }: { x: any; isRunning?: boolean }) {
         {/* Card 1: Extraction of Drone Data — shows format check and identified objects only */}
         <DroneDataCard drone={drone} isRunning={isRunning} />
 
-        {/* Card 2: Extraction of CD Drawings Data */}
-        <Card style={{ flex: 1, minWidth: 320, borderColor: colors.primary, borderWidth: 1.5 }}>
-          <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: space(2) }}>
-            <Title style={{ fontSize: 16 }}>📐 Extraction of CD Drawings Data</Title>
-            <Row style={{ gap: space(1) }}>
-              <Badge text={`${cd.revision ?? 'REV 1'} (LATEST)`} color={colors.ok} />
-              <Badge
-                text={isRunning ? 'EXTRACTION IN PROGRESS...' : (cd.method ?? 'CAD BLOCKS')}
-                color={colors.primary}
-              />
-            </Row>
-          </Row>
-
-          {/* In-progress status banner */}
-          {isRunning ? (
-            <View style={{ marginBottom: space(2), padding: space(2), backgroundColor: '#EFF6FF', borderRadius: 8, borderWidth: 1, borderColor: colors.primary }}>
-              <Row style={{ alignItems: 'center', gap: space(1) }}>
-                <ActivityIndicator size="small" color={colors.primary} />
-                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.primary }}>Parsing CD Drawing Blocks (.dxf) & Schedules (.pdf)...</Text>
-              </Row>
-              <Muted style={{ fontSize: 12, marginTop: 4 }}>
-                Extracting antenna layout vectors, block attributes, and cable schedule tables in the background...
-              </Muted>
-            </View>
-          ) : null}
-
-          {/* 1. Data Format Check */}
-          <View style={{ marginBottom: space(2), padding: space(2), backgroundColor: colors.surfaceAlt, borderRadius: 8 }}>
-            <Muted style={{ fontWeight: '700', color: colors.text, marginBottom: 4 }}>1. Data Format Check (.dxf, .pdf)</Muted>
-            <Muted style={{ fontSize: 12, marginBottom: 6 }}>Scans AutoCAD vector geometry, layer tables, and PDF sheets:</Muted>
-            <Row style={{ gap: space(1), flexWrap: 'wrap' }}>
-              {(cd.formats ?? []).map((fmt: string) => (
-                <Badge
-                  key={fmt}
-                  text={fmt === 'DXF' ? `.${fmt} (CAD Model Space)` : fmt === 'PDF' ? `.${fmt} (Drawing Sheets)` : `.${fmt}`}
-                  color={colors.primary}
-                />
-              ))}
-            </Row>
-          </View>
-
-          {/* 2. Best Extraction Tools Applied */}
-          <View style={{ marginBottom: space(2), padding: space(2), backgroundColor: colors.surfaceAlt, borderRadius: 8 }}>
-            <Muted style={{ fontWeight: '700', color: colors.text, marginBottom: 6 }}>2. Best Extraction Tools Applied</Muted>
-            {(cd.tools ?? []).map((t: any, idx: number) => (
-              <View key={idx} style={{ marginBottom: space(1), paddingBottom: space(1), borderBottomWidth: idx < cd.tools.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
-                <Row style={{ alignItems: 'center', gap: space(1), marginBottom: 2 }}>
-                  <Badge text={t.tool} color={colors.primary} />
-                  <Muted style={{ fontWeight: '600', color: colors.text }}>{t.format}</Muted>
-                </Row>
-                <Muted style={{ fontSize: 12 }}>{t.description}</Muted>
-              </View>
-            ))}
-          </View>
-
-          {/* 3. Extracted CD Drawing Data */}
-          <View style={{ padding: space(2), backgroundColor: colors.surfaceAlt, borderRadius: 8 }}>
-            <Muted style={{ fontWeight: '700', color: colors.text, marginBottom: space(1) }}>3. Extracted CD Drawing Data & Progress Summary</Muted>
-            <Row style={{ marginBottom: space(1) }}>
-              <Stat label="Revision" value={cd.revision ?? 'REV 1'} />
-              <Stat label="Precision" value="99% Direct" color={colors.ok} />
-              <Stat label="Drawn Lines" value={cd.items_count} />
-              {cd.trunk?.RUN_LENGTH_FT ? <Stat label="Trunk Run" value={`${cd.trunk.RUN_LENGTH_FT} ft`} /> : null}
-            </Row>
-
-            <Muted style={{ fontWeight: '600', color: colors.text, marginTop: space(1), marginBottom: 4 }}>Sample Drawn Equipment ({Math.min(5, (cd.items ?? []).length)} of {cd.items_count}):</Muted>
-            {(cd.items ?? []).slice(0, 5).map((item: R, idx: number) => (
-              <Row key={item.LINE_ID ?? idx} style={{ justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                <View style={{ flex: 1 }}>
-                  <Muted style={{ color: colors.text, fontWeight: '600' }}>{`Sector ${item.SECTOR ?? '-'}${item.POSITION ? ` Pos ${item.POSITION}` : ''}: ${item.MODEL_TEXT || item.CATALOG_KEY}`}</Muted>
-                  <Muted style={{ fontSize: 12 }}>{`${item.KIND ?? 'equipment'} • ${item.STATUS ?? 'Existing'}${item.RAD_CENTER_FT ? ` • RAD ${item.RAD_CENTER_FT} ft` : ''}${item.AZIMUTH_DEG != null ? ` • Az ${item.AZIMUTH_DEG}°` : ''}`}</Muted>
-                </View>
-                <Badge text={item.CONFIDENCE ? `${Math.round(item.CONFIDENCE * 100)}%` : '99%'} color={colors.ok} />
-              </Row>
-            ))}
-          </View>
-        </Card>
-      </View>
-
-      {/* Confirmation of Structured Data Storage in Local DB */}
-      <View style={{ marginVertical: space(1.5), padding: space(2), backgroundColor: colors.surfaceAlt, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}>
-        <Row style={{ alignItems: 'center', gap: space(1) }}>
-          <Text style={{ fontSize: 16 }}>💾</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Extracted Data Persisted in Structured Format</Text>
-            <Muted style={{ fontSize: 12, marginTop: 2 }}>
-              All extracted engineering values are structured and stored in the local SQLite database (<Text style={{ fontFamily: 'monospace' }}>CORE.EXTRACTED_COMPARISON_RECORD</Text>) for cross-document consistency checks.
-            </Muted>
-          </View>
-          <Badge text="STORED IN LOCAL DB" color={colors.ok} />
-        </Row>
+        {/* Card 2: Extraction of CD Drawing Data (same layout as the drone card) */}
+        <CdDataCard cd={cd} isRunning={isRunning} />
       </View>
 
       {/* Low-confidence / reviewable values section */}
