@@ -6,6 +6,7 @@ import { Platform, Pressable, RefreshControl, ScrollView, Text, View } from 'rea
 import { colors, shadow, space } from '../../components/theme';
 import { Badge, Button, Card, Chips, ErrorView, Hero, Icon, IconBadge, Muted, Row, s } from '../../components/ui';
 import { api, ApiError } from '../../lib/api';
+import { useAuth } from '../../lib/auth';
 import { computeFileSha256 } from '../../lib/hash';
 import { getLogger } from '../../lib/logger';
 import { Row as R } from '../../lib/types';
@@ -66,7 +67,9 @@ function Step({ n, title, hint, children }: { n: number; title: string; hint?: s
 }
 
 export default function SharePoint() {
-  const sites = useApi<{ location: string; sites: R[] }>('/sharepoint/sites');
+  const { can } = useAuth();
+  const isAdmin = can('ADMIN');
+  const sites = useApi<{ location: string; sites: R[] }>(isAdmin ? '/sharepoint/sites' : null);
   const [siteId, setSiteId] = useState<string | null>(null);
   const [type, setType] = useState<T>('AUTO');
   const [showType, setShowType] = useState(false);
@@ -76,8 +79,18 @@ export default function SharePoint() {
   const [results, setResults] = useState<Result[]>([]);
   const [error, setError] = useState<ApiError | null>(null);
   const [hover, setHover] = useState(false);
-  const files = useApi<{ files: R[] }>(siteId ? `/sharepoint/sites/${siteId}/files` : null);
+  const files = useApi<{ files: R[] }>(isAdmin && siteId ? `/sharepoint/sites/${siteId}/files` : null);
   const dropRef = useRef<any>(null);
+
+  if (!isAdmin) {
+    return (
+      <View style={[s.screen, { alignItems: 'center', justifyContent: 'center', padding: space(8) }]}>
+        <IconBadge name="lock" color={colors.muted} size={56} />
+        <Text style={{ fontWeight: '800', fontSize: 18, color: colors.text, marginTop: space(3) }}>Administrators only</Text>
+        <Muted>SharePoint document library access is restricted to administrators only and is not accessible to Scopers.</Muted>
+      </View>
+    );
+  }
 
   const selected = sites.data?.sites.find((x) => x.site_id === siteId) ?? null;
   const grouped = useMemo(() => {
@@ -129,7 +142,7 @@ export default function SharePoint() {
           updatedFrom: updFrom,
           diffSummary: diffSum,
           additions: additionsList,
-          replace: isDup || isUpd,
+          replace: isUpd, // ONLY files with changes can be replaced; duplicate (same data) gives message already exists
         };
       })
     );
@@ -170,7 +183,7 @@ export default function SharePoint() {
         if (type !== 'AUTO') form.append('doc_type', type);
         if (f.replace) {
           form.append('action', 'REPLACE');
-          const target = f.duplicateOf || f.updatedFrom;
+          const target = f.updatedFrom || f.duplicateOf;
           if (target) form.append('replace_file', target);
         }
         if (Platform.OS === 'web' && f.file) form.append('file', f.file, f.name);
@@ -185,9 +198,9 @@ export default function SharePoint() {
 
         let msg = `Saved in ${res.folder}`;
         if (wasReplaced) {
-          msg = `Replaced existing file "${dupName || updName || f.name}" in ${res.folder}`;
+          msg = `Replaced existing file "${updName || dupName || f.name}" in ${res.folder}`;
         } else if (isDup) {
-          msg = `Duplicate document detected! Identical content to "${dupName}". Saved in ${res.folder}.`;
+          msg = `Already exists: File with identical data already exists as "${dupName}".`;
         } else if (isUpd) {
           msg = `Updated document saved in ${res.folder} (based on ${updName})`;
         }
@@ -289,16 +302,16 @@ export default function SharePoint() {
                             <Text style={{ color: colors.text, fontWeight: '700' }} numberOfLines={1}>
                               {f.name}
                             </Text>
-                            {isDup ? <Badge text="DUPLICATE" color={colors.warn} /> : null}
-                            {isUpd ? <Badge text="UPDATED" color="#2563EB" /> : null}
+                            {isDup ? <Badge text="ALREADY EXISTS" color={colors.warn} /> : null}
+                            {isUpd ? <Badge text="CHANGES DETECTED" color="#2563EB" /> : null}
                           </Row>
                           {isDup ? (
                             <Text style={{ fontSize: 12, color: '#B45309', fontWeight: '600', marginTop: 2 }}>
-                              ⚠️ Duplicate data detected (identical to &quot;{f.duplicateOf}&quot;)
+                              ⚠️ File already exists with identical data (matches &quot;{f.duplicateOf}&quot;)
                             </Text>
                           ) : isUpd ? (
                             <Text style={{ fontSize: 12, color: '#1E40AF', fontWeight: '600', marginTop: 2 }}>
-                              ✨ Contains data from &quot;{f.updatedFrom}&quot; with new additions ({f.diffSummary})
+                              ✨ Changes detected compared to &quot;{f.updatedFrom}&quot; ({f.diffSummary || 'modified content'})
                             </Text>
                           ) : f.hash ? (
                             <Text style={{ fontSize: 11, fontFamily: 'monospace', color: colors.muted, marginTop: 2 }}>
@@ -312,41 +325,23 @@ export default function SharePoint() {
                         </Pressable>
                       </View>
 
-                      {/* Replace choice prompt for duplicates */}
+                      {/* Same data detected: Already exists banner - NO replace option */}
                       {isDup ? (
-                        <Pressable
-                          onPress={() => setPicked((p) => p.map((x) => (x.name === f.name ? { ...x, replace: !x.replace } : x)))}
+                        <View
                           style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            gap: space(2),
                             backgroundColor: '#FEF3C7',
                             padding: space(2),
                             borderRadius: 6,
                             marginTop: space(1),
                           }}
                         >
-                          <View
-                            style={{
-                              width: 18,
-                              height: 18,
-                              borderRadius: 4,
-                              borderWidth: 1.5,
-                              borderColor: '#D97706',
-                              backgroundColor: f.replace ? '#D97706' : '#FFFFFF',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            {f.replace ? <Icon name="check" size={12} color="#FFFFFF" /> : null}
-                          </View>
-                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#92400E', flex: 1 }}>
-                            Replace existing file &quot;{f.duplicateOf}&quot; with this file
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#92400E' }}>
+                            File already exists. No changes found to replace.
                           </Text>
-                        </Pressable>
+                        </View>
                       ) : null}
 
-                      {/* Replace choice prompt for updated files */}
+                      {/* Changes detected: Replace choice prompt ONLY for files with changes */}
                       {isUpd ? (
                         <Pressable
                           onPress={() => setPicked((p) => p.map((x) => (x.name === f.name ? { ...x, replace: !x.replace } : x)))}
@@ -375,7 +370,7 @@ export default function SharePoint() {
                             {f.replace ? <Icon name="check" size={12} color="#FFFFFF" /> : null}
                           </View>
                           <Text style={{ fontSize: 12, fontWeight: '700', color: '#1E40AF', flex: 1 }}>
-                            Replace old data &quot;{f.updatedFrom}&quot; with this updated data
+                            Replace existing file &quot;{f.updatedFrom}&quot; with this updated file
                           </Text>
                         </Pressable>
                       ) : null}

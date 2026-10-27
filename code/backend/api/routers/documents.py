@@ -44,11 +44,13 @@ def check_hash(site_id: str, hash: str, user: dict = Depends(current_user)):
     source = "DOCUMENT" if dup_docs else "UPLOAD" if dup_uploads else None
     return {
         "exists": bool(dup_name),
+        "already_exists": bool(dup_name),
         "duplicate_of": dup_name,
         "doc_type": dup_type,
         "source": source,
         "hash": h,
-        "warning": f"Duplicate document detected! Identical file content already exists as '{dup_name}' (SHA-256 match)." if dup_name else None
+        "message": f"Already exists! Identical file content already exists as '{dup_name}'." if dup_name else None,
+        "warning": f"Already exists: Duplicate document detected with identical content as '{dup_name}' (SHA-256 match)." if dup_name else None
     }
 
 
@@ -101,46 +103,46 @@ async def upload(site_id: str, doc_type: str = Form(...), file: UploadFile = Fil
         if d_name:
             inspection.status = "DUPLICATE"
             inspection.existing_file = d_name
-            inspection.message = (
-                f"Duplicate data detected! The content of this file is identical to existing file '{d_name}'. "
-                f"Do you want to replace it with the existing file?"
-            )
-            inspection.warning = f"Identical document content already exists on this site as '{d_name}' (SHA-256: {digest[:12]}...)."
+            inspection.message = f"Already exists! A file with identical content already exists as '{d_name}'."
+            inspection.warning = f"Already exists: Identical document content already exists on this site as '{d_name}' (SHA-256: {digest[:12]}...)."
 
-    # 1. Duplicate data check
+    # 1. Duplicate data check (Same data -> Already exists, no replace option)
     if inspection.status == "DUPLICATE" and not confirm_duplicate and not is_replace:
         target_name = inspection.existing_file or name
-        warning_msg = f"Identical document content already exists on this site as '{target_name}' (SHA-256: {digest[:12]}...)."
+        warning_msg = f"Already exists: Identical document content already exists on this site as '{target_name}' (SHA-256: {digest[:12]}...)."
         raise Conflict(
-            f"Duplicate document detected! This file has identical content (SHA-256: {digest[:12]}...) to existing document '{target_name}'. "
-            f"Please confirm to proceed with uploading this duplicate.",
+            f"Already exists! This file has identical content (SHA-256: {digest[:12]}...) to existing document '{target_name}'.",
             details={
                 "status": "DUPLICATE",
                 "is_duplicate": True,
+                "already_exists": True,
+                "can_replace": False,
                 "duplicate_of": target_name,
                 "file_hash": digest,
                 "file_name": name,
                 "doc_type": doc_type,
                 "warning": warning_msg,
-                "message": f"Duplicate data detected! The content inside this file is identical to '{target_name}'. Do you want to replace it with the existing file?"
+                "message": f"Already exists! The content inside this file is identical to '{target_name}'. Upload is not required.",
             }
         )
 
-    # 2. Updated data check (old data with new additions)
+    # 2. Updated data check (file uploaded with changes -> Show replace file option)
     if inspection.status == "UPDATED" and not confirm_update and not is_replace:
         target_name = inspection.existing_file or name
         raise Conflict(
-            f"Updated data detected! This file contains existing data from '{target_name}' with {inspection.added_count} new additions. "
-            f"Do you want to replace old data with this updated data?",
+            f"Changes detected! This file contains changes compared to '{target_name}'. "
+            f"Do you want to replace '{target_name}' with this file?",
             details={
                 "status": "UPDATED",
                 "is_updated": True,
+                "already_exists": False,
+                "can_replace": True,
                 "updated_from": target_name,
                 "file_hash": digest,
                 "file_name": name,
                 "doc_type": doc_type,
-                "warning": f"Updated data detected! File contains previous content from '{target_name}' with {inspection.added_count} new additions.",
-                "message": f"Replace old data from '{target_name}' with this updated data?",
+                "warning": f"Changes detected! File contains modifications/updates compared to '{target_name}'.",
+                "message": f"Replace existing file '{target_name}' with this updated file?",
                 "diff": inspection.to_dict()["diff"],
             }
         )
