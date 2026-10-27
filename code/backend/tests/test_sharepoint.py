@@ -19,11 +19,23 @@ def env(tmp_path_factory):
     load_reference_tables(r)
     set_repository(r)
     root = tmp_path_factory.mktemp("sharepoint")
+    # the store also mirrors sites into paths.sites_dir (the pipeline's input folder): keep that in the throw-away folder too
+    import os
+
+    from scopeiq.config import reset_settings_cache
+    old_sites = os.environ.get("SCOPEIQ__PATHS__SITES_DIR")
+    os.environ["SCOPEIQ__PATHS__SITES_DIR"] = str(tmp_path_factory.mktemp("sites_dir"))
+    reset_settings_cache()
     store = sp.LocalSharePoint(root, "Ericsson-Scoping/Sites")
     sp.set_store(store)
     yield {"root": root, "store": store, "repo": r}
     sp.set_store(None)
     set_repository(previous)
+    if old_sites is None:
+        os.environ.pop("SCOPEIQ__PATHS__SITES_DIR", None)
+    else:
+        os.environ["SCOPEIQ__PATHS__SITES_DIR"] = old_sites
+    reset_settings_cache()
 
 
 @pytest.fixture(scope="module")
