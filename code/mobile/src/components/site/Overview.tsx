@@ -75,6 +75,7 @@ export function Overview({ d }: { d: SiteDetail; reload: () => void }) {
             v={`${st.STRUCTURE_TYPE ?? '-'} ${st.HEIGHT_FT ? `${st.HEIGHT_FT} ft` : ''} ${st.STRUCTURE_OWNER ? `· ${st.STRUCTURE_OWNER}` : ''}`}
           />
           <KV k="Project" v={`${st.PROJECT_NAME ?? '-'} (${st.PROJECT_TYPE ?? '-'})`} />
+          <KV k="Coordinates" v={st.LATITUDE && st.LONGITUDE ? `${st.LATITUDE}, ${st.LONGITUDE}` : null} />
           <KV k="CX Service Provider" v={st.CX_SP ?? '-'} />
           <KV k="Current BOM Revision" v={st.CURRENT_BOM_REV ?? '-'} />
           <KV k="Last Pipeline Run" v={run ? `${when(run.STARTED_AT)} · ${run.STATUS}` : 'Never run'} />

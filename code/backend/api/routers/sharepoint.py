@@ -3,6 +3,7 @@ site's folder. The library behind it is chosen by `sharepoint.provider` (local f
 scopeiq/integrations/sharepoint.py."""
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
@@ -17,17 +18,250 @@ from scopeiq.integrations.sharepoint import TYPE_FOLDERS, detect_doc_type, get_s
 
 router = APIRouter(tags=["sharepoint"])
 
+STOP_WORDS = {"AND", "OF", "THE", "&"}
+
+
+def extract_two_letter_code(name: str) -> str:
+    """Extract a 2-letter uppercase code from a state or city name:
+    - 2+ words: first letter of each of the first two words (e.g. 'Himachal Pradesh' -> 'HP', 'New York' -> 'NY')
+    - 1 word: first two letters (e.g. 'Texas' -> 'TE', 'Dallas' -> 'DA')
+    - Special user-specified example: 'Una' -> 'UA'
+    - If already a 2-letter uppercase code (e.g. 'HP', 'TX'), preserves it.
+    """
+    if not name:
+        return "XX"
+    raw = name.strip()
+    clean_upper = re.sub(r"[^A-Za-z0-9]", "", raw).upper()
+
+    # User explicit example: Himachal Pradesh and Una -> HPUA0001
+    if clean_upper == "UNA":
+        return "UA"
+
+    # Already a 2-letter uppercase code
+    if len(clean_upper) == 2 and raw.isupper():
+        return clean_upper
+
+    parts = [re.sub(r"[^A-Za-z0-9]", "", w) for w in re.split(r"[\s\-_/]+", raw)]
+    words = [w for w in parts if w]
+
+    # Ignore stop words if 3 or more words (e.g. "Jammu and Kashmir" -> ["Jammu", "Kashmir"])
+    if len(words) >= 3:
+        meaningful = [w for w in words if w.upper() not in STOP_WORDS]
+        if len(meaningful) >= 2:
+            words = meaningful
+
+    if not words:
+        return "XX"
+
+    if len(words) >= 2:
+        return (words[0][0] + words[1][0]).upper()
+    else:
+        w = words[0].upper()
+        if len(w) >= 2:
+            return w[:2]
+        return (w + "X")[:2]
+
+
+def generate_site_prefix(state: str, city: str) -> str:
+    """Generate 4-letter prefix: 2 letters from state + 2 letters from city."""
+    s = extract_two_letter_code(state)
+    c = extract_two_letter_code(city)
+    return (s + c).upper()
+
+
+def get_next_site_id(state: str = "", city: str = "", prefix: str = "") -> dict:
+    """Compute the 4-letter prefix and the next 4-digit sequence (e.g. 0001, 0002)."""
+    pref = (prefix or "").strip().upper()
+    if not pref and (state or city):
+        pref = generate_site_prefix(state, city)
+
+    if not pref or len(pref) != 4 or not pref.isalpha():
+        return {"site_id": "", "prefix": pref, "sequence": 0}
+
+    all_ids: set[str] = set()
+    try:
+        store = get_store()
+        all_ids.update(store.list_site_ids())
+    except Exception:
+        pass
+
+    try:
+        r = repo()
+        for row in r.select("CORE.SITE"):
+            sid = row.get("SITE_ID")
+            if sid:
+                all_ids.add(str(sid).strip().upper())
+    except Exception:
+        pass
+
+    pattern = re.compile(rf"^{re.escape(pref)}(\d{{4}})$")
+    existing_seqs: list[int] = []
+    for sid in all_ids:
+        m = pattern.match(sid)
+        if m:
+            existing_seqs.append(int(m.group(1)))
+
+    next_seq = max(existing_seqs, default=0) + 1
+    next_site_id = f"{pref}{next_seq:04d}"
+    return {
+        "site_id": next_site_id,
+        "prefix": pref,
+        "sequence": next_seq,
+    }
+
+
+
+
+US_STATES = {
+    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA",
+    "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+    "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT",
+    "VA", "WA", "WV", "WI", "WY", "DC",
+}
+STATE_NAME_TO_CODE = {
+    "ALABAMA": "AL", "ALASKA": "AK", "ARIZONA": "AZ", "ARKANSAS": "AR", "CALIFORNIA": "CA",
+    "COLORADO": "CO", "CONNECTICUT": "CT", "DELAWARE": "DE", "FLORIDA": "FL", "GEORGIA": "GA",
+    "HAWAII": "HI", "IDAHO": "ID", "ILLINOIS": "IL", "INDIANA": "IN", "IOWA": "IA",
+    "KANSAS": "KS", "KENTUCKY": "KY", "LOUISIANA": "LA", "MAINE": "ME", "MARYLAND": "MD",
+    "MASSACHUSETTS": "MA", "MICHIGAN": "MI", "MINNESOTA": "MN", "MISSISSIPPI": "MS", "MISSOURI": "MO",
+    "MONTANA": "MT", "NEBRASKA": "NE", "NEVADA": "NV", "NEW HAMPSHIRE": "NH", "NEW JERSEY": "NJ",
+    "NEW MEXICO": "NM", "NEW YORK": "NY", "NORTH CAROLINA": "NC", "NORTH DAKOTA": "ND", "OHIO": "OH",
+    "OKLAHOMA": "OK", "OREGON": "OR", "PENNSYLVANIA": "PA", "RHODE ISLAND": "RI", "SOUTH CAROLINA": "SC",
+    "SOUTH DAKOTA": "SD", "TENNESSEE": "TN", "TEXAS": "TX", "UTAH": "UT", "VERMONT": "VT",
+    "VIRGINIA": "VA", "WASHINGTON": "WA", "WEST VIRGINIA": "WV", "WISCONSIN": "WI", "WYOMING": "WY",
+    "DISTRICT OF COLUMBIA": "DC",
+}
+
+_GEO_CACHE: dict[tuple[float, float], dict] = {}
+
+
+def reverse_geocode(lat: float, lon: float) -> dict:
+    key = (round(lat, 5), round(lon, 5))
+    if key in _GEO_CACHE:
+        return _GEO_CACHE[key]
+
+    # 1. OpenStreetMap Nominatim
+    try:
+        import httpx
+        resp = httpx.get(
+            "https://nominatim.openstreetmap.org/reverse",
+            params={"format": "jsonv2", "lat": lat, "lon": lon, "addressdetails": 1},
+            headers={"User-Agent": "ScopeIQ/1.0 (telecom-scoping-app)"},
+            timeout=4.0,
+        )
+        if resp.status_code == 200:
+            d = resp.json()
+            addr = d.get("address", {})
+            city = (addr.get("city") or addr.get("town") or addr.get("village") or
+                    addr.get("municipality") or addr.get("hamlet") or addr.get("suburb") or
+                    addr.get("county") or "").strip()
+            raw_state = (addr.get("state") or addr.get("province") or addr.get("region") or
+                         addr.get("state_district") or "").strip()
+            iso = addr.get("ISO3166-2-lvl4", "")
+            state_code = ""
+            if iso and "-" in iso:
+                state_code = iso.split("-")[1].upper()
+            elif raw_state.upper() in STATE_NAME_TO_CODE:
+                state_code = STATE_NAME_TO_CODE[raw_state.upper()]
+            elif len(raw_state) == 2:
+                state_code = raw_state.upper()
+
+            exact_state = raw_state or state_code
+
+            res = {
+                "city": city,
+                "state": exact_state,
+                "state_code": state_code,
+                "state_name": exact_state,
+                "country": addr.get("country", "").strip(),
+                "zip": addr.get("postcode", "").strip(),
+                "county": addr.get("county", "").strip(),
+                "address": addr.get("road", "").strip(),
+                "display_name": d.get("display_name", ""),
+                "latitude": lat,
+                "longitude": lon,
+            }
+            _GEO_CACHE[key] = res
+            return res
+    except Exception:
+        pass
+
+    # 2. BigDataCloud Fallback
+    try:
+        import httpx
+        resp = httpx.get(
+            "https://api.bigdatacloud.net/data/reverse-geocode-client",
+            params={"latitude": lat, "longitude": lon, "localityLanguage": "en"},
+            timeout=3.5,
+        )
+        if resp.status_code == 200:
+            d = resp.json()
+            city = (d.get("city") or d.get("locality") or "").strip()
+            raw_state = (d.get("principalSubdivision") or "").strip()
+            sub_code = (d.get("principalSubdivisionCode") or "").strip()
+            state_code = ""
+            if sub_code and "-" in sub_code:
+                state_code = sub_code.split("-")[1].upper()
+            elif sub_code:
+                state_code = sub_code.upper()
+
+            exact_state = raw_state or state_code
+
+            res = {
+                "city": city,
+                "state": exact_state,
+                "state_code": state_code,
+                "state_name": exact_state,
+                "country": d.get("countryName", "").strip(),
+                "zip": d.get("postcode", "").strip(),
+                "county": "",
+                "display_name": f"{city}, {exact_state}".strip(", "),
+                "latitude": lat,
+                "longitude": lon,
+            }
+            _GEO_CACHE[key] = res
+            return res
+    except Exception:
+        pass
+
+    return {"city": "", "state": "", "state_name": "", "latitude": lat, "longitude": lon, "error": "Location could not be resolved from coordinates"}
+
 
 class SiteIn(BaseModel):
-    site_id: str = Field(description="4 letters + 4 digits, e.g. TXDA1024")
+    site_id: str = Field(default="", description="4 letters + 4 digits, e.g. TXDA1024. If empty or AUTO, auto-generated from State and City.")
     site_name: str = Field(min_length=2, max_length=120)
     city: str = Field(min_length=1, max_length=80)
-    state: str = Field(min_length=2, max_length=2)
+    state: str = Field(min_length=1, max_length=120, description="Exact state or province name")
     stream: Literal["BOM", "DESIGN", "DEPLOYMENT"] = "BOM"
     structure_type: Literal["Monopole", "Self-support tower", "Guyed tower", "Rooftop"] = "Monopole"
     height_ft: float | None = Field(default=None, ge=0, le=2000)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
     address: str = ""
     market: str = ""
+    zip: str = ""
+
+
+@router.get("/admin/geocode/reverse")
+def reverse_geocode_api(lat: float, lon: float, user: dict = Depends(require("ADMIN"))):
+    """Reverse geocode coordinates into suggested city, exact state name, postal code, and formatted location."""
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        raise ValidationError("Latitude must be between -90 and 90, Longitude between -180 and 180.")
+    geo = reverse_geocode(lat, lon)
+    out = dict(geo)
+    exact_state = out.get("state_name") or out.get("state") or ""
+    exact_city = out.get("city") or ""
+    if exact_state or exact_city:
+        next_info = get_next_site_id(state=exact_state, city=exact_city)
+        out["suggested_site_id"] = next_info["site_id"]
+        out["site_id_prefix"] = next_info["prefix"]
+    return out
+
+
+@router.get("/admin/sites/next-id")
+def next_site_id_endpoint(state: str = "", city: str = "", prefix: str = "", user: dict = Depends(require("ADMIN"))):
+    """Generates the next sequential Site ID based on state and city (e.g. 'Himachal Pradesh' + 'Una' -> 'HPUA0001')."""
+    return get_next_site_id(state=state, city=city, prefix=prefix)
 
 
 @router.get("/sharepoint/status")
@@ -63,13 +297,23 @@ def list_sites(user: dict = Depends(require("ADMIN"))):
 @router.post("/admin/sites")
 def create_site(body: SiteIn, user: dict = Depends(require("ADMIN"))):
     """Admin: create a site. This creates its folder tree in SharePoint and the site record, so the site shows up for uploads."""
-    sid = validate_site_id(body.site_id)
+    st = body.state.strip()
+    if not st:
+        raise ValidationError("State is required.")
+    raw_sid = (body.site_id or "").strip()
+    if not raw_sid or raw_sid.upper() == "AUTO":
+        next_info = get_next_site_id(state=st, city=body.city)
+        raw_sid = next_info["site_id"]
+        if not raw_sid:
+            raise ValidationError("Site ID could not be auto-generated. Please provide a 4-letter + 4-digit Site ID.")
+    sid = validate_site_id(raw_sid)
     store, r = get_store(), repo()
     if r.select("CORE.SITE", {"SITE_ID": sid}) or store.site_exists(sid):
         raise Conflict(f"Site {sid} already exists")
     folder = store.create_site_folder(sid)                      # SharePoint first: if it fails, no database row is left behind
     row = {"SITE_ID": sid, "SITE_NAME": body.site_name.strip(), "MARKET": body.market or get_settings().get("app.market", ""),
-           "CUSTOMER": get_settings().get("app.carrier", ""), "ADDRESS": body.address, "CITY": body.city.strip(), "STATE": body.state.upper(),
+           "CUSTOMER": get_settings().get("app.carrier", ""), "ADDRESS": body.address, "CITY": body.city.strip(), "STATE": st,
+           "ZIP": body.zip, "LATITUDE": body.latitude, "LONGITUDE": body.longitude,
            "STRUCTURE_TYPE": body.structure_type, "HEIGHT_FT": body.height_ft, "SITE_STATUS": "New", "STREAM": body.stream,
            "WORKFLOW_STATE": "ASSIGNED", "ASSIGNED_DATE": now_iso()[:10], "UPDATED_AT": now_iso(), "UPDATED_BY": user["sub"]}
     r.insert("CORE.SITE", [row])

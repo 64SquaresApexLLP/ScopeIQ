@@ -105,8 +105,9 @@ export default function SharePoint() {
       list.map(async (item) => {
         const hash = await computeFileSha256(item);
         const match = hash ? existing.find((ef: any) => ef.hash === hash) : null;
-        let isDup = Boolean(match);
-        let dupOf = match ? (match.name as string) : null;
+        const nameMatch = existing.find((ef: any) => ef.name?.toLowerCase() === item.name?.toLowerCase());
+        let isDup = Boolean(match || nameMatch);
+        let dupOf = match ? (match.name as string) : nameMatch ? (nameMatch.name as string) : null;
         let isUpd = false;
         let updFrom: string | null = null;
         let diffSum: string | null = null;
@@ -125,6 +126,7 @@ export default function SharePoint() {
                 dupOf = insp.duplicate_of || insp.existing_file || dupOf;
               } else if (insp.status === 'UPDATED') {
                 isUpd = true;
+                isDup = false;
                 updFrom = insp.updated_from || insp.existing_file;
                 diffSum = insp.diff?.summary;
                 additionsList = insp.diff?.additions || [];
@@ -142,7 +144,7 @@ export default function SharePoint() {
           updatedFrom: updFrom,
           diffSummary: diffSum,
           additions: additionsList,
-          replace: isUpd, // ONLY files with changes can be replaced; duplicate (same data) gives message already exists
+          replace: isUpd, // ONLY files with changes can be replaced; duplicate (same data) is blocked
         };
       })
     );
@@ -171,6 +173,9 @@ export default function SharePoint() {
     if (!r.canceled) addFiles(r.assets.map((a) => ({ name: a.name, size: a.size, uri: a.uri, mimeType: a.mimeType, file: a.file })));
   };
 
+  const uploadableFiles = picked.filter((f) => !f.isDuplicate && !f.duplicateOf);
+  const allDuplicates = picked.length > 0 && uploadableFiles.length === 0;
+
   const upload = async () => {
     if (!siteId || !picked.length) return;
     setBusy(true);
@@ -178,6 +183,19 @@ export default function SharePoint() {
     setError(null);
     const out: Result[] = [];
     for (const f of picked) {
+      if (f.isDuplicate || f.duplicateOf) {
+        // Do NOT upload same/duplicate file to the site
+        out.push({
+          name: f.name,
+          ok: false,
+          isDuplicate: true,
+          duplicateOf: f.duplicateOf || undefined,
+          hash: f.hash,
+          message: `Upload blocked: Same file already exists on this site ("${f.duplicateOf || f.name}").`,
+        });
+        setDone((n) => n + 1);
+        continue;
+      }
       try {
         const form = new FormData();
         if (type !== 'AUTO') form.append('doc_type', type);
@@ -296,18 +314,18 @@ export default function SharePoint() {
                       }}
                     >
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space(3) }}>
-                        <IconBadge name={fileIcon(f.name)} size={34} color={isDup ? colors.warn : isUpd ? '#2563EB' : undefined} />
+                        <IconBadge name={fileIcon(f.name)} size={34} color={isDup ? colors.danger : isUpd ? '#2563EB' : undefined} />
                         <View style={{ flex: 1 }}>
                           <Row style={{ alignItems: 'center', gap: space(2) }}>
                             <Text style={{ color: colors.text, fontWeight: '700' }} numberOfLines={1}>
                               {f.name}
                             </Text>
-                            {isDup ? <Badge text="ALREADY EXISTS" color={colors.warn} /> : null}
+                            {isDup ? <Badge text="ALREADY EXISTS · WILL NOT UPLOAD" color={colors.danger} /> : null}
                             {isUpd ? <Badge text="CHANGES DETECTED" color="#2563EB" /> : null}
                           </Row>
                           {isDup ? (
-                            <Text style={{ fontSize: 12, color: '#B45309', fontWeight: '600', marginTop: 2 }}>
-                              ⚠️ File already exists with identical data (matches &quot;{f.duplicateOf}&quot;)
+                            <Text style={{ fontSize: 12, color: colors.danger, fontWeight: '600', marginTop: 2 }}>
+                              ⚠️ File already exists with identical data (matches &quot;{f.duplicateOf}&quot;) — upload blocked
                             </Text>
                           ) : isUpd ? (
                             <Text style={{ fontSize: 12, color: '#1E40AF', fontWeight: '600', marginTop: 2 }}>
@@ -329,14 +347,16 @@ export default function SharePoint() {
                       {isDup ? (
                         <View
                           style={{
-                            backgroundColor: '#FEF3C7',
+                            backgroundColor: '#FEF2F2',
+                            borderWidth: 1,
+                            borderColor: '#FECACA',
                             padding: space(2),
                             borderRadius: 6,
                             marginTop: space(1),
                           }}
                         >
-                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#92400E' }}>
-                            File already exists. No changes found to replace.
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#B91C1C' }}>
+                            File already exists on this site. Same file will not be uploaded.
                           </Text>
                         </View>
                       ) : null}
@@ -380,27 +400,6 @@ export default function SharePoint() {
               </View>
             ) : null}
 
-            {picked.some((f) => f.isDuplicate || f.duplicateOf || f.isUpdated) ? (
-              <View
-                style={{
-                  backgroundColor: picked.some((f) => f.isUpdated) ? '#EFF6FF' : '#FFFBEB',
-                  borderWidth: 1,
-                  borderColor: picked.some((f) => f.isUpdated) ? '#BFDBFE' : '#FDE68A',
-                  borderRadius: 10,
-                  padding: space(3),
-                  marginTop: space(3),
-                  flexDirection: 'row',
-                  gap: space(2),
-                  alignItems: 'center',
-                }}
-              >
-                <Icon name="alert-triangle" size={18} color={picked.some((f) => f.isUpdated) ? '#2563EB' : colors.warn} />
-                <Text style={{ fontSize: 12.5, color: picked.some((f) => f.isUpdated) ? '#1E40AF' : '#92400E', flex: 1, lineHeight: 18 }}>
-                  <Text style={{ fontWeight: '700' }}>Notice:</Text> Review the duplicate or updated data files above. You can choose whether to replace existing files or keep both.
-                </Text>
-              </View>
-            ) : null}
-
             <Pressable onPress={() => setShowType((v) => !v)} style={{ marginTop: space(4), flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Icon name="sliders" size={14} color={colors.accent} />
               <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600' }}>Document type: {TYPES.find((t) => t.key === type)?.label}{type === 'AUTO' ? ' (from the file name)' : ''}</Text>
@@ -408,7 +407,21 @@ export default function SharePoint() {
             {showType ? <Chips<T> value={type} onChange={setType} options={TYPES.map((t) => ({ key: t.key, label: t.label }))} /> : null}
 
             <View style={{ marginTop: space(5) }}>
-              <Button title={busy ? `Uploading ${done}/${picked.length}...` : picked.length ? `Upload ${picked.length} file${picked.length === 1 ? '' : 's'} to ${siteId}` : `Upload to ${siteId}`} disabled={!picked.length || busy} onPress={upload} />
+              <Button
+                title={
+                  busy
+                    ? `Uploading ${done}/${uploadableFiles.length}...`
+                    : allDuplicates
+                    ? 'Cannot upload: identical file(s) already exist'
+                    : uploadableFiles.length < picked.length
+                    ? `Upload ${uploadableFiles.length} file${uploadableFiles.length === 1 ? '' : 's'} to ${siteId} (${picked.length - uploadableFiles.length} duplicate skipped)`
+                    : picked.length
+                    ? `Upload ${picked.length} file${picked.length === 1 ? '' : 's'} to ${siteId}`
+                    : `Upload to ${siteId}`
+                }
+                disabled={!uploadableFiles.length || busy}
+                onPress={upload}
+              />
             </View>
             {error ? <ErrorView error={error} /> : null}
 
@@ -418,17 +431,18 @@ export default function SharePoint() {
                   <Text style={{ fontWeight: '800', color: colors.text }}>
                     {okCount} of {results.length} uploaded
                   </Text>
-                  {dupCount > 0 ? (
-                    <Badge text={`${dupCount} duplicate warning${dupCount === 1 ? '' : 's'}`} color={colors.warn} />
+                  {results.some((r) => r.isDuplicate) ? (
+                    <Badge text={`${results.filter((r) => r.isDuplicate).length} duplicate${results.filter((r) => r.isDuplicate).length === 1 ? '' : 's'} blocked`} color={colors.danger} />
                   ) : null}
                 </Row>
                 {results.map((r) => {
                   const isWarn = r.ok && r.isDuplicate;
-                  const bg = !r.ok ? '#FEF2F2' : isWarn ? '#FFFBEB' : '#F0FBF4';
-                  const border = !r.ok ? '#FAD0D0' : isWarn ? '#FDE68A' : '#C6EBD3';
-                  const iconName = !r.ok ? 'x-circle' : isWarn ? 'alert-triangle' : 'check-circle';
-                  const iconColor = !r.ok ? colors.danger : isWarn ? colors.warn : colors.ok;
-                  const msgColor = !r.ok ? colors.danger : isWarn ? '#92400E' : '#3C6B4E';
+                  const isBlocked = !r.ok && r.isDuplicate;
+                  const bg = isBlocked ? '#FEF2F2' : !r.ok ? '#FEF2F2' : isWarn ? '#FFFBEB' : '#F0FBF4';
+                  const border = isBlocked ? '#FECACA' : !r.ok ? '#FAD0D0' : isWarn ? '#FDE68A' : '#C6EBD3';
+                  const iconName = isBlocked ? 'x-circle' : !r.ok ? 'x-circle' : isWarn ? 'alert-triangle' : 'check-circle';
+                  const iconColor = isBlocked ? colors.danger : !r.ok ? colors.danger : isWarn ? colors.warn : colors.ok;
+                  const msgColor = isBlocked ? '#B91C1C' : !r.ok ? colors.danger : isWarn ? '#92400E' : '#3C6B4E';
                   return (
                     <View
                       key={r.name}
@@ -447,7 +461,11 @@ export default function SharePoint() {
                       <View style={{ flex: 1 }}>
                         <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
                           <Text style={{ fontWeight: '700', color: colors.text }}>{r.name}</Text>
-                          {isWarn ? <Badge text="DUPLICATE WARNING" color={colors.warn} /> : null}
+                          {isBlocked ? (
+                            <Badge text="NOT UPLOADED · DUPLICATE" color={colors.danger} />
+                          ) : isWarn ? (
+                            <Badge text="DUPLICATE WARNING" color={colors.warn} />
+                          ) : null}
                         </Row>
                         <Text style={{ fontSize: 12.5, color: msgColor, marginTop: 2, lineHeight: 17 }}>{r.message}</Text>
                         {r.hash ? (
