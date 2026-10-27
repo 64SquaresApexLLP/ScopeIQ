@@ -27,24 +27,34 @@ from scopeiq.config import get_settings
 from scopeiq.db.repository import Repository, now_iso
 from scopeiq.domain import BomLine, Discrepancy, Redline, SiteFacts
 from scopeiq.engine import bom as bom_engine
+from scopeiq.engine.comparisons import build_comparisons
 from scopeiq.engine.design import AS_DRAWN, FINAL, build_model, compute_delta
 from scopeiq.engine.drivers import build_drivers, estimate, site_requirements
 from scopeiq.engine.facts import build_site_facts
 from scopeiq.engine.reconcile import reconcile
-from scopeiq.engine.redlines import draft_redlines_and_rfis
+from scopeiq.engine.proof import attach_proofs, read_stills, remove_proofs
+from scopeiq.engine.redlines import decide, draft_redlines_and_rfis
 from scopeiq.engine.revisions import build_rev1, validate_rev0
 from scopeiq.extract.sitetracker import SiteTracker
 from scopeiq.outputs.cd_revision import write_revised_cd
 from scopeiq.outputs.exports import write_bom_xlsx, write_site_package
-from scopeiq.outputs.redline_pdf import write_redlined_pdf
+from scopeiq.outputs.redline_markup import remove_redlined_cd, write_redlined_cd
 from scopeiq.reference.loader import ReferenceData
 from scopeiq.workflow.engine import WorkflowEngine
 
 log = get_logger("pipeline")
 
-STEP_DEFS = [("INGEST", "Ingest documents"), ("EXTRACT", "Extract values"), ("RECONCILE", "Reconcile sources"), ("DELTA", "Design delta"),
-             ("GENERATE", "Generate BOM"), ("ESTIMATE", "Estimate"), ("REDLINES", "Draft redlines and RFIs"), ("PERSIST", "Save results"),
-             ("FILES", "Write files")]
+ALL_STEP_DEFS = [("INGEST", "Ingest documents"), ("EXTRACT", "Extract values"), ("RECONCILE", "Reconcile sources"),
+                 ("REDLINES", "Redlines and RFIs"), ("DELTA", "Design delta"), ("GENERATE", "Generate BOM"), ("ESTIMATE", "Estimate"),
+                 ("PERSIST", "Save results"), ("FILES", "Write files")]
+LAST_STAGE = "REDLINES"           # the run ends here for now; the later stages stay in the code and come back by changing this
+STEP_DEFS = ALL_STEP_DEFS[:[k for k, _ in ALL_STEP_DEFS].index(LAST_STAGE) + 1]
+
+
+def stage_on(key: str) -> bool:
+    return key in dict(STEP_DEFS)
+
+
 APPLY_PREFIX = "CDREV-"             # run ids of 'implement changes' jobs (pipeline runs start with RUN-)
 APPLY_STEP_DEFS = [("LOAD", "Load drawing and redlines"), ("APPLY", "Apply approved redlines"), ("FILES", "Write revised drawing")]
 _ACTIVE: dict[str, str] = {}          # site -> run id of the background job in progress (one at a time per site)
@@ -200,8 +210,24 @@ class PipelineService:
                 stream = facts.project.get("stream", "BOM")
                 with prog.step("RECONCILE"):
                     discs = reconcile(facts, self.ref, stream=stream)
-                    prog.finish("RECONCILE", f"{len(discs)} finding(s) from the consistency rules",
-                                _count(d.severity for d in discs) | {"rules": len({d.rule_id for d in discs})})
+                    comparisons = build_comparisons(facts, self.ref, discs, stream=stream)
+                    self._persist_findings(run_id, facts, discs)              # mismatches are logged for the Discrepancies tab
+                    checked = [c for c in comparisons if c["status"] != "SKIPPED"]
+                    prog.finish("RECONCILE", f"{len(checked)} comparison(s) run, {len(discs)} mismatch(es) logged as discrepancies",
+                                _count(d.severity for d in discs) | {"comparisons": len(checked), "rules": len({d.rule_id for d in discs})})
+                redline_files: dict = {}
+                decision = None
+                if stage_on("REDLINES"):
+                    with prog.step("REDLINES"):
+                        self._apply_live_status(facts.site_id, discs)
+                        decision = decide(facts, discs, self.ref)
+                        redlines, rfis = draft_redlines_and_rfis(facts, discs, self.ref, decision)
+                        redline_files = self._redline_stage(run_id, facts, discs, redlines, rfis, decision)
+                        prog.finish("REDLINES", (f"redlined drawing written with {len(redlines)} markup(s)" if decision.required else "no redlined drawing needed")
+                                    + f"; {len(rfis)} RFI(s) drafted",
+                                    {"redline_required": decision.required, "redlines": len(redlines), "rfis": len(rfis)})
+                if not stage_on("GENERATE"):
+                    return self._finish_after_reconcile(run_id, site_id, facts, discs, comparisons, decision, redline_files)
                 with prog.step("DELTA"):
                     as_drawn_m = build_model(facts, self.ref, AS_DRAWN, discs)
                     final_m = build_model(facts, self.ref, FINAL, discs)
@@ -222,14 +248,11 @@ class PipelineService:
                     est = estimate(facts, delta, fn_lines, tp, reqs, drivers, self.ref)
                     prog.finish("ESTIMATE", f"{est['cycle_days']} cycle day(s), ${est['total_usd']:,.0f} total",
                                 {"drivers": len(drivers), "cycle_days": est["cycle_days"], "total_usd": est["total_usd"]})
-                with prog.step("REDLINES"):
-                    redlines, rfis = draft_redlines_and_rfis(facts, discs, self.ref)
-                    prog.finish("REDLINES", f"{len(redlines)} redline(s) and {len(rfis)} RFI(s) drafted", {"redlines": len(redlines), "rfis": len(rfis)})
                 with prog.step("PERSIST"):
                     summary = self._persist(run_id, facts, discs, delta, as_drawn_m, fn_lines, tp, changes, drivers, reqs, est, redlines, rfis)
                     prog.finish("PERSIST", f"saved as {summary['bom']['rev_label']}", {"discrepancies": summary["discrepancies"]})
                 with prog.step("FILES"):
-                    summary["files"] = self._write_files(run_id, facts, fn_lines, changes, discs, redlines, rfis, summary)
+                    summary["files"] = {**redline_files, **self._write_files(run_id, facts, fn_lines, changes, discs, redlines, rfis, summary)}
                     prog.finish("FILES", f"{len(summary['files'])} file(s) written", {"files": len(summary["files"])})
                 self._advance_workflow(site_id)
                 self.repo.update("CORE.PIPELINE_RUN", {"FINISHED_AT": now_iso(), "STATUS": "SUCCEEDED" if not facts.warnings else "SUCCEEDED_WITH_WARNINGS",
@@ -243,6 +266,90 @@ class PipelineService:
                                                        "WARNINGS": [str(exc)]}, {"RUN_ID": run_id})
                 log.exception("pipeline failed for %s", site_id)
                 raise
+
+    def _finish_after_reconcile(self, run_id: str, site_id: str, facts: SiteFacts, discs, comparisons: list[dict], decision=None,
+                                redline_files: dict | None = None) -> dict:
+        by_outcome: dict[str, int] = {}
+        for d in discs:
+            by_outcome[d.outcome] = by_outcome.get(d.outcome, 0) + 1
+        summary = {"discrepancies": len(discs), "by_outcome": by_outcome, "comparisons": comparisons, "field_method": facts.field_method,
+                   "cd_method": facts.cd_method, "warnings": len(facts.warnings)}
+        if decision is not None:
+            summary |= {"redline_decision": decision.to_dict(), "redlines": decision.redline_count, "rfis": decision.rfi_count, "files": redline_files or {}}
+        self._advance_workflow(site_id)
+        self.repo.update("CORE.PIPELINE_RUN", {"FINISHED_AT": now_iso(), "STATUS": "SUCCEEDED" if not facts.warnings else "SUCCEEDED_WITH_WARNINGS",
+                                               "STEPS": self._steps_of(run_id), "SUMMARY": summary, "WARNINGS": facts.warnings}, {"RUN_ID": run_id})
+        log.info("pipeline finished for %s after %s: %d discrepancies", site_id, LAST_STAGE, len(discs))
+        return {"run_id": run_id, "site_id": site_id, "status": "SUCCEEDED", "summary": summary, "warnings": facts.warnings}
+
+    # ------------------------------------------------------------------------------------ stage 4
+    def _apply_live_status(self, site_id: str, discs) -> None:
+        """A finding a person has dismissed or resolved keeps that status; one the system closed earlier and that is back is live again."""
+        prev = {d["DISC_ID"]: d for d in self.repo.select("CORE.DISCREPANCY", {"SITE_ID": site_id})}
+        for d in discs:
+            row = prev.get(d.disc_id)
+            if row:
+                d.status = "OPEN" if row["STATUS"] == "RESOLVED" and row.get("UPDATED_BY") == "system" else (row["STATUS"] or "OPEN")
+
+    def _cd_source_paths(self, f: SiteFacts) -> tuple[Path | None, Path | None]:
+        """The CD files of the current revision that stage 3 compared (DXF and/or PDF)."""
+        cds = [d for d in f.documents if d.doc_type == "CD" and d.status == "CURRENT"]
+        top = max((d.revision_rank for d in cds), default=0)
+
+        def path_of(fmt: str) -> Path | None:
+            d = next((x for x in cds if x.file_format == fmt and x.revision_rank == top), None)
+            return self._doc_path(f, d) if d else None
+        return path_of("DXF"), path_of("PDF")
+
+    def _doc_path(self, f: SiteFacts, d) -> Path:
+        return Path(f.site["doc_paths"].get(d.doc_id) or self.sites_dir / f.site_id / Path(*Path(d.rel_path).parts[2:]))
+
+    def _drone_stills(self, f: SiteFacts):
+        """The survey's stills (from its capture metadata), each with the side it looks at."""
+        cur = [d for d in f.documents if d.status == "CURRENT"]
+        meta = next((d for d in cur if d.doc_type == "DRONE_META"), None)
+        images = {self._doc_path(f, d).name: self._doc_path(f, d) for d in cur if d.doc_type == "DRONE_IMAGE"}
+        return read_stills(self._doc_path(f, meta) if meta else None, images)
+
+    def _redline_stage(self, run_id: str, f: SiteFacts, discs, redlines, rfis, decision) -> dict:
+        """Stage 4: write the redlined CD drawing only if the decision says the drawing has to change, and save the redlines and RFIs."""
+        out = self.output_dir / "sites" / f.site_id / "redlines"
+        files: dict[str, str] = {}
+        if decision.required:
+            dxf, pdf = self._cd_source_paths(f)
+            files.update(write_redlined_cd(facts=f, discs=discs, redlines=redlines, dxf_path=dxf, pdf_path=pdf, out_dir=out, ref=self.ref))
+        else:
+            remove_redlined_cd(out, f)                 # an earlier run's redlined drawing is out of date now
+        remove_proofs(out)
+        proofs = attach_proofs(f, discs, redlines, out, self._drone_stills(f))
+        self._persist_redlines(run_id, f, redlines, rfis, _rel(files["redlined_cd_pdf"], self.output_dir) if "redlined_cd_pdf" in files else None, proofs)
+        files.update(write_site_package(out, f.site_id, discs, redlines, rfis))
+        return {k: _rel(v, self.output_dir) for k, v in files.items()}
+
+    def _persist_redlines(self, run_id: str, f: SiteFacts, redlines, rfis, pdf_rel: str | None, proofs=()) -> None:
+        r, sid, ts, user = self.repo, f.site_id, now_iso(), current().user_id
+        prev_rl = {x["REDLINE_ID"]: x for x in r.select("CORE.REDLINE", {"SITE_ID": sid})}
+        if prev_rl:
+            r.update("CORE.REDLINE", {"PDF_PATH": None}, {"SITE_ID": sid})          # the drawing is rewritten (or no longer needed) on every run
+        r.upsert("CORE.REDLINE", [{"REDLINE_ID": x.redline_id, "SITE_ID": sid, "DISC_ID": x.disc_id, "DOC_TYPE": x.doc_type, "DOC_REVISION": x.doc_revision,
+                                   "SHEET": x.sheet, "MARKUP": x.markup, "CHANGE_FROM": x.change_from, "CHANGE_TO": x.change_to,
+                                   "STATUS": prev_rl.get(x.redline_id, {}).get("STATUS") or "DRAFT", "PDF_PATH": pdf_rel if x.doc_type == "CD" else None,
+                                   "CREATED_AT": prev_rl.get(x.redline_id, {}).get("CREATED_AT") or ts, "UPDATED_AT": ts, "UPDATED_BY": user} for x in redlines])
+        for x in redlines:
+            x.status = prev_rl.get(x.redline_id, {}).get("STATUS") or "DRAFT"
+        r.delete_where("CORE.REDLINE_PROOF", {"SITE_ID": sid})                          # proof is chosen again from this run's footage
+        r.insert("CORE.REDLINE_PROOF", [{"PROOF_ID": stable_id("PRF", x.redline_id, x.rank), "REDLINE_ID": x.redline_id, "SITE_ID": sid, "RANK": x.rank,
+                                         "KIND": x.kind, "PATH": _rel(x.path, self.output_dir), "CAPTION": x.caption, "BASIS": x.basis, "SECTOR": x.sector,
+                                         "TIME_S": x.time_s, "BEARING_DEG": x.bearing_deg, "OFF_DEG": x.off_deg, "CREATED_AT": ts} for x in proofs])
+        prev_rfi = {x["RFI_ID"]: x for x in r.select("CORE.RFI", {"SITE_ID": sid})}
+        r.upsert("CORE.RFI", [{"RFI_ID": x.rfi_id, "SITE_ID": sid, "TO_PARTY": x.to_party, "SUBJECT": x.subject, "QUESTION": x.question,
+                               "PROPOSED_ANSWER": x.proposed_answer, "ANSWER": prev_rfi.get(x.rfi_id, {}).get("ANSWER"), "DISC_IDS": x.disc_ids,
+                               "STATUS": prev_rfi.get(x.rfi_id, {}).get("STATUS") or "DRAFT", "CREATED_AT": prev_rfi.get(x.rfi_id, {}).get("CREATED_AT") or ts,
+                               "UPDATED_AT": ts, "UPDATED_BY": user} for x in rfis])
+
+    def _steps_of(self, run_id: str) -> list:
+        row = self.repo.get("CORE.PIPELINE_RUN", RUN_ID=run_id)
+        return (row or {}).get("STEPS") or []
 
     def run_all(self, *, triggered_by: str | None = None) -> list[dict]:
         out = []
@@ -613,7 +720,8 @@ class PipelineService:
         return records
 
     # ------------------------------------------------------------------------------------ persist
-    def _persist(self, run_id: str, f: SiteFacts, discs, delta, as_drawn_m, fn_lines, tp, changes, drivers, reqs, est, redlines, rfis) -> dict:
+    def _persist_findings(self, run_id: str, f: SiteFacts, discs) -> None:
+        """Everything stages 1-3 produce: the site and its documents, the extracted values, and the findings (discrepancies)."""
         r, sid, ts, user = self.repo, f.site_id, now_iso(), current().user_id
         s, p = f.site, f.project
         existing_site = r.select("CORE.SITE", {"SITE_ID": sid})
@@ -700,6 +808,8 @@ class PipelineService:
         rows = []
         for d in discs:
             p0 = prev.get(d.disc_id, {})
+            if p0.get("STATUS") == "RESOLVED" and p0.get("UPDATED_BY") == "system":
+                p0 = {**p0, "STATUS": "OPEN", "REASON_CODE": None}      # auto-closed earlier, reproduced again: reopen (a person's decision stays)
             rows.append({"DISC_ID": d.disc_id, "SITE_ID": sid, "RUN_ID": run_id, "RULE_ID": d.rule_id, "FAMILY": d.family, "SEVERITY": d.severity,
                          "OUTCOME": d.outcome, "TITLE": d.title, "DESCRIPTION": d.description, "SECTOR": d.sector, "POSITION": d.position,
                          "EXPECTED": {"v": d.expected}, "FOUND": {"v": d.found}, "GOVERNING": d.governing, "SOURCES": d.sources,
@@ -712,6 +822,10 @@ class PipelineService:
         stale = [k for k, v in prev.items() if k not in {d.disc_id for d in discs} and v.get("STATUS") == "OPEN"]
         for k in stale:      # no longer reproduced (e.g. corrected document uploaded): close automatically, audited
             r.update("CORE.DISCREPANCY", {"STATUS": "RESOLVED", "REASON_CODE": "RC-AE-REVISED", "UPDATED_AT": ts, "UPDATED_BY": "system"}, {"DISC_ID": k})
+
+    def _persist(self, run_id: str, f: SiteFacts, discs, delta, as_drawn_m, fn_lines, tp, changes, drivers, reqs, est, redlines, rfis) -> dict:
+        self._persist_findings(run_id, f, discs)
+        r, sid, ts, user = self.repo, f.site_id, now_iso(), current().user_id
         r.insert("CORE.EQUIPMENT_DELTA", [{"SITE_ID": sid, "RUN_ID": run_id, "SEQ": i, "SECTOR": d.sector, "POSITION": d.position, "KIND": d.kind,
                                            "CATALOG_KEY": d.catalog_key, "ACTION": d.action, "FROM_POSITION": d.from_position,
                                            "RAD_CENTER_FT": d.rad_center_ft, "BASIS": d.basis, "SOURCE_REF": d.ref.label() if d.ref else None}
@@ -730,18 +844,6 @@ class PipelineService:
                                      "SEVERITY": a["severity"], "ALERT_TEXT": a["text"], "STATUS": prev_alerts.get(aid, {}).get("STATUS") or "OPEN",
                                      "CREATED_AT": prev_alerts.get(aid, {}).get("CREATED_AT") or ts, "UPDATED_AT": ts, "UPDATED_BY": user}
                                     for a in reqs["ehs_alerts"]])
-        prev_rl = {x["REDLINE_ID"]: x for x in r.select("CORE.REDLINE", {"SITE_ID": sid})}
-        r.upsert("CORE.REDLINE", [{"REDLINE_ID": x.redline_id, "SITE_ID": sid, "DISC_ID": x.disc_id, "DOC_TYPE": x.doc_type, "DOC_REVISION": x.doc_revision,
-                                   "SHEET": x.sheet, "MARKUP": x.markup, "CHANGE_FROM": x.change_from, "CHANGE_TO": x.change_to,
-                                   "STATUS": prev_rl.get(x.redline_id, {}).get("STATUS") or "DRAFT", "PDF_PATH": prev_rl.get(x.redline_id, {}).get("PDF_PATH"),
-                                   "CREATED_AT": prev_rl.get(x.redline_id, {}).get("CREATED_AT") or ts, "UPDATED_AT": ts, "UPDATED_BY": user} for x in redlines])
-        for x in redlines:
-            x.status = prev_rl.get(x.redline_id, {}).get("STATUS") or "DRAFT"
-        prev_rfi = {x["RFI_ID"]: x for x in r.select("CORE.RFI", {"SITE_ID": sid})}
-        r.upsert("CORE.RFI", [{"RFI_ID": x.rfi_id, "SITE_ID": sid, "TO_PARTY": x.to_party, "SUBJECT": x.subject, "QUESTION": x.question,
-                               "PROPOSED_ANSWER": x.proposed_answer, "ANSWER": prev_rfi.get(x.rfi_id, {}).get("ANSWER"), "DISC_IDS": x.disc_ids,
-                               "STATUS": prev_rfi.get(x.rfi_id, {}).get("STATUS") or "DRAFT", "CREATED_AT": prev_rfi.get(x.rfi_id, {}).get("CREATED_AT") or ts,
-                               "UPDATED_AT": ts, "UPDATED_BY": user} for x in rfis])
         sev = {}
         for d in discs:
             sev[d.outcome] = sev.get(d.outcome, 0) + 1
@@ -794,17 +896,6 @@ class PipelineService:
         rev_label = summary["bom"]["rev_label"]
         files["bom_xlsx"] = str(write_bom_xlsx(out / f"{f.site_id}_BOM_{rev_label.replace(' ', '')}.xlsx", f.site_id, f.site.get("market") or "DFW",
                                                fn_lines, self.ref, rev_label, "Draft", changes))
-        cd_pdf = next((d for d in f.documents if d.doc_type == "CD" and d.file_format == "PDF" and d.status == "CURRENT"), None)
-        if cd_pdf:
-            pdf = write_redlined_pdf(Path(f.site["doc_paths"].get(cd_pdf.doc_id) or self.sites_dir / f.site_id / Path(*Path(cd_pdf.rel_path).parts[2:])),
-                                     out / "redlines" / f"{f.site_id}_CD_{(f.cd_revision or 'REV').replace(' ', '')}_REDLINED.pdf",
-                                     redlines, site_id=f.site_id)
-            if pdf:
-                files["redlined_cd_pdf"] = str(pdf)
-                for x in redlines:
-                    if x.doc_type == "CD":
-                        self.repo.update("CORE.REDLINE", {"PDF_PATH": _rel(str(pdf), self.output_dir)}, {"REDLINE_ID": x.redline_id})
-        files.update(write_site_package(out / "redlines", f.site_id, discs, redlines, rfis))
         return {k: _rel(v, self.output_dir) for k, v in files.items()}
 
     # ------------------------------------------------------------------------------------ implement changes
@@ -920,6 +1011,8 @@ class PipelineService:
         state = self.repo.get("CORE.SITE", SITE_ID=site_id)["WORKFLOW_STATE"]
         path = {"ASSIGNED": ["INGEST", "EXTRACT", "RECONCILE", "GENERATE"], "DOCS_INGESTED": ["EXTRACT", "RECONCILE", "GENERATE"],
                 "EXTRACTED": ["RECONCILE", "GENERATE"], "IN_RECONCILIATION": ["GENERATE"], "REWORK": ["GENERATE"]}.get(state, [])
+        if not stage_on("GENERATE"):                    # no BOM is generated yet, so the site does not move on to scoping
+            path = [a for a in path if a != "GENERATE"]
         with bind(user_id="system", role="SYSTEM"):
             for action in path:
                 self.wf.transition("SITE_SCOPING", site_id, action, site_id=site_id)

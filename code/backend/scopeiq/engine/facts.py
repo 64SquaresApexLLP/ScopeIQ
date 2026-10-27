@@ -150,7 +150,7 @@ def build_site_facts(site_dir: Path, ref: ReferenceData, *, sitetracker: SiteTra
         vid = next((x for x in facts.documents if x.doc_type == "DRONE_VIDEO" and x.status == "CURRENT"), None)
         if vid and evidence_dir:
             facts.frames = _guard(facts, "video", video.sample_frames, path(vid), Path(evidence_dir) / site_id, site_id=site_id,
-                                  n_frames=st.get("engine.video_frames_per_site", 24), sector_azimuths=design_az) or []
+                                  n_frames=st.get("engine.video_frames_per_site", 48), sector_azimuths=design_az) or []
     log.info("site facts built: rfds=%s cd=%s(%s) field=%s(%d items) ma=%s sa=%s rev0=%d lines, %d warnings", facts.rfds_revision,
              facts.cd_revision, facts.cd_method, facts.field_method, len(facts.field_items), facts.ma.result if facts.ma else None,
              facts.sa.result if facts.sa else None, len(facts.rev0), len(facts.warnings), extra={"site_id": site_id})

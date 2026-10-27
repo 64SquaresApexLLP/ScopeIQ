@@ -250,6 +250,33 @@ def _match_model(obj: FieldObject, catalog: Catalog, kinds: tuple[str, ...], pre
     return pick, round(min(obj.confidence, 0.99) * score, 3), [k for k in alike if k != pick]
 
 
+OBJECT_SUBCATEGORY = {"Mount pipe": "Mount Pipe", "Roof sled": "Roof Sled"}     # objects the catalog names by type, not by size
+
+
+def identify_object(obj: FieldObject, catalog: Catalog) -> dict | None:
+    """Map one drone object to the material catalog: the vendor's model label first, then the measured size
+    (height x width x depth) against the catalog's dimensions; mount pipes and sleds by type. The catalog is the
+    only source of the model name and part numbers. None for objects the catalog has no entry for (cable route, cabinet)."""
+    sub = OBJECT_SUBCATEGORY.get(obj.object_type)
+    if sub:
+        item = next((i for i in catalog.items.values() if i.subcategory == sub), None)
+        key, basis, fit, alike = (item.key, "Object type", None, []) if item else (None, "", None, [])
+    elif obj.object_type in ("Antenna", "Remote radio"):
+        kinds = ("passive", "air") if obj.object_type == "Antenna" else ("radio",)
+        key, _, alike = _match_model(obj, catalog, kinds)
+        labelled = bool(obj.model_guess) and catalog.resolve(obj.model_guess, kinds=kinds)[1] >= 0.9
+        basis = "Vendor label" if key and labelled else "Size match" if key else ""
+        fit = round(max(0.0, 1 - _dims_error(obj, catalog.get(key)) / 1.5), 2) if key and not labelled else None
+    else:
+        return None
+    if not key:
+        return {"catalog_key": None, "basis": "", "look_alikes": []}
+    it = catalog.get(key)
+    return {"catalog_key": key, "model": it.model, "manufacturer": it.manufacturer, "mfr_pn": it.mfr_pn, "customer_pn": it.customer_pn,
+            "category": it.subcategory, "basis": basis, "size_fit": fit,
+            "look_alikes": [{"catalog_key": k, "model": catalog.get(k).model} for k in alike]}
+
+
 @log_call()
 def assemble_field_items(objs: list[FieldObject], *, site_id: str, doc_id: str, method: str, catalog: Catalog,
                          design_azimuths: dict[str, float], rooftop: bool,

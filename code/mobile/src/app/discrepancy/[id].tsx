@@ -2,9 +2,10 @@
 // confirm / dismiss / redline / RFI / adjust BOM with a reason code. History and comments are audited.
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
-import { Image, RefreshControl, ScrollView, TextInput, View } from 'react-native';
+import { Image, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActionPill, CompareStrip, FAMILY, fixOf, Panel, RuleCode, sevOf, WhereChip } from '../../components/site/FindingView';
 import { colors, space } from '../../components/theme';
-import { Badge, Button, Card, ErrorView, KV, Loading, Muted, Row, s, Section, Title } from '../../components/ui';
+import { Badge, Button, Card, ErrorView, Icon, KV, Loading, Muted, Row, s, Section, Title } from '../../components/ui';
 import { WorkflowActions } from '../../components/WorkflowActions';
 import { api, ApiError } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -32,35 +33,57 @@ export default function Discrepancy() {
   if (d.error) return <View style={s.content}><ErrorView error={d.error} onRetry={d.reload} /></View>;
   if (!d.data) return <Loading />;
   const x = d.data;
+  const sev = sevOf(x);
   const found = Array.isArray(x.FOUND?.v) && x.FOUND.v.length && 'field' in x.FOUND.v[0] ? (x.FOUND.v as R[]) : null;
   return (
     <ScrollView style={s.screen} contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={d.loading} onRefresh={d.reload} />}>
       <Stack.Screen options={{ title: `${x.SITE_ID} ${x.RULE_ID}` }} />
-      <Card>
-        <Row><Badge text={x.SEVERITY} /><Badge text={x.STATUS} /><Badge text={x.OUTCOME} color={colors.primary} /><Badge text={x.FAMILY} color={colors.muted} /></Row>
-        <Title style={{ marginTop: space(2) }}>{x.TITLE}</Title>
-        <Muted style={{ color: colors.text, marginTop: 4 }}>{x.DESCRIPTION}</Muted>
-      </Card>
-      <Section title="Comparison">
-        <Card>
-          {x.SECTOR ? <KV k="Location" v={`Sector ${x.SECTOR}${x.POSITION ? `, position ${x.POSITION}` : ''}`} /> : null}
-          <KV k="Expected" v={show(x.EXPECTED)} />
-          {!found ? <KV k="Found" v={show(x.FOUND)} /> : null}
-          <KV k="Governing source" v={x.GOVERNING || '-'} />
-          <KV k="Sources compared" v={(x.SOURCES ?? []).join(', ')} />
-          <KV k="Fix in" v={`${x.TARGET_DOC ?? '-'}${x.TARGET_SHEET ? ` sheet ${x.TARGET_SHEET}` : ''}`} />
-          <KV k="BOM impact" v={x.BOM_IMPACT} />
-          <KV k="Confidence" v={x.CONFIDENCE != null ? `${Math.round(x.CONFIDENCE * 100)}%` : '-'} />
-          <KV k="Reason code" v={x.REASON_CODE} />
-          <KV k="Assigned to" v={x.ASSIGNED_TO} />
-        </Card>
+      <View style={{ flexDirection: 'row', backgroundColor: colors.card, borderRadius: 18, marginBottom: space(3), borderWidth: 1, borderColor: colors.border, overflow: 'hidden' }}>
+        <View style={{ width: 6, backgroundColor: sev.color }} />
+        <View style={{ flex: 1, padding: space(5), gap: space(3) }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space(2) }}>
+            <Badge text={`${sev.label} severity`} color={sev.color} />
+            <Badge text={x.STATUS} />
+            <Text style={{ fontSize: 12, color: colors.muted }}>{FAMILY[x.FAMILY] ?? x.FAMILY}</Text>
+            <RuleCode code={x.RULE_ID} />
+          </View>
+          <Text style={{ fontSize: 22, fontWeight: '800', color: colors.text, letterSpacing: -0.4, lineHeight: 29 }}>{x.TITLE}</Text>
+          <WhereChip x={x} />
+        </View>
+      </View>
+      <Panel icon="search" title="What we found">
+        <CompareStrip x={x} large />
+        {x.DESCRIPTION ? <Text style={{ fontSize: 14, lineHeight: 22, color: colors.text, marginTop: space(3) }}>{x.DESCRIPTION}</Text> : null}
         {found ? (
-          <Card>
+          <View style={{ marginTop: space(2) }}>
             <Muted>Values to review</Muted>
             {found.map((f, i) => <KV key={i} k={String(f.field ?? i)} v={`${show(f.value)}  (${Math.round(Number(f.confidence ?? 0) * 100)}%${f.page ? `, ${f.page}` : ''})`} />)}
-          </Card>
+          </View>
         ) : null}
-      </Section>
+      </Panel>
+      <Panel icon="check-circle" title="What to do next">
+        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space(2) }}>
+          <ActionPill x={x} />
+          {fixOf(x) ? <Text style={{ fontSize: 13, color: colors.muted }}>{`Fix in ${fixOf(x)}`}</Text> : null}
+        </View>
+        <View style={{ marginTop: space(2) }}>
+          {x.BOM_IMPACT && !/^none/i.test(x.BOM_IMPACT) ? <KV k="BOM impact" v={x.BOM_IMPACT} /> : null}
+          {x.GOVERNING ? <KV k="Governing source" v={x.GOVERNING} /> : null}
+          {x.REASON_CODE ? <KV k="Reason code" v={x.REASON_CODE} /> : null}
+          {x.ASSIGNED_TO ? <KV k="Assigned to" v={x.ASSIGNED_TO} /> : null}
+        </View>
+      </Panel>
+      <Panel icon="layers" title="Sources compared">
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space(2) }}>
+          {(x.SOURCES ?? []).map((src: string) => (
+            <View key={src} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.surfaceAlt, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: colors.border }}>
+              <Icon name="file-text" size={13} color={colors.muted} />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text }}>{src}</Text>
+            </View>
+          ))}
+        </View>
+        {x.CONFIDENCE != null ? <Muted style={{ marginTop: space(2) }}>{`Confidence ${Math.round(x.CONFIDENCE * 100)}%`}</Muted> : null}
+      </Panel>
       {x.EVIDENCE_URLS?.length ? (
         <Section title="Evidence">
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space(2) }}>
