@@ -8,7 +8,7 @@ import { colors, space } from '../theme';
 import { Badge, Button, Card, Empty, ErrorView, IconBadge, KV, Loading, Muted, Row, s, Section, Title } from '../ui';
 import { WorkflowActions } from '../WorkflowActions';
 
-function RfiCard({ r, reload }: { r: R; reload: () => void }) {
+export function RfiCard({ r, reload }: { r: R; reload: () => void }) {
   const { can } = useAuth();
   const [answer, setAnswer] = useState(r.PROPOSED_ANSWER ?? '');
   const [err, setErr] = useState<ApiError | null>(null);
@@ -32,7 +32,7 @@ function RfiCard({ r, reload }: { r: R; reload: () => void }) {
           <WorkflowActions actions={(r.ACTIONS ?? []).filter((a: string) => a !== 'ANSWER')} endpoint={`/rfis/${r.RFI_ID}/transition`} entity="RFI" onDone={reload} />
         </View>
       ) : null}
-      {can('ERICSSON') && (r.ACTIONS ?? []).includes('ANSWER') ? (
+      {can('ERICSSON', 'AE_ENGINEER') && (r.ACTIONS ?? []).includes('ANSWER') ? (
         <View style={{ marginTop: space(2), gap: space(2) }}>
           <TextInput style={[s.input, { minHeight: 60 }]} multiline value={answer} onChangeText={setAnswer} placeholder="Answer" />
           <Button small title="Send answer" disabled={!answer.trim()} onPress={send} />

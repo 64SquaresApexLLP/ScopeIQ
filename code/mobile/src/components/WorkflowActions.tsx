@@ -82,13 +82,18 @@ export function WorkflowActions({ actions, endpoint, entity, onDone, details }: 
     }
   };
 
+  const getActionTitle = (act: string) => {
+    if (entity === 'RFI' && act.toUpperCase() === 'SUBMIT') return 'Send';
+    return act.replace(/_/g, ' ');
+  };
+
   if (!defs.length) return <Muted>No actions available for your role in this state.</Muted>;
   return (
     <View>
       <Row>
         {defs.map((a) => (
           <Button key={a.action} small kind={/DISMISS|REJECT|RETURN|REQUEST_CHANGES/.test(a.action) ? 'secondary' : 'primary'}
-            title={a.action.replace(/_/g, ' ')} disabled={busy}
+            title={getActionTitle(a.action)} disabled={busy}
             onPress={() => (a.requires_reason || a.requires_comment ? setPending(a) : submit(a, null, ''))} />
         ))}
       </Row>
@@ -96,7 +101,7 @@ export function WorkflowActions({ actions, endpoint, entity, onDone, details }: 
       <Modal visible={!!pending} transparent animationType="slide" onRequestClose={() => setPending(null)}>
         <View style={{ flex: 1, backgroundColor: '#0006', justifyContent: 'flex-end' }}>
           <View style={{ backgroundColor: colors.card, padding: space(4), borderTopLeftRadius: 16, borderTopRightRadius: 16, gap: space(2) }}>
-            <Title>{pending?.action.replace(/_/g, ' ')}</Title>
+            <Title>{pending?.action ? getActionTitle(pending.action) : ''}</Title>
             {pending?.description ? <Muted>{pending.description}</Muted> : null}
             {pending?.requires_reason ? (<><Muted>Reason code (required)</Muted><ReasonPicker value={reason} onChange={setReason} appliesTo={entity} /></>) : null}
             <TextInput style={[s.input, { minHeight: 70 }]} multiline placeholder={pending?.requires_comment ? 'Comment (required)' : 'Comment (optional)'}
