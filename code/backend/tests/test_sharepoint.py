@@ -80,7 +80,24 @@ def test_create_site_rejects_bad_or_duplicate_ids(client):
     h = login(client, "admin")
     assert client.post("/admin/sites", json={**SITE, "site_id": "bad id"}, headers=h).status_code == 400
     assert client.post("/admin/sites", json={**SITE, "site_id": "TX12"}, headers=h).status_code == 400
+    assert client.post("/admin/sites", json={**SITE, "site_id": "TXDA9998", "state": ""}, headers=h).status_code in (400, 422)
+    # Full state names (like Himachal Pradesh or Texas) are accepted
+    assert client.post("/admin/sites", json={**SITE, "site_id": "TXDA9998", "state": "Himachal Pradesh"}, headers=h).status_code == 200
     assert client.post("/admin/sites", json=SITE, headers=h).status_code == 409
+
+
+def test_create_site_with_coordinates_and_geocoding(client, env):
+    h = login(client, "admin")
+    r = client.post("/admin/sites", json={**SITE, "site_id": "TXDA9997", "latitude": 32.8341, "longitude": -96.7512}, headers=h)
+    assert r.status_code == 200, r.text
+    site_row = env["repo"].select("CORE.SITE", {"SITE_ID": "TXDA9997"})[0]
+    assert site_row["LATITUDE"] == 32.8341
+    assert site_row["LONGITUDE"] == -96.7512
+
+    geo = client.get("/admin/geocode/reverse?lat=32.8341&lon=-96.7512", headers=h)
+    assert geo.status_code == 200, geo.text
+    assert "city" in geo.json()
+    assert "state" in geo.json()
 
 
 def test_upload_goes_to_the_selected_site_only(client, env):
@@ -164,3 +181,54 @@ def test_graph_provider_request_shapes():
     with pytest.raises(SharePointError):
         GraphSharePoint({"tenant_id": "x"}, "root")
     assert json.dumps(seen)  # keeps the recorded calls for debugging
+
+
+def test_site_prefix_and_auto_id_generation(client, env):
+    from api.routers.sharepoint import extract_two_letter_code, generate_site_prefix, get_next_site_id
+
+    # Two or more words in state -> first letters of first two words
+    assert extract_two_letter_code("Himachal Pradesh") == "HP"
+    assert extract_two_letter_code("New York") == "NY"
+    assert extract_two_letter_code("Jammu and Kashmir") == "JK"
+
+    # Single word in state -> first two letters
+    assert extract_two_letter_code("Texas") == "TE"
+    assert extract_two_letter_code("California") == "CA"
+
+    # Special user requirement: Una -> UA
+    assert extract_two_letter_code("Una") == "UA"
+    assert extract_two_letter_code("Dallas") == "DA"
+    assert extract_two_letter_code("Fort Worth") == "FW"
+
+    # Prefix generation
+    assert generate_site_prefix("Himachal pradesh", "Una") == "HPUA"
+    assert generate_site_prefix("Texas", "Dallas") == "TEDA"
+
+    # Sequence generation starting at 0001
+    res1 = get_next_site_id(state="Himachal Pradesh", city="Una")
+    assert res1["site_id"] == "HPUA0001"
+    assert res1["sequence"] == 1
+
+    # Via API endpoint
+    h = login(client, "admin")
+    api_res = client.get("/admin/sites/next-id?state=Himachal+Pradesh&city=Una", headers=h)
+    assert api_res.status_code == 200
+    assert api_res.json()["site_id"] == "HPUA0001"
+
+    # Create site with auto-generated Site ID
+    create_res = client.post("/admin/sites", json={
+        "site_name": "Una Tower",
+        "city": "Una",
+        "state": "Himachal Pradesh",
+        "stream": "BOM",
+        "structure_type": "Monopole",
+    }, headers=h)
+    assert create_res.status_code == 200, create_res.text
+    created_id = create_res.json()["site"]["SITE_ID"]
+    assert created_id == "HPUA0001"
+
+    # Next site with same state and city should increment to 0002
+    res2 = get_next_site_id(state="Himachal Pradesh", city="Una")
+    assert res2["site_id"] == "HPUA0002"
+    assert res2["sequence"] == 2
+
