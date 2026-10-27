@@ -1,12 +1,7 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
 import { RefreshControl, ScrollView, View } from 'react-native';
-import { BomRevisions } from '../../components/site/Bom';
-import { Delta } from '../../components/site/Delta';
 import { Discrepancies } from '../../components/site/Discrepancies';
-import { Documents } from '../../components/site/Documents';
-import { Estimate } from '../../components/site/Estimate';
-import { Evidence } from '../../components/site/Evidence';
 import { Overview } from '../../components/site/Overview';
 import { Pipeline } from '../../components/site/Pipeline';
 import { Redlines } from '../../components/site/Redlines';
@@ -14,16 +9,17 @@ import { Chips, ErrorView, Loading, s } from '../../components/ui';
 import { SiteDetail } from '../../lib/types';
 import { useApi } from '../../lib/useApi';
 
-type Tab = 'overview' | 'pipeline' | 'documents' | 'discrepancies' | 'delta' | 'bom' | 'redlines' | 'estimate' | 'evidence';
+type Tab = 'overview' | 'pipeline' | 'discrepancies' | 'redlines';
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'overview', label: 'Overview' }, { key: 'pipeline', label: 'Pipeline' }, { key: 'discrepancies', label: 'Discrepancies' }, { key: 'delta', label: 'Delta' },
-  { key: 'bom', label: 'BOM' }, { key: 'redlines', label: 'Redlines & RFIs' }, { key: 'estimate', label: 'Drivers & estimate' },
-  { key: 'evidence', label: 'Drone evidence' }, { key: 'documents', label: 'Documents' },
+  { key: 'overview', label: 'Overview' },
+  { key: 'pipeline', label: 'Pipeline' },
+  { key: 'discrepancies', label: 'Discrepancies' },
+  { key: 'redlines', label: 'Redlines & RFIs' },
 ];
 
 export default function Site() {
   const { id, tab: initial } = useLocalSearchParams<{ id: string; tab?: Tab }>();
-  const [tab, setTab] = useState<Tab>(initial ?? 'overview');
+  const [tab, setTab] = useState<Tab>(initial && ['overview', 'pipeline', 'discrepancies', 'redlines'].includes(initial as Tab) ? (initial as Tab) : 'overview');
   const [key, setKey] = useState(0);                       // bump to remount tab content after a pipeline run
   const d = useApi<SiteDetail>(`/sites/${id}`);
 
@@ -36,16 +32,12 @@ export default function Site() {
           <View key={`${tab}-${key}`}>
             {tab === 'overview' && <Overview d={d.data} reload={d.reload} />}
             {tab === 'pipeline' && <Pipeline siteId={id} onFinished={d.reload} />}
-            {tab === 'documents' && <Documents siteId={id} />}
             {tab === 'discrepancies' && <Discrepancies siteId={id} />}
-            {tab === 'delta' && <Delta rows={d.data.delta} />}
-            {tab === 'bom' && <BomRevisions siteId={id} />}
             {tab === 'redlines' && <Redlines siteId={id} />}
-            {tab === 'estimate' && <Estimate siteId={id} />}
-            {tab === 'evidence' && <Evidence siteId={id} />}
           </View>
         )}
       </ScrollView>
     </View>
   );
 }
+
