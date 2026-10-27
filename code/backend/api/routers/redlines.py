@@ -47,6 +47,17 @@ def redline_transition(redline_id: str, body: TransitionIn, user: dict = Depends
 @router.get("/rfis")
 def list_rfis(site_id: str | None = None, status: str | None = None, user: dict = Depends(current_user)):
     where = {k: v for k, v in {"SITE_ID": site_id, "STATUS": status}.items() if v}
+
+    # Filter by TO_PARTY so each party only sees the RFIs addressed to them:
+    #   ADMIN / ERICSSON  → RFIs addressed to Ericsson
+    #   AE_ENGINEER       → RFIs addressed to A&E
+    #   SCOPER / REVIEWER → all RFIs for the sites they scope (they submitted them and track answers)
+    role = user.get("role", "")
+    if role in ("ADMIN", "ERICSSON"):
+        where["TO_PARTY"] = "ERICSSON"
+    elif role == "AE_ENGINEER":
+        where["TO_PARTY"] = "AE_ENGINEER"
+
     rows = _scoped(repo().select("CORE.RFI", where or None, order_by="SITE_ID"), user)
     for x in rows:
         x["ACTIONS"] = [a["action"] for a in workflow().actions("RFI", x["STATUS"], user["role"])]
