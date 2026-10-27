@@ -15,5 +15,6 @@ export const show = (v: unknown): string => {
   return String(v);
 };
 
-// Roles are shown by role only (no personal names): SCOPER -> "Scoper", ADMIN -> "Admin".
-export const roleLabel = (role?: string | null) => (role === 'ADMIN' ? 'Admin' : role === 'SCOPER' ? 'Scoper' : label(role));
+// Roles are shown by role only (no personal names): SCOPER -> "Scoper", ADMIN -> "Admin", AE_ENGINEER -> "A&E Engineer".
+export const roleLabel = (role?: string | null) =>
+  role === 'ADMIN' ? 'Admin' : role === 'SCOPER' ? 'Scoper' : role === 'AE_ENGINEER' ? 'A&E Engineer' : label(role);

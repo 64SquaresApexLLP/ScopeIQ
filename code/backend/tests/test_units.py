@@ -76,3 +76,18 @@ def test_logging_levels_follow_environment():
     dev = yaml.safe_load((cfg / "dev.yaml").read_text())
     assert prod["logging"]["level"] == "WARNING" and dev["logging"]["level"] == "DEBUG"
     assert prod["logging"]["log_payloads"] is False and dev["logging"]["log_payloads"] is True
+
+
+def test_drone_objects_are_identified_from_the_material_catalog(ref):
+    from scopeiq.domain import FieldObject
+    from scopeiq.extract.drone import identify_object
+    cat = ref.catalog
+    ant = FieldObject("O1", "Antenna", "A", 0.0, 0.0, 145.0, (71.7, 20.6, 8.2), "", 0.95)          # inches: height, width, depth
+    got = identify_object(ant, cat)
+    assert got["catalog_key"] == "NNH4" and got["basis"] == "Size match" and got["mfr_pn"] and got["manufacturer"]
+    labelled = FieldObject("O2", "Antenna", "A", 0.0, 0.0, 145.0, (71.7, 20.6, 8.2), "APXVSPP18-C-A20", 0.95)
+    assert identify_object(labelled, cat)["basis"] == "Vendor label"                                  # the vendor's own label wins over size
+    pipe = identify_object(FieldObject("O3", "Mount pipe", "A", 0.0, None, 145.0, (94.6, 3.8, 3.1), "", 0.9), cat)
+    assert pipe["catalog_key"] == "PIPE" and pipe["basis"] == "Object type"
+    assert identify_object(FieldObject("O4", "Cable route", None, None, None, None, None, "", 0.9, route_length_ft=30), cat) is None
+    assert identify_object(FieldObject("O5", "Antenna", "A", 0.0, 0.0, 145.0, (400.0, 90.0, 60.0), "", 0.9), cat)["catalog_key"] is None   # nothing that size

@@ -1,5 +1,5 @@
 // Pipeline tab: what the backend does for this site, step by step, live while it runs. Each finished step opens to
-// the rows it produced; the last section turns the approved redlines into the next drawing revision.
+// the rows it produced; the Result section says whether a redlined drawing was saved.
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { api, ApiError } from '../../lib/api';
@@ -9,8 +9,8 @@ import { PipelineRun } from '../../lib/types';
 import { useApi } from '../../lib/useApi';
 import { colors, space } from '../theme';
 import { Badge, Button, Card, Empty, ErrorView, KV, Loading, Muted, Row, Title } from '../ui';
-import { ImplementChanges } from './ImplementChanges';
 import { PipelineSteps } from './PipelineSteps';
+import { RunResult } from './RunResult';
 
 export function Pipeline({ siteId, onFinished }: { siteId: string; onFinished?: () => void }) {
   const { can } = useAuth();
@@ -20,7 +20,7 @@ export function Pipeline({ siteId, onFinished }: { siteId: string; onFinished?: 
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState<boolean>(true);
   const [err, setErr] = useState<ApiError | null>(null);
-  const [version, setVersion] = useState(0);               // bumped when a redline changes, so the approved count refreshes
+  const [, setVersion] = useState(0);
 
   // Allow switching between selected historical run and the latest/current active run
   const activeLatestId = started ?? latest.data?.RUN_ID ?? null;
@@ -308,7 +308,7 @@ export function Pipeline({ siteId, onFinished }: { siteId: string; onFinished?: 
               <Empty text="This run was recorded before step tracking. Run the pipeline again to see its steps." />
             )}
           </View>
-          {!running && !isFailed ? <ImplementChanges key={version} siteId={siteId} /> : null}
+          {!running && !isFailed ? <RunResult run={r} siteId={siteId} /> : null}
         </View>
       ) : null}
     </View>

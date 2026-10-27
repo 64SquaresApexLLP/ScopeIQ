@@ -15,7 +15,8 @@ export default function Inbox() {
     if (!n.READ_AT) await api.post(`/workflow/inbox/${n.NOTIFICATION_ID}/read`).catch(() => undefined);
     if (n.ENTITY_TYPE === 'DISCREPANCY') router.push({ pathname: '/discrepancy/[id]', params: { id: n.ENTITY_ID } });
     else if (n.ENTITY_TYPE === 'BOM_REVISION') router.push({ pathname: '/bom/[revId]', params: { revId: n.ENTITY_ID } });
-    else if (n.SITE_ID) router.push({ pathname: '/site/[id]', params: { id: n.SITE_ID } });
+    else if (n.ENTITY_TYPE === 'RFI') router.push('/rfis');
+    else if (n.SITE_ID) router.push({ pathname: '/site/[id]', params: { id: n.SITE_ID, tab: n.ENTITY_TYPE === 'REDLINE' ? 'redlines' : undefined } });
     void inbox.reload();
   };
   const markAll = async () => {
@@ -32,7 +33,15 @@ export default function Inbox() {
       {!inbox.loading && !inbox.data?.length ? <Empty text="No notifications for your role." /> : null}
       {(inbox.data ?? []).map((n) => (
         <Card key={n.NOTIFICATION_ID} onPress={() => open(n)} style={n.READ_AT ? { opacity: 0.6 } : undefined}>
-          <Row><Badge text={n.ENTITY_TYPE} color={colors.primary} />{n.SITE_ID ? <Badge text={n.SITE_ID} color={colors.muted} /> : null}</Row>
+          <Row>
+            <Badge
+              text={n.ENTITY_TYPE === 'PIPELINE_RUN' ? (n.MESSAGE?.includes('FAILED') ? 'PIPELINE FAILED' : 'PIPELINE COMPLETE') : n.ENTITY_TYPE}
+              color={n.ENTITY_TYPE === 'PIPELINE_RUN'
+                ? (n.MESSAGE?.includes('FAILED') ? colors.danger : n.MESSAGE?.includes('WITH_WARNINGS') ? colors.warn : colors.ok)
+                : colors.primary}
+            />
+            {n.SITE_ID ? <Badge text={n.SITE_ID} color={colors.muted} /> : null}
+          </Row>
           <Muted style={{ marginTop: 4, color: colors.text }}>{n.MESSAGE}</Muted>
           <Muted>{when(n.CREATED_AT)}</Muted>
         </Card>

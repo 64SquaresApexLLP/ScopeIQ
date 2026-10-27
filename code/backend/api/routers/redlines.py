@@ -21,8 +21,12 @@ def _scoped(rows, user):
 def list_redlines(site_id: str | None = None, status: str | None = None, user: dict = Depends(current_user)):
     where = {k: v for k, v in {"SITE_ID": site_id, "STATUS": status}.items() if v}
     rows = _scoped(repo().select("CORE.REDLINE", where or None, order_by="SITE_ID, SHEET"), user)
+    proofs: dict[str, list] = {}
+    for p in repo().select("CORE.REDLINE_PROOF", {"SITE_ID": site_id} if site_id else None, order_by="REDLINE_ID, RANK"):
+        proofs.setdefault(p["REDLINE_ID"], []).append({**p, "URL": f"/files/{p['PATH']}"})
     for x in rows:
         x["PDF_URL"] = f"/files/{x['PDF_PATH']}" if x.get("PDF_PATH") else None
+        x["PROOF"] = proofs.get(x["REDLINE_ID"], [])            # the drone footage that shows what the redline is about
         x["ACTIONS"] = [a["action"] for a in workflow().actions("REDLINE", x["STATUS"], user["role"])]
     return rows
 
@@ -43,6 +47,17 @@ def redline_transition(redline_id: str, body: TransitionIn, user: dict = Depends
 @router.get("/rfis")
 def list_rfis(site_id: str | None = None, status: str | None = None, user: dict = Depends(current_user)):
     where = {k: v for k, v in {"SITE_ID": site_id, "STATUS": status}.items() if v}
+
+    # Filter by TO_PARTY so each party only sees the RFIs addressed to them:
+    #   ADMIN / ERICSSON  → RFIs addressed to Ericsson
+    #   AE_ENGINEER       → RFIs addressed to A&E
+    #   SCOPER / REVIEWER → all RFIs for the sites they scope (they submitted them and track answers)
+    role = user.get("role", "")
+    if role in ("ADMIN", "ERICSSON"):
+        where["TO_PARTY"] = "ERICSSON"
+    elif role == "AE_ENGINEER":
+        where["TO_PARTY"] = "AE_ENGINEER"
+
     rows = _scoped(repo().select("CORE.RFI", where or None, order_by="SITE_ID"), user)
     for x in rows:
         x["ACTIONS"] = [a["action"] for a in workflow().actions("RFI", x["STATUS"], user["role"])]
@@ -53,9 +68,10 @@ def list_rfis(site_id: str | None = None, status: str | None = None, user: dict 
 def rfi_transition(rfi_id: str, body: TransitionIn, user: dict = Depends(current_user)):
     if body.action.upper() == "ANSWER":
         raise ValidationError("Use POST /rfis/{id}/answer to answer an RFI")
-    return workflow().transition("RFI", rfi_id, body.action, reason_code=body.reason_code, comment=body.comment)
+    action = "SUBMIT" if body.action.upper() == "SEND" else body.action
+    return workflow().transition("RFI", rfi_id, action, reason_code=body.reason_code, comment=body.comment)
 
 
 @router.post("/rfis/{rfi_id}/answer")
-def answer_rfi(rfi_id: str, body: RfiAnswerIn, user: dict = Depends(require("ERICSSON"))):
+def answer_rfi(rfi_id: str, body: RfiAnswerIn, user: dict = Depends(require("ERICSSON", "AE_ENGINEER"))):
     return workflow().transition("RFI", rfi_id, "ANSWER", comment=body.answer, extra_updates={"ANSWER": body.answer, "UPDATED_AT": now_iso()})

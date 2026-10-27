@@ -75,7 +75,10 @@ class WorkflowEngine:
         table, id_col, st_col = ENTITY_TABLES[entity]
         row = self.repo.get(table, **{id_col: entity_id})
         state = row.get(st_col) or self.initial_state(entity)
-        t = self._find(entity, state, action.upper())
+        act = action.upper()
+        if entity == "RFI" and act == "SEND":
+            act = "SUBMIT"
+        t = self._find(entity, state, act)
         ctx = current()
         roles = t["ALLOWED_ROLES"].split(";")
         if ctx.role not in roles and ctx.role != "ADMIN":
@@ -101,14 +104,45 @@ class WorkflowEngine:
             updates.setdefault("APPROVED_BY", ctx.user_id)
         self.repo.update(table, updates, {id_col: entity_id})
         event = {"EVENT_ID": uuid.uuid4().hex, "ENTITY_TYPE": entity, "ENTITY_ID": entity_id, "SITE_ID": site_id, "FROM_STATE": state,
-                 "ACTION": action.upper(), "TO_STATE": to_state, "ACTOR_USER_ID": ctx.user_id, "ACTOR_ROLE": ctx.role,
+                 "ACTION": act, "TO_STATE": to_state, "ACTOR_USER_ID": ctx.user_id, "ACTOR_ROLE": ctx.role,
                  "REASON_CODE": reason_code, "COMMENT": comment, "EVENT_TS": now_iso(), "CORRELATION_ID": ctx.correlation_id}
         self.repo.insert("WF.WORKFLOW_EVENT", [event])
         AuditTrail.record(entity_type=entity, entity_id=entity_id, action="TRANSITION", before={st_col: state}, after=updates, reason_code=reason_code,
                           comment=comment, site_id=site_id, source="workflow")
+        
+        notify_roles = [r for r in t["NOTIFY_ROLES"].split(";") if r]
+
+        # ERICSSON and ADMIN are the same person in this system.
+        # If ERICSSON is a notify target, notify ADMIN instead (since inbox queries ROLE_CODE = 'ADMIN').
+        # If SCOPER is notified and actor is ADMIN, keep SCOPER so scopers get notified.
+        resolved = set()
+        for nr in notify_roles:
+            if nr == "ERICSSON":
+                resolved.add("ADMIN")     # Ericsson == Admin in this deployment
+            else:
+                resolved.add(nr)
+        # Always notify ADMIN for non-RFI entity transitions so admin stays informed.
+        if entity != "RFI":
+            resolved.add("ADMIN")
+        # Never notify the actor's own role — they already know what they just did.
+        resolved.discard(ctx.role)
+        notify_roles = list(resolved)
+
+        msg = f"{entity.replace('_', ' ').title()} {entity_id} {state} -> {to_state} ({t['DESCRIPTION']}) by {ctx.user_id}"
+        if entity == "RFI":
+            subj = row.get("SUBJECT") or ""
+            to_p = row.get("TO_PARTY") or "Ericsson"
+            site = row.get("SITE_ID") or ""
+            if act in ("SUBMIT", "SEND"):
+                msg = f"New RFI from {site}: {subj}" if subj else f"New RFI submitted for site {site}"
+            elif act == "ANSWER":
+                msg = f"RFI answered for {site}: {subj}" if subj else f"RFI {entity_id} has been answered"
+            elif act == "CLOSE":
+                msg = f"RFI closed for {site}: {subj}" if subj else f"RFI {entity_id} closed"
+
         notes = [{"NOTIFICATION_ID": uuid.uuid4().hex, "ROLE_CODE": r, "USER_ID": None, "SITE_ID": site_id, "ENTITY_TYPE": entity,
-                  "ENTITY_ID": entity_id, "MESSAGE": f"{entity.replace('_', ' ').title()} {entity_id} {state} -> {to_state} ({t['DESCRIPTION']}) by {ctx.user_id}",
-                  "CREATED_AT": now_iso(), "READ_AT": None} for r in t["NOTIFY_ROLES"].split(";") if r]
+                  "ENTITY_ID": entity_id, "MESSAGE": msg,
+                  "CREATED_AT": now_iso(), "READ_AT": None} for r in notify_roles]
         if notes:
             self.repo.insert("WF.NOTIFICATION", notes)
         log.info("workflow %s %s: %s -[%s]-> %s", entity, entity_id, state, action, to_state, extra={"site_id": site_id})

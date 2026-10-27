@@ -1,11 +1,26 @@
-"""Pipeline step 7 (draft side) - Redlines and RFIs drafted from discrepancies.
+"""Pipeline stage 4 - Redlines and RFIs: first DECIDE, then draft.
 
-A redline is the markup the A&E must apply to a drawing (sheet, from -> to, the text written on the sheet).
-An RFI is a question to the party that owns the answer: RF questions (RFDS vs CD, unrecorded equipment,
-azimuth/rad center in the field) go to Ericsson's RF engineer; drawing questions go to the A&E.
-Both stay DRAFT until a person submits them through the workflow.
+Stage 3 leaves a list of mismatches. This stage decides, for every one of them, whether the CD drawing has to be
+marked up and whether somebody has to be asked a question, and only then drafts what the decision calls for. If no
+mismatch touches the drawing, no redlined drawing is produced.
+
+A finding gets a REDLINE (a markup on the CD drawing) when ALL of these hold:
+  1. it is still live: a reviewer has not dismissed it and it has not been resolved;
+  2. its rule names a document that can be marked up (the CD drawing, or the MA/SA report);
+  3. its rule outcome calls for a drawing change (REDLINE), or for a question whose answer changes the drawing (RFI, then the
+     markup is drafted as 'subject to the RFI'); outcomes FLAG / REVIEW / ESCALATE / BOM_CHANGE never mark the drawing;
+  4. a markup is defined for the rule (what to write on which sheet).
+
+A finding gets an RFI when its rule outcome is RFI or ESCALATE: the documents cannot settle it, a person outside ScopeIQ
+(Ericsson's RF engineer, the A&E, the structural engineer) has to confirm or answer. The RFI is drafted here, right
+after the findings exist, and stays DRAFT until a person submits it through the workflow; the site is put on hold
+while a blocking RFI is open. The answer comes back as the RFI being ANSWERED and the finding being resolved.
+
+A redlined drawing is written only when at least one live finding marks up the CD drawing.
 """
 from __future__ import annotations
+
+from dataclasses import dataclass, field
 
 from scopeiq.common.ids import stable_id
 from scopeiq.common.logging import get_logger, log_call
@@ -65,9 +80,95 @@ def _markup(d: Discrepancy, f: SiteFacts, ref: ReferenceData) -> tuple[str, str,
     return None
 
 
+# --------------------------------------------------------------------------- the decision
+CLOSED_STATES = {"DISMISSED", "RESOLVED", "CLOSED"}           # a person (or a corrected document) already settled these
+MARKABLE = ("CD", "MA_SA")                                      # documents a redline can be written against
+REDLINE_OUTCOMES = {"REDLINE": "REQUIRED", "RFI": "SUBJECT_TO_RFI"}
+RFI_OUTCOMES = ("RFI", "ESCALATE")
+
+
+@dataclass
+class FindingDecision:
+    disc_id: str
+    rule_id: str
+    title: str
+    redline: str                 # REQUIRED | SUBJECT_TO_RFI | NONE
+    redline_reason: str
+    rfi: bool
+    rfi_reason: str
+    on_cd_drawing: bool          # the markup goes on the CD drawing (not on the MA/SA report)
+
+
+@dataclass
+class RedlineDecision:
+    required: bool               # write a redlined CD drawing
+    reason: str
+    findings_checked: int
+    items: list[FindingDecision] = field(default_factory=list)
+
+    @property
+    def redline_count(self) -> int:
+        return sum(1 for i in self.items if i.redline != "NONE")
+
+    @property
+    def rfi_count(self) -> int:
+        return sum(1 for i in self.items if i.rfi)
+
+    def to_dict(self) -> dict:
+        return {"required": self.required, "reason": self.reason, "findings_checked": self.findings_checked,
+                "redlines": self.redline_count, "rfis": self.rfi_count, "items": [i.__dict__ for i in self.items]}
+
+
+def _safe_markup(d: Discrepancy, f: SiteFacts, ref: ReferenceData):
+    try:
+        return _markup(d, f, ref)
+    except Exception:  # noqa: BLE001 - a finding with odd values must not stop the others
+        log.exception("markup for %s failed", d.rule_id, extra={"site_id": f.site_id})
+        return None
+
+
+def decide(facts: SiteFacts, discrepancies: list[Discrepancy], ref: ReferenceData) -> RedlineDecision:
+    """Stage 4's decision: which findings mark up a drawing, which need a question, and whether a redlined drawing is needed at all."""
+    items: list[FindingDecision] = []
+    for d in discrepancies:
+        live = d.status not in CLOSED_STATES
+        markup = _safe_markup(d, facts, ref) if live and d.outcome in REDLINE_OUTCOMES and d.target_doc in MARKABLE else None
+        if not live:
+            redline, why = "NONE", f"already {d.status.lower()} - nothing to mark up"
+        elif d.target_doc not in MARKABLE:
+            redline, why = "NONE", "it does not name a drawing to mark up (the finding is raised for review, not for a change)" if d.target_doc in ("ANY", "REGISTRY", "") else f"it concerns the {d.target_doc.replace('_', ' ').lower()}, not a drawing"
+        elif d.outcome not in REDLINE_OUTCOMES:
+            redline, why = "NONE", f"outcome is {d.outcome.replace('_', ' ').lower()}: it does not change the drawing"
+        elif markup is None:
+            redline, why = "NONE", f"no drawing markup is defined for {d.rule_id}"
+        elif d.outcome == "REDLINE":
+            redline, why = "REQUIRED", f"{d.rule_id} is a drawing mismatch: the {d.target_doc} must be corrected"
+        else:
+            redline, why = "SUBJECT_TO_RFI", f"{d.rule_id} needs an answer first; the markup is drafted as 'subject to the RFI'"
+        asks = live and d.outcome in RFI_OUTCOMES
+        party = {"ERICSSON": "Ericsson", "AE_ENGINEER": "the A&E engineer"}.get(RFI_TO.get(d.rule_id, "AE_ENGINEER"), "the A&E engineer")
+        rfi_why = (f"{d.rule_id} cannot be settled from the documents: {party} has to answer" if asks
+                   else ("already settled" if not live else "the documents settle it: no question needed"))
+        items.append(FindingDecision(d.disc_id, d.rule_id, d.title, redline, why, asks, rfi_why,
+                                     on_cd_drawing=redline != "NONE" and d.target_doc == "CD"))
+    on_drawing = [i for i in items if i.on_cd_drawing]
+    if on_drawing:
+        reason = f"{len(on_drawing)} finding(s) change the CD drawing ({', '.join(sorted({i.rule_id for i in on_drawing}))}): a redlined drawing is needed"
+    elif not discrepancies:
+        reason = "No mismatch was found: the sources agree, so no redlined drawing is needed"
+    else:
+        reason = f"{len(discrepancies)} finding(s) were raised but none of them changes the CD drawing: no redlined drawing is needed"
+    return RedlineDecision(bool(on_drawing), reason, len(discrepancies), items)
+
+
 RFI_TO = {"RFC-01": "ERICSSON", "RFC-02": "ERICSSON", "RFC-03": "ERICSSON", "RFC-04": "ERICSSON", "RFC-06": "ERICSSON", "FLD-01": "ERICSSON",
           "FLD-03": "AE_ENGINEER", "FLD-04": "ERICSSON", "FLD-07": "AE_ENGINEER", "REV-01": "AE_ENGINEER", "DOC-01": "ERICSSON",
           "CBL-01": "AE_ENGINEER", "SA-01": "ERICSSON"}
+
+
+def _nums(v) -> str:
+    """A measured value or a list of them as plain numbers (a finding keeps a list when several antennas differ)."""
+    return "/".join(f"{float(x):g}" for x in (v if isinstance(v, (list, tuple)) else [v]))
 
 
 def _rfi_text(d: Discrepancy, f: SiteFacts) -> tuple[str, str]:
@@ -82,23 +183,30 @@ def _rfi_text(d: Discrepancy, f: SiteFacts) -> tuple[str, str]:
         return (f"{SECTOR_NAMES.get(d.sector)} antennas measure {d.found:.0f} deg in the field vs {d.expected:g} deg designed. "
                 "Please confirm re-orientation to the design azimuth."), "Re-orient to design azimuth during construction."
     if r == "FLD-03":
-        return (f"Existing antennas measure {d.found} ft rad center vs {d.expected} ft on the CD/RFDS. Please confirm and revise the elevation."), \
+        return (f"Existing antennas measure {_nums(d.found)} ft rad center vs {_nums(d.expected)} ft on the CD/RFDS. Please confirm and revise the elevation."), \
             "Revise CD A-2 to measured rad centers."
     return d.description, d.bom_impact or ""
 
 
 @log_call()
-def draft_redlines_and_rfis(facts: SiteFacts, discrepancies: list[Discrepancy], ref: ReferenceData) -> tuple[list[Redline], list[Rfi]]:
+def draft_redlines_and_rfis(facts: SiteFacts, discrepancies: list[Discrepancy], ref: ReferenceData,
+                            decision: RedlineDecision | None = None) -> tuple[list[Redline], list[Rfi]]:
+    """Draft only what the decision calls for."""
+    decision = decision or decide(facts, discrepancies, ref)
+    by_id = {i.disc_id: i for i in decision.items}
     redlines, rfis = [], []
     for d in discrepancies:
-        if d.outcome in ("REDLINE", "RFI") and d.target_doc in ("CD", "MA_SA"):
-            mk = _markup(d, facts, ref)
+        verdict = by_id.get(d.disc_id)
+        if not verdict:
+            continue
+        if verdict.redline != "NONE":
+            mk = _safe_markup(d, facts, ref)
             if mk:
                 sheet, text, frm, to = mk
                 doc_type = "MA_SA" if sheet == "MA" else "CD"
                 rev = facts.cd_revision if doc_type == "CD" else (facts.ma.report_id if facts.ma else "")
                 redlines.append(Redline(stable_id("RDL", d.disc_id), facts.site_id, doc_type, rev, sheet, d.disc_id, text, str(frm), str(to)))
-        if d.outcome in ("RFI", "ESCALATE"):
+        if verdict.rfi:
             q, a = _rfi_text(d, facts)
             rfis.append(Rfi(stable_id("RFI", d.disc_id), facts.site_id, RFI_TO.get(d.rule_id, "AE_ENGINEER"), f"{facts.site_id}: {d.title}", q, a, [d.disc_id]))
     log.info("drafted %d redline(s), %d RFI(s)", len(redlines), len(rfis), extra={"site_id": facts.site_id})

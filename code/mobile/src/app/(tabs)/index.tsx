@@ -1,5 +1,5 @@
 // Dashboard: counts for the signed-in persona's sites (a CX SP sees only its own sites).
-import { router, useFocusEffect } from 'expo-router';
+import { Redirect, router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useRef } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { colors, space, statusColor } from '../../components/theme';
@@ -42,6 +42,9 @@ const Sub = ({ children }: { children: string }) => <Text style={{ fontSize: 11,
 
 export default function Dashboard() {
   const { user, can } = useAuth();
+  if (user?.role === 'AE_ENGINEER') {
+    return <Redirect href="/(tabs)/rfis" />;
+  }
   const d = useApi<Dash>('/sites/dashboard');
   const firstFocus = useRef(true);
   useFocusEffect(
@@ -75,7 +78,12 @@ export default function Dashboard() {
               <Sub>Status</Sub><Counts data={d.data.discrepancies.by_status} />
               <Sub>Severity</Sub><Counts data={d.data.discrepancies.by_severity} />
             </Panel>
-            <Panel icon="edit-3" title="Redlines and RFIs" hint="Corrections and questions">
+            <Panel
+              icon="edit-3"
+              title="Redlines and RFIs"
+              hint="Corrections and questions"
+              onPress={can('ADMIN', 'AE_ENGINEER') ? () => router.push('/(tabs)/rfis') : undefined}
+            >
               <Sub>Redlines</Sub><Counts data={d.data.redlines} />
               <Sub>RFIs</Sub><Counts data={d.data.rfis} />
             </Panel>

@@ -1,15 +1,14 @@
 import React, { useState } from 'react';
-import { Linking, TextInput, View } from 'react-native';
+import { Image, Linking, Modal, Platform, Pressable, TextInput, View } from 'react-native';
 import { api, ApiError, authedUrl } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { Row as R } from '../../lib/types';
 import { useApi } from '../../lib/useApi';
 import { colors, space } from '../theme';
-import { Badge, Button, Card, Empty, ErrorView, KV, Loading, Muted, Row, s, Section, Title } from '../ui';
+import { Badge, Button, Card, Empty, ErrorView, IconBadge, KV, Loading, Muted, Row, s, Section, Title } from '../ui';
 import { WorkflowActions } from '../WorkflowActions';
-import { ImplementChanges } from './ImplementChanges';
 
-function RfiCard({ r, reload }: { r: R; reload: () => void }) {
+export function RfiCard({ r, reload }: { r: R; reload: () => void }) {
   const { can } = useAuth();
   const [answer, setAnswer] = useState(r.PROPOSED_ANSWER ?? '');
   const [err, setErr] = useState<ApiError | null>(null);
@@ -28,15 +27,94 @@ function RfiCard({ r, reload }: { r: R; reload: () => void }) {
       <Muted style={{ color: colors.text }}>{r.QUESTION}</Muted>
       {r.PROPOSED_ANSWER ? <KV k="Proposed answer" v={r.PROPOSED_ANSWER} /> : null}
       {r.ANSWER ? <KV k="Answer" v={r.ANSWER} /> : null}
-      <View style={{ marginTop: space(2) }}>
-        <WorkflowActions actions={(r.ACTIONS ?? []).filter((a: string) => a !== 'ANSWER')} endpoint={`/rfis/${r.RFI_ID}/transition`} entity="RFI" onDone={reload} />
-      </View>
-      {can('ERICSSON') && (r.ACTIONS ?? []).includes('ANSWER') ? (
+      {(r.ACTIONS ?? []).some((a: string) => a !== 'ANSWER') ? (
+        <View style={{ marginTop: space(2) }}>
+          <WorkflowActions actions={(r.ACTIONS ?? []).filter((a: string) => a !== 'ANSWER')} endpoint={`/rfis/${r.RFI_ID}/transition`} entity="RFI" onDone={reload} />
+        </View>
+      ) : null}
+      {can('ERICSSON', 'AE_ENGINEER') && (r.ACTIONS ?? []).includes('ANSWER') ? (
         <View style={{ marginTop: space(2), gap: space(2) }}>
           <TextInput style={[s.input, { minHeight: 60 }]} multiline value={answer} onChangeText={setAnswer} placeholder="Answer" />
           <Button small title="Send answer" disabled={!answer.trim()} onPress={send} />
           {err ? <ErrorView error={err} /> : null}
         </View>
+      ) : null}
+    </Card>
+  );
+}
+
+/** The drone footage that backs a redline: the video frame (or still) that looks at the place the redline is about. */
+function ProofStrip({ proof }: { proof: R[] }) {
+  const [big, setBig] = useState<R | null>(null);
+  const sheet = proof.find((p) => p.KIND === 'SHEET');       // the drawing sheet with this redline marked
+  const drone = proof.filter((p) => p.KIND !== 'SHEET');
+  return (
+    <View style={{ marginTop: space(3), gap: space(3) }}>
+      {sheet ? (
+        <View style={{ gap: space(2) }}>
+          <Muted style={{ fontWeight: '700', color: colors.text }}>Sheet with this redline marked</Muted>
+          <Pressable onPress={() => setBig(sheet)} accessibilityRole="button" accessibilityLabel={`Enlarge: ${sheet.CAPTION}`} style={{ maxWidth: 760 }}>
+            <Image source={{ uri: authedUrl(sheet.URL) }} resizeMode="contain" style={{ width: '100%', aspectRatio: 1224 / 792, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: '#fff' }} />
+          </Pressable>
+          <Muted>{`${sheet.CAPTION}. Tap to enlarge.`}</Muted>
+        </View>
+      ) : null}
+      {!drone.length ? <Muted>No drone footage faces this place, so there is no picture to attach.</Muted> : (
+      <View style={{ gap: space(2) }}>
+      <Muted style={{ fontWeight: '700', color: colors.text }}>Proof from the drone survey</Muted>
+      <Row style={{ flexWrap: 'wrap', alignItems: 'flex-start', gap: space(3) }}>
+        {drone.map((p) => (
+          <Pressable key={p.PROOF_ID} onPress={() => setBig(p)} accessibilityRole="button" accessibilityLabel={`Enlarge: ${p.CAPTION}`} style={{ width: 280, gap: 4 }}>
+            <Image source={{ uri: authedUrl(p.URL) }} resizeMode="cover" style={{ width: 280, height: 158, borderRadius: 10, backgroundColor: colors.border }} />
+            <Badge text={p.KIND === 'VIDEO' ? 'Drone video' : 'Drone still'} />
+            <Muted style={{ color: colors.text, fontWeight: '600' }}>{p.CAPTION}</Muted>
+            <Muted>{p.BASIS}</Muted>
+          </Pressable>
+        ))}
+      </Row>
+      </View>
+      )}
+      <Modal visible={!!big} transparent animationType="fade" onRequestClose={() => setBig(null)}>
+        <Pressable onPress={() => setBig(null)} style={{ flex: 1, backgroundColor: '#000d', justifyContent: 'center', alignItems: 'center', padding: space(4) }}>
+          {big ? <Image source={{ uri: authedUrl(big.URL) }} resizeMode="contain" style={{ width: '100%', height: '85%' }} /> : null}
+          <Muted style={{ color: '#fff', marginTop: space(2) }}>{big ? `${big.CAPTION}  -  tap anywhere to close` : ''}</Muted>
+        </Pressable>
+      </Modal>
+    </View>
+  );
+}
+
+/** The red-marked drawing shown in the page, so it does not have to be downloaded to be read. */
+function PdfPreview({ path }: { path: string }) {
+  const [open, setOpen] = useState(true);
+  const url = authedUrl(path);
+  const name = decodeURIComponent(path.split('/').pop()?.split('?')[0] ?? 'Redlined drawing');
+  return (
+    <Card style={{ marginBottom: space(3) }}>
+      <Row style={{ justifyContent: 'space-between', alignItems: 'center', gap: space(2) }}>
+        <Row style={{ flex: 1, minWidth: 220, gap: space(3) }}>
+          <IconBadge name="file-text" color={colors.danger} size={40} />
+          <View style={{ flex: 1 }}>
+            <Title style={{ fontSize: 16 }}>Redlined drawing</Title>
+            <Muted numberOfLines={1}>{name}</Muted>
+          </View>
+        </Row>
+        <Row>
+          <Button small kind="secondary" title={open ? 'Hide preview' : 'Show preview'} onPress={() => setOpen((v) => !v)} />
+          <Button small title="Open in new tab" onPress={() => Linking.openURL(url)} />
+        </Row>
+      </Row>
+      {open ? (
+        Platform.OS === 'web' ? (
+          <View style={{ marginTop: space(3) }}>
+            {React.createElement('iframe', {
+              src: `${url}#view=FitH&navpanes=0`, title: 'Redlined drawing preview',
+              style: { width: '100%', height: 780, border: `1px solid ${colors.border}`, borderRadius: 12, backgroundColor: '#fff' },
+            })}
+          </View>
+        ) : (
+          <Muted style={{ marginTop: space(2) }}>The preview is shown in the browser. Use "Open in new tab" on this device.</Muted>
+        )
       ) : null}
     </Card>
   );
@@ -50,9 +128,7 @@ export function Redlines({ siteId }: { siteId: string }) {
   const pdf = red.data.find((x) => x.PDF_URL)?.PDF_URL;
   return (
     <View>
-      {pdf ? <Button title="Open red-marked CD (PDF)" onPress={() => Linking.openURL(authedUrl(pdf))} /> : null}
-      {/* re-read the approved count when a redline changes */}
-      <ImplementChanges key={red.data.map((x) => x.STATUS).join(',')} siteId={siteId} />
+      {pdf ? <PdfPreview path={pdf} /> : null}
       <Section title={`Redlines (${red.data.length})`}>
         {!red.data.length ? <Empty text="No redlines for this site." /> : null}
         {red.data.map((x, i) => (
@@ -61,9 +137,12 @@ export function Redlines({ siteId }: { siteId: string }) {
             <Muted style={{ color: colors.text }}>{x.MARKUP}</Muted>
             <KV k="Was" v={x.CHANGE_FROM} />
             <KV k="Now" v={x.CHANGE_TO} />
-            <View style={{ marginTop: space(2) }}>
-              <WorkflowActions actions={x.ACTIONS ?? []} endpoint={`/redlines/${x.REDLINE_ID}/transition`} entity="REDLINE" onDone={red.reload} />
-            </View>
+            <ProofStrip proof={x.PROOF ?? []} />
+            {(x.ACTIONS ?? []).length ? (
+              <View style={{ marginTop: space(3) }}>
+                <WorkflowActions actions={x.ACTIONS} endpoint={`/redlines/${x.REDLINE_ID}/transition`} entity="REDLINE" onDone={red.reload} />
+              </View>
+            ) : null}
           </Card>
         ))}
       </Section>

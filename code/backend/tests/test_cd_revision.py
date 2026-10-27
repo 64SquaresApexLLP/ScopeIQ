@@ -44,6 +44,7 @@ def _reread(implemented, site, ref):
     return extract_cd_dxf(_file(implemented[site], "revised_cd_dxf"), site_id=site, doc_id="REV2", revision="REV 2", catalog=ref.catalog)
 
 
+@pytest.mark.later_stages
 def test_every_site_with_cd_redlines_gets_a_revision(implemented):
     assert len(implemented) >= 9
     for site, run in implemented.items():
@@ -56,6 +57,7 @@ def test_every_site_with_cd_redlines_gets_a_revision(implemented):
         assert [s["status"] for s in run["STEPS"]] == ["DONE", "DONE", "DONE"]
 
 
+@pytest.mark.later_stages
 def test_rev2_dxf_resolves_the_redlines(implemented, ref):
     # FLD-02: the spare pipe that is not in the field is gone
     r = _reread(implemented, "TXDA1024", ref)

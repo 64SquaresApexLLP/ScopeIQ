@@ -35,30 +35,30 @@ export default function Queue() {
         { key: 'rfi', label: 'RFIs' }, { key: 'redline', label: 'Redlines' }, { key: 'ehs', label: 'EH&S alerts' }]} />
       {data.error ? <ErrorView error={data.error} onRetry={data.reload} /> : data.loading && !data.data ? <Loading /> : null}
       {!data.loading && !rows.length ? <Empty text="Nothing waiting here." /> : null}
-      {rows.map((x) => {
+      {rows.map((x, i) => {
         if (q === 'disc') return (
-          <Card key={x.DISC_ID} onPress={() => router.push({ pathname: '/discrepancy/[id]', params: { id: x.DISC_ID } })}>
+          <Card key={x.DISC_ID ?? i} onPress={() => router.push({ pathname: '/discrepancy/[id]', params: { id: x.DISC_ID } })}>
             <Row style={{ justifyContent: 'space-between' }}><Title>{`${x.SITE_ID} - ${x.RULE_ID}`}</Title><Badge text={x.SEVERITY} /></Row>
             <Muted numberOfLines={2}>{x.TITLE}</Muted>
             <Row style={{ marginTop: space(1) }}><Badge text={x.STATUS} /><Badge text={x.OUTCOME} color={colors.primary} />{x.SECTOR ? <Badge text={`Sector ${x.SECTOR}`} color={colors.muted} /> : null}</Row>
           </Card>);
         if (q === 'bom') return (
-          <Card key={x.BOM_REV_ID} onPress={() => router.push({ pathname: '/bom/[revId]', params: { revId: x.BOM_REV_ID } })}>
+          <Card key={x.BOM_REV_ID ?? i} onPress={() => router.push({ pathname: '/bom/[revId]', params: { revId: x.BOM_REV_ID } })}>
             <Row style={{ justifyContent: 'space-between' }}><Title>{`${x.SITE_ID} ${x.REV_LABEL}`}</Title><Badge text={x.STATUS} /></Row>
             <Muted>{`${x.KIND} - created ${String(x.CREATED_AT ?? '').slice(0, 10)}`}</Muted>
           </Card>);
         if (q === 'rfi') return (
-          <Card key={x.RFI_ID} onPress={() => router.push({ pathname: '/site/[id]', params: { id: x.SITE_ID, tab: 'redlines' } })}>
+          <Card key={x.RFI_ID ?? i} onPress={() => router.push({ pathname: '/site/[id]', params: { id: x.SITE_ID, tab: 'redlines' } })}>
             <Row style={{ justifyContent: 'space-between' }}><Title>{x.SITE_ID}</Title><Badge text={x.STATUS} /></Row>
             <Muted>{`To ${x.TO_PARTY}: ${x.SUBJECT}`}</Muted>
           </Card>);
         if (q === 'ehs') return (
-          <Card key={x.ALERT_ID} onPress={() => router.push({ pathname: '/site/[id]', params: { id: x.SITE_ID } })}>
+          <Card key={x.ALERT_ID ?? i} onPress={() => router.push({ pathname: '/site/[id]', params: { id: x.SITE_ID } })}>
             <Row style={{ justifyContent: 'space-between' }}><Title>{`${x.SITE_ID} ${x.RULE_ID}`}</Title><Row><Badge text={x.SEVERITY} /><Badge text={x.STATUS} /></Row></Row>
             <Muted>{x.ALERT_TEXT}</Muted>
           </Card>);
         return (
-          <Card key={x.REDLINE_ID} onPress={() => router.push({ pathname: '/site/[id]', params: { id: x.SITE_ID, tab: 'redlines' } })}>
+          <Card key={x.REDLINE_ID ?? i} onPress={() => router.push({ pathname: '/site/[id]', params: { id: x.SITE_ID, tab: 'redlines' } })}>
             <Row style={{ justifyContent: 'space-between' }}><Title>{`${x.SITE_ID} ${x.DOC_TYPE} ${x.SHEET}`}</Title><Badge text={x.STATUS} /></Row>
             <Muted numberOfLines={2}>{x.MARKUP}</Muted>
           </Card>);
