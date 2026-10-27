@@ -1,6 +1,8 @@
-// Admin: create a site. This creates its SharePoint folder and the site record; the site then appears for uploads.
+// Admin: create a site (its SharePoint folder and site record; the site then appears for uploads), and manage the
+// usernames + passwords Scopers sign in with.
 import React, { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { ScoperLogins } from '../../components/admin/ScoperLogins';
 import { colors, space } from '../../components/theme';
 import { Badge, Button, Card, Chips, ErrorView, Hero, Icon, IconBadge, Muted, s } from '../../components/ui';
 import { api, ApiError } from '../../lib/api';
@@ -38,6 +40,7 @@ export default function Admin() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const [created, setCreated] = useState<{ id: string; path: string } | null>(null);
+  const [section, setSection] = useState<'sites' | 'logins'>('sites');
 
   if (!can('ADMIN')) {
     return (
@@ -75,6 +78,10 @@ export default function Admin() {
   return (
     <ScrollView style={s.screen} contentContainerStyle={[s.content, { maxWidth: 820, width: '100%', alignSelf: 'center' }]}
       refreshControl={<RefreshControl refreshing={sites.loading} onRefresh={sites.reload} />}>
+      <View style={{ marginBottom: space(4) }}>
+        <Chips value={section} onChange={setSection} options={[{ key: 'sites', label: 'Sites' }, { key: 'logins', label: 'Scoper logins' }]} />
+      </View>
+      {section === 'logins' ? <ScoperLogins /> : <>
       <Hero icon="settings" title="Create a site" subtitle="Adds the site and its SharePoint folder so documents can be uploaded." />
 
       <Card style={{ padding: space(5) }}>
@@ -137,6 +144,7 @@ export default function Admin() {
           <Badge text={`${x.files} file${x.files === 1 ? '' : 's'}`} color={x.files ? colors.ok : colors.muted} />
         </Card>
       ))}
+      </>}
     </ScrollView>
   );
 }

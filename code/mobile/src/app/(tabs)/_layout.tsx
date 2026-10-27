@@ -15,10 +15,10 @@ function UserChip() {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: space(2), marginRight: space(4) }}>
       <View style={{ alignItems: 'flex-end' }}>
-        <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>{roleLabel(user.role)}</Text>
-        <Text style={{ color: 'rgba(255,255,255,0.65)', fontSize: 11 }}>Signed in</Text>
+        <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>{user.name || roleLabel(user.role)}</Text>
+        <Text style={{ color: 'rgba(255,255,255,0.65)', fontSize: 11 }}>{roleLabel(user.role)}</Text>
       </View>
-      <Avatar name={roleLabel(user.role)} size={34} />
+      <Avatar name={user.name || roleLabel(user.role)} size={34} />
     </View>
   );
 }
