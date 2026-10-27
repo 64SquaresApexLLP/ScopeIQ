@@ -222,16 +222,146 @@ function Documents({ data, rows }: { data?: any; rows: R[] }) {
   );
 }
 
+function DroneDataCard({ drone, isRunning }: { drone: any; isRunning?: boolean }) {
+  // detected_formats: real per-file format check returned by backend
+  const detectedFormats: Array<{ format: string; doc_type: string; file_name: string; size_kb: number | null; on_disk: boolean }> =
+    drone.detected_formats ?? [];
+
+  // identified_objects: actual objects extracted from the .laz point cloud, stored in DB
+  const identifiedObjects: Array<{
+    object_id: string; object_type: string; sector: string | null; position: number | null;
+    center_height_ft: number | null; facing_az_deg: number | null; bearing_deg: number | null;
+    model_guess: string; confidence: number | null; route_length_ft: number | null; method: string;
+  }> = drone.identified_objects ?? [];
+
+  const objTypeCounts: Record<string, number> = drone.obj_type_counts ?? {};
+
+  return (
+    <Card style={{ flex: 1, minWidth: 320, borderColor: colors.info, borderWidth: 1.5 }}>
+      <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: space(2) }}>
+        <Title style={{ fontSize: 16 }}>🛰️ Extraction of Drone Data</Title>
+        <Badge
+          text={isRunning ? 'EXTRACTION IN PROGRESS...' : (drone.method ?? 'DRONE EXTRACTION')}
+          color={colors.info}
+        />
+      </Row>
+
+      {/* In-progress status banner */}
+      {isRunning ? (
+        <View style={{ marginBottom: space(2), padding: space(2), backgroundColor: '#E8F0FE', borderRadius: 8, borderWidth: 1, borderColor: colors.info }}>
+          <Row style={{ alignItems: 'center', gap: space(1) }}>
+            <ActivityIndicator size="small" color={colors.info} />
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.info }}>Processing Drone Point Cloud...</Text>
+          </Row>
+        </View>
+      ) : null}
+
+      {/* 1. Data Format Check — real detected formats from backend (dynamic) */}
+      <View style={{ marginBottom: space(2), padding: space(2), backgroundColor: colors.surfaceAlt, borderRadius: 8 }}>
+        <Muted style={{ fontWeight: '700', color: colors.text, marginBottom: 6 }}>1. Data Format Check</Muted>
+        {detectedFormats.length > 0 ? (
+          detectedFormats.map((df, idx) => (
+            <Row key={idx} style={{ justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4,
+              borderBottomWidth: idx < detectedFormats.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
+              <Row style={{ alignItems: 'center', gap: space(1), flex: 1, flexWrap: 'wrap' }}>
+                <Badge text={`.${df.format}`} color={df.on_disk ? colors.info : colors.warn} />
+                <Muted style={{ fontSize: 12, flex: 1 }} numberOfLines={1}>{df.file_name}</Muted>
+              </Row>
+              <Muted style={{ fontSize: 11 }}>{df.size_kb != null ? `${df.size_kb} KB` : df.on_disk ? 'On disk' : 'Registered'}</Muted>
+            </Row>
+          ))
+        ) : (drone.formats ?? []).length > 0 ? (
+          <Row style={{ gap: space(1), flexWrap: 'wrap' }}>
+            {(drone.formats ?? []).map((fmt: string) => (
+              <Badge key={fmt} text={`.${fmt}`} color={colors.info} />
+            ))}
+          </Row>
+        ) : (
+          <Muted style={{ fontSize: 12 }}>No drone files detected yet.</Muted>
+        )}
+      </View>
+
+      {/* 2. Identified Objects (from .laz LiDAR — dynamic, stored in CORE.FIELD_OBJECT) */}
+      <View style={{ padding: space(2), backgroundColor: colors.surfaceAlt, borderRadius: 8 }}>
+        <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: space(1) }}>
+          <Muted style={{ fontWeight: '700', color: colors.text }}>2. Identified Objects</Muted>
+          <Badge text={`${identifiedObjects.length} total`} color={colors.info} />
+        </Row>
+
+        {/* Object type summary row */}
+        {Object.keys(objTypeCounts).length > 0 ? (
+          <Row style={{ gap: space(1), flexWrap: 'wrap', marginBottom: space(1.5) }}>
+            {Object.entries(objTypeCounts).map(([type, count]) => (
+              <Badge key={type} text={`${type}: ${count}`} color={colors.muted} />
+            ))}
+          </Row>
+        ) : null}
+
+        {identifiedObjects.length > 0 ? (
+          <>
+            {/* Table header */}
+            <View style={{ flexDirection: 'row', paddingVertical: 4, borderBottomWidth: 2, borderBottomColor: colors.border, marginBottom: 2 }}>
+              <Muted style={{ flex: 2, fontWeight: '700', fontSize: 11 }}>Object / Model</Muted>
+              <Muted style={{ width: 56, fontWeight: '700', fontSize: 11, textAlign: 'center' }}>Sector</Muted>
+              <Muted style={{ width: 52, fontWeight: '700', fontSize: 11, textAlign: 'center' }}>Ht (ft)</Muted>
+              <Muted style={{ width: 48, fontWeight: '700', fontSize: 11, textAlign: 'center' }}>Conf</Muted>
+            </View>
+            {identifiedObjects.map((obj, idx) => (
+              <View key={obj.object_id ?? idx} style={{ flexDirection: 'row', paddingVertical: 5,
+                borderBottomWidth: idx < identifiedObjects.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
+                <View style={{ flex: 2 }}>
+                  <Muted style={{ fontWeight: '600', color: colors.text, fontSize: 12 }}>
+                    {obj.object_type}{obj.model_guess ? ` — ${obj.model_guess}` : ''}
+                  </Muted>
+                  {obj.facing_az_deg != null ? (
+                    <Muted style={{ fontSize: 11 }}>{`Az ${obj.facing_az_deg}°${obj.route_length_ft != null ? ` • Route ${obj.route_length_ft} ft` : ''}`}</Muted>
+                  ) : obj.route_length_ft != null ? (
+                    <Muted style={{ fontSize: 11 }}>{`Route ${obj.route_length_ft} ft`}</Muted>
+                  ) : null}
+                </View>
+                <Muted style={{ width: 56, textAlign: 'center', fontSize: 12 }}>
+                  {obj.sector ? `${obj.sector}${obj.position != null ? `-P${obj.position}` : ''}` : '—'}
+                </Muted>
+                <Muted style={{ width: 52, textAlign: 'center', fontSize: 12 }}>
+                  {obj.center_height_ft != null ? obj.center_height_ft : '—'}
+                </Muted>
+                <View style={{ width: 48, alignItems: 'center' }}>
+                  <Badge
+                    text={obj.confidence != null ? `${Math.round(obj.confidence * 100)}%` : '—'}
+                    color={obj.confidence != null && obj.confidence >= 0.8 ? colors.ok : colors.warn}
+                  />
+                </View>
+              </View>
+            ))}
+
+            {/* DB stored confirmation */}
+            <View style={{ marginTop: space(1.5), flexDirection: 'row', alignItems: 'center', gap: space(1) }}>
+              <Text style={{ fontSize: 13 }}>💾</Text>
+              <Muted style={{ fontSize: 11, flex: 1 }}>
+                {`${identifiedObjects.length} object(s) stored in `}
+                <Text style={{ fontFamily: 'monospace', fontSize: 11 }}>CORE.FIELD_OBJECT</Text>
+                {' for downstream stages.'}
+              </Muted>
+            </View>
+          </>
+        ) : isRunning ? (
+          <Muted style={{ fontSize: 12 }}>Identifying objects from point cloud...</Muted>
+        ) : (
+          <Muted style={{ fontSize: 12 }}>No objects identified. Ensure a .laz file is available for this site.</Muted>
+        )}
+      </View>
+    </Card>
+  );
+}
+
 function Extracted({ x, isRunning }: { x: any; isRunning?: boolean }) {
   const drone = x.drone_extraction || {
-    formats: ['LAZ', 'MP4', 'CSV', 'JSON'],
-    tools: [
-      { tool: 'laspy + NumPy', format: '.laz (LiDAR Point Cloud)', description: '3D voxel clustering (ASPRS 64-68), mount pipe column detection, trunk run.' },
-      { tool: 'OpenCV (cv2)', format: '.mp4 (Orbit Video)', description: 'Laplacian variance blur filter, 24 equidistant orbit frame sampling.' },
-    ],
+    formats: [],
+    detected_formats: [],
+    identified_objects: [],
+    obj_type_counts: {},
     items_count: x.config_lines?.filter((c: R) => c.SOURCE === 'FIELD').length ?? 0,
-    objects_count: 216,
-    frames_count: 24,
+    objects_count: 0,
     items: x.config_lines?.filter((c: R) => c.SOURCE === 'FIELD') ?? [],
     method: 'POINTCLOUD (LiDAR 3D)',
   };
@@ -252,87 +382,15 @@ function Extracted({ x, isRunning }: { x: any; isRunning?: boolean }) {
     <View>
       <Row style={{ marginBottom: space(2) }}>
         <Stat label="Total Extracted Facts" value={x.total} />
-        <Stat label="Drone Data Items" value={drone.items_count} color={colors.info} />
+        <Stat label="Drone Objects" value={drone.objects_count} color={colors.info} />
         <Stat label="CD Drawn Items" value={cd.items_count} color={colors.primary} />
         <Stat label="Need Review" value={x.needs_review} color={x.needs_review ? colors.warn : undefined} />
       </Row>
 
       {/* Stage 2 Parallel Cards: 1st Card Drone Data, 2nd Card CD Drawings Data */}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space(3), marginVertical: space(2) }}>
-        {/* Card 1: Extraction of Drone Data */}
-        <Card style={{ flex: 1, minWidth: 320, borderColor: colors.info, borderWidth: 1.5 }}>
-          <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: space(2) }}>
-            <Title style={{ fontSize: 16 }}>🛰️ Extraction of Drone Data</Title>
-            <Badge
-              text={isRunning ? 'EXTRACTION IN PROGRESS...' : (drone.method ?? 'DRONE EXTRACTION')}
-              color={colors.info}
-            />
-          </Row>
-
-          {/* In-progress status banner */}
-          {isRunning ? (
-            <View style={{ marginBottom: space(2), padding: space(2), backgroundColor: '#E8F0FE', borderRadius: 8, borderWidth: 1, borderColor: colors.info }}>
-              <Row style={{ alignItems: 'center', gap: space(1) }}>
-                <ActivityIndicator size="small" color={colors.info} />
-                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.info }}>Scanning Drone 3D Point Cloud (.laz) & Orbit Video (.mp4)...</Text>
-              </Row>
-              <Muted style={{ fontSize: 12, marginTop: 4 }}>
-                Segmenting point cloud clusters and extracting sector equipment in the background...
-              </Muted>
-            </View>
-          ) : null}
-
-          {/* 1. Data Format Check */}
-          <View style={{ marginBottom: space(2), padding: space(2), backgroundColor: colors.surfaceAlt, borderRadius: 8 }}>
-            <Muted style={{ fontWeight: '700', color: colors.text, marginBottom: 4 }}>1. Data Format Check (.laz, .las, .mp4)</Muted>
-            <Muted style={{ fontSize: 12, marginBottom: 6 }}>Scans point clouds, orbit video, telemetry and vendor logs:</Muted>
-            <Row style={{ gap: space(1), flexWrap: 'wrap' }}>
-              {(drone.formats ?? []).map((fmt: string) => (
-                <Badge
-                  key={fmt}
-                  text={fmt === 'LAZ' || fmt === 'LAS' ? `.${fmt} (LiDAR Point Cloud)` : fmt === 'MP4' ? `.${fmt} (Video Media)` : fmt === 'CSV' ? `.${fmt} (Vendor Survey)` : `.${fmt}`}
-                  color={colors.info}
-                />
-              ))}
-            </Row>
-          </View>
-
-          {/* 2. Best Extraction Tools Applied */}
-          <View style={{ marginBottom: space(2), padding: space(2), backgroundColor: colors.surfaceAlt, borderRadius: 8 }}>
-            <Muted style={{ fontWeight: '700', color: colors.text, marginBottom: 6 }}>2. Best Extraction Tools Applied</Muted>
-            {(drone.tools ?? []).map((t: any, idx: number) => (
-              <View key={idx} style={{ marginBottom: space(1), paddingBottom: space(1), borderBottomWidth: idx < drone.tools.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
-                <Row style={{ alignItems: 'center', gap: space(1), marginBottom: 2 }}>
-                  <Badge text={t.tool} color={colors.info} />
-                  <Muted style={{ fontWeight: '600', color: colors.text }}>{t.format}</Muted>
-                </Row>
-                <Muted style={{ fontSize: 12 }}>{t.description}</Muted>
-              </View>
-            ))}
-          </View>
-
-          {/* 3. Extracted 3D Field Data */}
-          <View style={{ padding: space(2), backgroundColor: colors.surfaceAlt, borderRadius: 8 }}>
-            <Muted style={{ fontWeight: '700', color: colors.text, marginBottom: space(1) }}>3. Extracted Field Data & Progress Summary</Muted>
-            <Row style={{ marginBottom: space(1) }}>
-              <Stat label="3D Objects" value={drone.objects_count} />
-              <Stat label="Video Frames" value={drone.frames_count} />
-              <Stat label="Field Lines" value={drone.items_count} />
-              {drone.trunk?.RUN_LENGTH_FT ? <Stat label="Trunk Run" value={`${drone.trunk.RUN_LENGTH_FT} ft`} /> : null}
-            </Row>
-
-            <Muted style={{ fontWeight: '600', color: colors.text, marginTop: space(1), marginBottom: 4 }}>Sample Field Equipment ({Math.min(5, (drone.items ?? []).length)} of {drone.items_count}):</Muted>
-            {(drone.items ?? []).slice(0, 5).map((item: R, idx: number) => (
-              <Row key={item.LINE_ID ?? idx} style={{ justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                <View style={{ flex: 1 }}>
-                  <Muted style={{ color: colors.text, fontWeight: '600' }}>{`Sector ${item.SECTOR ?? '-'}${item.POSITION ? ` Pos ${item.POSITION}` : ''}: ${item.MODEL_TEXT || item.CATALOG_KEY}`}</Muted>
-                  <Muted style={{ fontSize: 12 }}>{`${item.KIND ?? 'equipment'} • ${item.STATUS ?? 'Existing'}${item.RAD_CENTER_FT ? ` • RAD ${item.RAD_CENTER_FT} ft` : ''}${item.AZIMUTH_DEG != null ? ` • Az ${item.AZIMUTH_DEG}°` : ''}`}</Muted>
-                </View>
-                <Badge text={item.CONFIDENCE ? `${Math.round(item.CONFIDENCE * 100)}%` : '98%'} color={colors.ok} />
-              </Row>
-            ))}
-          </View>
-        </Card>
+        {/* Card 1: Extraction of Drone Data — shows format check and identified objects only */}
+        <DroneDataCard drone={drone} isRunning={isRunning} />
 
         {/* Card 2: Extraction of CD Drawings Data */}
         <Card style={{ flex: 1, minWidth: 320, borderColor: colors.primary, borderWidth: 1.5 }}>

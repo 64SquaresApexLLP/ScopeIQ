@@ -602,6 +602,14 @@ class PipelineService:
                                          "HORIZONTAL_FT": t.horizontal_ft, "REQUIRED_FT": t.required_ft, "SPECIFIED_FT": t.specified_ft,
                                          "SOURCE_REF": t.ref.label() if t.ref else None} for k, t in f.trunks.items()])
 
+        # Persist identified drone field objects directly at Stage 2 for downstream stages
+        r.delete_where("CORE.FIELD_OBJECT", {"SITE_ID": sid, "RUN_ID": run_id})
+        r.insert("CORE.FIELD_OBJECT", [{"SITE_ID": sid, "RUN_ID": run_id, "OBJECT_ID": o.object_id, "OBJECT_TYPE": o.object_type, "SECTOR": o.sector,
+                                        "POSITION": o.position, "BEARING_DEG": o.bearing_deg, "FACING_AZ_DEG": o.facing_az_deg,
+                                        "CENTER_HEIGHT_FT": o.center_height_ft, "DIMS_IN": list(o.dims_in) if o.dims_in else None,
+                                        "MODEL_GUESS": o.model_guess, "CONFIDENCE": o.confidence, "ROUTE_LENGTH_FT": o.route_length_ft,
+                                        "METHOD": o.method} for o in f.field_objects])
+
         return records
 
     # ------------------------------------------------------------------------------------ persist
