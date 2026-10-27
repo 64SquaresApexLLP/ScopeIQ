@@ -1,7 +1,9 @@
 # ==============================================================================
 # ScopeIQ - Automatic Deployment to EC2 (Windows / NSSM)
 #
-# Triggered on every push or merge to `main`.
+# Triggered only when code lands on `main` (a merged pull request is a push to `main`).
+# Opening or updating a pull request does NOT deploy: there is no pull_request trigger, and the
+# job below also refuses to run for one. A manual run is allowed only from `main`.
 # Requires a GitHub Actions self-hosted runner installed on the EC2 instance.
 #
 # HOW TO INSTALL THE SELF-HOSTED RUNNER ON EC2 (one-time setup):
@@ -21,6 +23,9 @@ on:
   push:
     branches:
       - main
+    paths-ignore:                     # documentation-only changes need no deployment
+      - '**.md'
+      - 'docs/**'
   workflow_dispatch:                  # Manual trigger from GitHub Actions UI
 
 concurrency:
@@ -34,6 +39,8 @@ jobs:
   deploy:
     name: Deploy to EC2 (ScopeIQ-API + Frontend)
     runs-on: self-hosted              # Runner registered on the EC2 instance
+    # Deploy only for a push to main or a manual run on main - never for a pull request or another branch
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
 
     environment:
       name: production                # Optional: add approval gates in GitHub Environments
