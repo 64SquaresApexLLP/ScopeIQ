@@ -32,7 +32,15 @@ export default function Inbox() {
       {!inbox.loading && !inbox.data?.length ? <Empty text="No notifications for your role." /> : null}
       {(inbox.data ?? []).map((n) => (
         <Card key={n.NOTIFICATION_ID} onPress={() => open(n)} style={n.READ_AT ? { opacity: 0.6 } : undefined}>
-          <Row><Badge text={n.ENTITY_TYPE} color={colors.primary} />{n.SITE_ID ? <Badge text={n.SITE_ID} color={colors.muted} /> : null}</Row>
+          <Row>
+            <Badge
+              text={n.ENTITY_TYPE === 'PIPELINE_RUN' ? (n.MESSAGE?.includes('FAILED') ? 'PIPELINE FAILED' : 'PIPELINE COMPLETE') : n.ENTITY_TYPE}
+              color={n.ENTITY_TYPE === 'PIPELINE_RUN'
+                ? (n.MESSAGE?.includes('FAILED') ? colors.danger : n.MESSAGE?.includes('WITH_WARNINGS') ? colors.warn : colors.ok)
+                : colors.primary}
+            />
+            {n.SITE_ID ? <Badge text={n.SITE_ID} color={colors.muted} /> : null}
+          </Row>
           <Muted style={{ marginTop: 4, color: colors.text }}>{n.MESSAGE}</Muted>
           <Muted>{when(n.CREATED_AT)}</Muted>
         </Card>

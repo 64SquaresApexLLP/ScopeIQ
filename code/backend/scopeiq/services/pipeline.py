@@ -232,8 +232,15 @@ class PipelineService:
                     summary["files"] = self._write_files(run_id, facts, fn_lines, changes, discs, redlines, rfis, summary)
                     prog.finish("FILES", f"{len(summary['files'])} file(s) written", {"files": len(summary["files"])})
                 self._advance_workflow(site_id)
-                self.repo.update("CORE.PIPELINE_RUN", {"FINISHED_AT": now_iso(), "STATUS": "SUCCEEDED" if not facts.warnings else "SUCCEEDED_WITH_WARNINGS",
+                final_status = "SUCCEEDED" if not facts.warnings else "SUCCEEDED_WITH_WARNINGS"
+                self.repo.update("CORE.PIPELINE_RUN", {"FINISHED_AT": now_iso(), "STATUS": final_status,
                                                        "STEPS": prog.steps, "SUMMARY": summary, "WARNINGS": facts.warnings}, {"RUN_ID": run_id})
+                done_count = sum(1 for s in prog.steps if s.get("status") == "DONE")
+                total_count = len(prog.steps)
+                warn_suffix = f" ({len(facts.warnings)} warning(s))" if facts.warnings else ""
+                _pipeline_notify(self.repo, site_id, run_id, final_status,
+                                 f"Pipeline {final_status} for site {site_id}: {done_count}/{total_count} stages passed{warn_suffix}. "
+                                 f"Discrepancies: {summary.get('discrepancies', 0)}, Redlines: {summary.get('redlines', {}).get('count', 0)}.")
                 log.info("pipeline finished for %s: %s", site_id, json.dumps({k: v for k, v in summary.items() if k != "files"}, default=str))
                 return {"run_id": run_id, "site_id": site_id, "status": "SUCCEEDED", "summary": summary, "warnings": facts.warnings}
             except Exception as exc:
@@ -241,6 +248,13 @@ class PipelineService:
                 prog.fail_running(exc)
                 self.repo.update("CORE.PIPELINE_RUN", {"FINISHED_AT": now_iso(), "STATUS": "FAILED", "STEPS": prog.steps,
                                                        "WARNINGS": [str(exc)]}, {"RUN_ID": run_id})
+                failed_step = next((s for s in prog.steps if s.get("status") == "FAILED"), None)
+                done_count = sum(1 for s in prog.steps if s.get("status") == "DONE")
+                total_count = len(prog.steps)
+                stage_label = failed_step.get("label", "Unknown stage") if failed_step else "Unknown stage"
+                _pipeline_notify(self.repo, site_id, run_id, "FAILED",
+                                 f"Pipeline FAILED for site {site_id}: stopped at '{stage_label}' "
+                                 f"({done_count}/{total_count} stages passed). Error: {str(exc)[:200]}")
                 log.exception("pipeline failed for %s", site_id)
                 raise
 
@@ -914,6 +928,20 @@ class PipelineService:
         with bind(user_id="system", role="SYSTEM"):
             for action in path:
                 self.wf.transition("SITE_SCOPING", site_id, action, site_id=site_id)
+
+
+def _pipeline_notify(repo: Repository, site_id: str, run_id: str, status: str, message: str) -> None:
+    """Insert WF.NOTIFICATION rows so SCOPER and REVIEWER see pipeline results in their Inbox."""
+    notes = [
+        {"NOTIFICATION_ID": uuid.uuid4().hex, "ROLE_CODE": role, "USER_ID": None,
+         "SITE_ID": site_id, "ENTITY_TYPE": "PIPELINE_RUN", "ENTITY_ID": run_id,
+         "MESSAGE": message, "CREATED_AT": now_iso(), "READ_AT": None}
+        for role in ("SCOPER", "REVIEWER")
+    ]
+    try:
+        repo.insert("WF.NOTIFICATION", notes)
+    except Exception:  # noqa: BLE001 - notification failure must never kill the pipeline result
+        log.warning("Could not write pipeline inbox notifications for run %s", run_id)
 
 
 def _rel(path: str, base: Path) -> str:
