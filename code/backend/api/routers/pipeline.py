@@ -10,10 +10,12 @@ from pathlib import Path
 from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse
 
-from api.deps import check_site_scope, current_user, pipeline, repo, require, site_scope
+from api.deps import check_site_scope, current_user, pipeline, ref as reference, repo, require, site_scope
 from api.schemas import RunIn
 from scopeiq.common.errors import NotFound
 from scopeiq.config import get_settings
+from scopeiq.domain import FieldObject
+from scopeiq.extract.drone import identify_object
 from scopeiq.services.pipeline import APPLY_PREFIX, STEP_DEFS
 
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
@@ -180,8 +182,16 @@ def step_detail(run_id: str, key: str, user: dict = Depends(current_user)):
 
         # Build structured identified-objects list from FIELD_OBJECT table (real LAZ output, dynamic)
         identified_objects: list = []
+        _catalog = reference().catalog
         for _obj in field_objs:
+            _dims = _obj.get("DIMS_IN")
+            _match = identify_object(FieldObject(
+                _obj.get("OBJECT_ID"), _obj.get("OBJECT_TYPE"), _obj.get("SECTOR"), _obj.get("BEARING_DEG"), _obj.get("FACING_AZ_DEG"),
+                _obj.get("CENTER_HEIGHT_FT"), tuple(_dims) if _dims else None, _obj.get("MODEL_GUESS") or "", _obj.get("CONFIDENCE") or 0.0,
+                _obj.get("ROUTE_LENGTH_FT"), _obj.get("METHOD") or "", _obj.get("POSITION")), _catalog)
             identified_objects.append({
+                "catalog": _match,
+                "dims_in": _dims,
                 "object_id": _obj.get("OBJECT_ID"),
                 "object_type": _obj.get("OBJECT_TYPE"),
                 "sector": _obj.get("SECTOR"),
@@ -300,7 +310,9 @@ def step_detail(run_id: str, key: str, user: dict = Depends(current_user)):
             },
         }
     if key == "RECONCILE":
-        return {"discrepancies": r.select("CORE.DISCREPANCY", by_run, order_by="SEVERITY, RULE_ID")}
+        found = r.select("CORE.DISCREPANCY", by_run, order_by="SEVERITY, RULE_ID")
+        return {"discrepancies": [d for d in found if d.get("FAMILY") != "REV0_BOM"],    # REV 0 checks belong to the BOM stage
+                "comparisons": (run.get("SUMMARY") or {}).get("comparisons", [])}
     if key == "DELTA":
         return {"delta": r.select("CORE.EQUIPMENT_DELTA", by_run, order_by="SEQ")}
     if key == "GENERATE":
@@ -313,7 +325,9 @@ def step_detail(run_id: str, key: str, user: dict = Depends(current_user)):
         return {"estimate": est[0] if est else None, "drivers": r.select("CORE.DRIVER_LINE", by_run),
                 "requirements": (r.select("CORE.SITE_REQUIREMENT", by_run) or [None])[0]}
     if key == "REDLINES":
-        return {"redlines": r.select("CORE.REDLINE", {"SITE_ID": sid}, order_by="SHEET"), "rfis": r.select("CORE.RFI", {"SITE_ID": sid})}
+        summary = run.get("SUMMARY") or {}
+        return {"redlines": r.select("CORE.REDLINE", {"SITE_ID": sid}, order_by="SHEET"), "rfis": r.select("CORE.RFI", {"SITE_ID": sid}),
+                "decision": summary.get("redline_decision"), "files": summary.get("files", {})}
     return {"files": (run.get("SUMMARY") or {}).get("files", {})}
 
 

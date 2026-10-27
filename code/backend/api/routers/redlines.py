@@ -21,8 +21,12 @@ def _scoped(rows, user):
 def list_redlines(site_id: str | None = None, status: str | None = None, user: dict = Depends(current_user)):
     where = {k: v for k, v in {"SITE_ID": site_id, "STATUS": status}.items() if v}
     rows = _scoped(repo().select("CORE.REDLINE", where or None, order_by="SITE_ID, SHEET"), user)
+    proofs: dict[str, list] = {}
+    for p in repo().select("CORE.REDLINE_PROOF", {"SITE_ID": site_id} if site_id else None, order_by="REDLINE_ID, RANK"):
+        proofs.setdefault(p["REDLINE_ID"], []).append({**p, "URL": f"/files/{p['PATH']}"})
     for x in rows:
         x["PDF_URL"] = f"/files/{x['PDF_PATH']}" if x.get("PDF_PATH") else None
+        x["PROOF"] = proofs.get(x["REDLINE_ID"], [])            # the drone footage that shows what the redline is about
         x["ACTIONS"] = [a["action"] for a in workflow().actions("REDLINE", x["STATUS"], user["role"])]
     return rows
 

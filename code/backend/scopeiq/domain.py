@@ -161,6 +161,9 @@ class VideoFrame:
     sharpness: float
     path: str
     selected: bool = False
+    equipment: float = 0.0                       # share of the frame (per mille) taken by equipment-like structure; 0 = bare tower / ground
+    box: tuple[int, int, int, int] | None = None  # where that equipment is in the frame (x0, y0, x1, y1)
+    clipped: bool = False                        # the equipment runs off the edge of the frame
 
 
 @dataclass

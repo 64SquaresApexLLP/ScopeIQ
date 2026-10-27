@@ -27,6 +27,12 @@ SITES_DIR = get_settings().path("paths.sites_dir")
 
 
 def pytest_collection_modifyitems(config, items):
+    from scopeiq.services.pipeline import stage_on
+    if not stage_on("GENERATE"):
+        off = pytest.mark.skip(reason="the BOM and later stages are switched off (LAST_STAGE)")
+        for it in items:
+            if "later_stages" in it.keywords:
+                it.add_marker(off)
     if not SITES_DIR.exists():
         skip = pytest.mark.skip(reason=f"sample data not found at {SITES_DIR}")
         for it in items:

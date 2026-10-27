@@ -8,9 +8,10 @@ import { label, money, num, SECTOR, show } from '../../lib/format';
 import { PipelineStep, Row as R } from '../../lib/types';
 import { useApi } from '../../lib/useApi';
 import { colors, space } from '../theme';
-import { Badge, Button, Card, Empty, ErrorView, KV, Loading, Muted, Row, Section, Stat, Title } from '../ui';
+import { Badge, Button, Card, Empty, ErrorView, IconBadge, KV, Loading, Muted, Row, Section, Stat, Title } from '../ui';
 import { WorkflowActions } from '../WorkflowActions';
 import { Delta } from './Delta';
+import { FindingCard } from './FindingView';
 
 const seconds = (ms: number | null) => (ms == null ? '' : ms < 950 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`);
 
@@ -167,7 +168,7 @@ function StepDetail({ runId, siteId, stepKey, stepStatus, onChanged }: { runId: 
   switch (stepKey) {
     case 'INGEST': return <Documents data={x} rows={x.documents ?? []} />;
     case 'EXTRACT': return <Extracted x={x} isRunning={stepStatus === 'RUNNING'} />;
-    case 'RECONCILE': return <Findings rows={x.discrepancies} />;
+    case 'RECONCILE': return <Reconcile x={x} />;
     case 'DELTA': return <Delta rows={x.delta} />;
     case 'GENERATE': return <Bom x={x} />;
     case 'ESTIMATE': return <Estimate x={x} />;
@@ -232,7 +233,10 @@ function DroneDataCard({ drone, isRunning }: { drone: any; isRunning?: boolean }
     object_id: string; object_type: string; sector: string | null; position: number | null;
     center_height_ft: number | null; facing_az_deg: number | null; bearing_deg: number | null;
     model_guess: string; confidence: number | null; route_length_ft: number | null; method: string;
+    catalog?: { catalog_key: string | null; model?: string; manufacturer?: string; mfr_pn?: string; basis: string; size_fit?: number | null; look_alikes?: Array<{ model: string }> } | null;
   }> = drone.identified_objects ?? [];
+  const matchedCount = identifiedObjects.filter((o) => o.catalog?.model).length;
+  const matchable = identifiedObjects.filter((o) => o.catalog).length;
 
   const objTypeCounts: Record<string, number> = drone.obj_type_counts ?? {};
 
@@ -287,6 +291,9 @@ function DroneDataCard({ drone, isRunning }: { drone: any; isRunning?: boolean }
           <Muted style={{ fontWeight: '700', color: colors.text }}>2. Identified Objects</Muted>
           <Badge text={`${identifiedObjects.length} total`} color={colors.info} />
         </Row>
+        {matchable > 0 ? (
+          <Muted style={{ fontSize: 11, marginBottom: space(1.5) }}>{`Model names and part numbers come from the material catalog: ${matchedCount} of ${matchable} objects matched.`}</Muted>
+        ) : null}
 
         {/* Object type summary row */}
         {Object.keys(objTypeCounts).length > 0 ? (
@@ -311,8 +318,18 @@ function DroneDataCard({ drone, isRunning }: { drone: any; isRunning?: boolean }
                 borderBottomWidth: idx < identifiedObjects.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
                 <View style={{ flex: 2 }}>
                   <Muted style={{ fontWeight: '600', color: colors.text, fontSize: 12 }}>
-                    {obj.object_type}{obj.model_guess ? ` — ${obj.model_guess}` : ''}
+                    {obj.object_type}{obj.catalog?.model ? ` — ${obj.catalog.model}` : obj.model_guess ? ` — ${obj.model_guess}` : ''}
                   </Muted>
+                  {obj.catalog?.model ? (
+                    <Muted style={{ fontSize: 11 }}>
+                      {`${obj.catalog.manufacturer} · P/N ${obj.catalog.mfr_pn} · ${obj.catalog.basis === 'Size match' ? `matched by size (${Math.round((obj.catalog.size_fit ?? 0) * 100)}% fit)` : obj.catalog.basis === 'Vendor label' ? 'matched by vendor label' : 'matched by type'}`}
+                    </Muted>
+                  ) : obj.catalog && !obj.catalog.model ? (
+                    <Muted style={{ fontSize: 11, color: colors.warn }}>No catalog item fits this size</Muted>
+                  ) : null}
+                  {obj.catalog?.look_alikes?.length ? (
+                    <Muted style={{ fontSize: 11, color: colors.warn }}>{`Could also be: ${obj.catalog.look_alikes.map((a: any) => a.model).join(', ')}`}</Muted>
+                  ) : null}
                   {obj.facing_az_deg != null ? (
                     <Muted style={{ fontSize: 11 }}>{`Az ${obj.facing_az_deg}°${obj.route_length_ft != null ? ` • Route ${obj.route_length_ft} ft` : ''}`}</Muted>
                   ) : obj.route_length_ft != null ? (
@@ -495,21 +512,87 @@ function Extracted({ x, isRunning }: { x: any; isRunning?: boolean }) {
         <CdDataCard cd={cd} isRunning={isRunning} />
       </View>
 
-      {/* Low-confidence / reviewable values section (only when something needs review) */}
-      {x.fields && x.fields.length > 0 && x.needs_review ? (
-        <Section title={`Fields Requiring Review (${x.needs_review})`}>
-          {x.fields.slice(0, 15).map((f: R) => (
-            <Row key={f.FIELD_ID} style={{ justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-              <View style={{ flex: 1 }}>
-                <Muted style={{ color: colors.text, fontWeight: '600' }}>{`${f.FIELD_NAME} = ${show(f.VALUE)}`}</Muted>
-                <Muted style={{ fontSize: 12 }}>{`${f.METHOD ?? 'Extracted'}${f.PAGE ? ` • Page ${f.PAGE}` : ''}`}</Muted>
-              </View>
-              <Badge text={`${Math.round((f.CONFIDENCE ?? 0) * 100)}%`} color={f.NEEDS_REVIEW ? colors.warn : colors.ok} />
-            </Row>
-          ))}
-          {x.total > 15 ? <Muted style={{ marginTop: space(1) }}>{`...and ${x.total - 15} additional parameters extracted`}</Muted> : null}
-        </Section>
-      ) : null}
+    </View>
+  );
+}
+
+const CHECK_STATUS: Record<string, { text: string; color: string }> = {
+  MATCH: { text: 'All match', color: colors.ok },
+  MISMATCH: { text: 'Mismatch found', color: colors.danger },
+  SKIPPED: { text: 'Not compared', color: colors.muted },
+};
+
+function SideLabel({ side }: { side: R }) {
+  return (
+    <View style={{ flex: 1, minWidth: 180 }}>
+      <Muted style={{ fontWeight: '700', color: colors.text, fontSize: 12 }}>{`${side.label} — ${side.object}`}</Muted>
+      <Muted style={{ fontSize: 11 }}>{side.files?.length ? side.files.join(', ') : '—'}</Muted>
+    </View>
+  );
+}
+
+function CheckCard({ c }: { c: R }) {
+  const [open, setOpen] = useState(c.status === 'MISMATCH');
+  const st = CHECK_STATUS[c.status] ?? CHECK_STATUS.MATCH;
+  const rows: R[] = c.rows ?? [];
+  return (
+    <Card style={{ marginBottom: space(2), borderColor: c.status === 'MISMATCH' ? colors.danger : colors.border, borderWidth: c.status === 'MISMATCH' ? 1.5 : 1 }}>
+      <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: space(1) }}>
+        <Title style={{ fontSize: 15, flex: 1 }}>{c.title}</Title>
+        <Badge text={st.text} color={st.color} />
+      </Row>
+      <Row style={{ gap: space(1.5), alignItems: 'flex-start', flexWrap: 'wrap', padding: space(1.5), backgroundColor: colors.surfaceAlt, borderRadius: 8 }}>
+        <SideLabel side={c.left} />
+        <Text style={{ fontSize: 18, color: colors.muted, alignSelf: 'center' }}>↔</Text>
+        <SideLabel side={c.right} />
+      </Row>
+      {c.info ? <Muted style={{ fontSize: 11, marginTop: space(1), fontStyle: 'italic' }}>{c.info}</Muted> : null}
+      {c.status === 'SKIPPED' ? (
+        <Muted style={{ fontSize: 12, marginTop: space(1) }}>{c.note}</Muted>
+      ) : (
+        <>
+          <Muted style={{ fontSize: 12, marginTop: space(1) }}>
+            {`${c.compared} compared, ${c.mismatched} mismatch${c.mismatched === 1 ? '' : 'es'}${c.mismatched ? ' — logged in the Discrepancies tab' : ''}`}
+          </Muted>
+          {rows.length > 0 ? (
+            <Pressable onPress={() => setOpen((v) => !v)} accessibilityRole="button" style={{ paddingVertical: 6 }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.primary }}>{open ? 'Hide comparisons' : `Show ${rows.length} comparison${rows.length === 1 ? '' : 's'}`}</Text>
+            </Pressable>
+          ) : null}
+          {open ? rows.map((r, i) => {
+            const bad = r.result === 'MISMATCH';
+            return (
+              <Pressable key={i} disabled={!r.disc_id} onPress={() => router.push({ pathname: '/discrepancy/[id]', params: { id: r.disc_id } })}
+                style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, paddingVertical: 6, paddingHorizontal: 6, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: bad ? '#FEF2F2' : undefined }}>
+                <Muted style={{ width: 170, fontWeight: '600', color: colors.text, fontSize: 12 }}>{r.where}</Muted>
+                <Muted style={{ flex: 1, minWidth: 120, fontSize: 12 }}>{r.left}</Muted>
+                <Muted style={{ flex: 1, minWidth: 120, fontSize: 12, color: bad ? colors.danger : colors.muted }}>{r.right}</Muted>
+                <Badge text={bad ? (r.rule ?? 'Mismatch') : 'Match'} color={bad ? colors.danger : colors.ok} />
+              </Pressable>
+            );
+          }) : null}
+        </>
+      )}
+    </Card>
+  );
+}
+
+function Reconcile({ x }: { x: { comparisons?: R[]; discrepancies?: R[] } }) {
+  const checks = x.comparisons ?? [];
+  if (!checks.length) return <Findings rows={x.discrepancies ?? []} />;
+  const run = checks.filter((c) => c.status !== 'SKIPPED');
+  const bad = run.filter((c) => c.status === 'MISMATCH').length;
+  const order = (c: R) => (c.status === 'MISMATCH' ? 0 : c.status === 'MATCH' ? 1 : 2);
+  const sorted = [...checks].sort((a, b) => order(a) - order(b));
+  return (
+    <View>
+      <Row style={{ gap: space(1), flexWrap: 'wrap', marginBottom: space(2) }}>
+        <Badge text={`${run.length} comparisons run`} color={colors.primary} />
+        <Badge text={`${run.length - bad} all match`} color={colors.ok} />
+        <Badge text={`${bad} with mismatches`} color={bad ? colors.danger : colors.muted} />
+        {checks.length > run.length ? <Badge text={`${checks.length - run.length} not compared`} color={colors.muted} /> : null}
+      </Row>
+      {sorted.map((c) => <CheckCard key={c.check_id} c={c} />)}
     </View>
   );
 }
@@ -518,16 +601,7 @@ function Findings({ rows }: { rows: R[] }) {
   if (!rows.length) return <Empty text="No findings: the sources agree." />;
   return (
     <View>
-      {rows.map((x) => (
-        <Card key={x.DISC_ID} onPress={() => router.push({ pathname: '/discrepancy/[id]', params: { id: x.DISC_ID } })} style={{ marginBottom: space(2) }}>
-          <Row style={{ justifyContent: 'space-between' }}><Title>{x.RULE_ID}</Title><Row><Badge text={x.SEVERITY} /><Badge text={x.STATUS} /></Row></Row>
-          <Muted style={{ color: colors.text }}>{x.TITLE}</Muted>
-          <Row style={{ marginTop: space(1) }}>
-            <Badge text={x.OUTCOME} color={colors.primary} />
-            {x.SECTOR ? <Badge text={`Sector ${x.SECTOR}${x.POSITION ? ` pos ${x.POSITION}` : ''}`} color={colors.muted} /> : null}
-          </Row>
-        </Card>
-      ))}
+      {rows.map((x) => <FindingCard key={x.DISC_ID} x={x} />)}
     </View>
   );
 }
@@ -585,13 +659,66 @@ function Estimate({ x }: { x: { estimate: R | null; drivers: R[]; requirements: 
 }
 
 /** Redlines drafted by the run with their Was/Now; approve or reject them here, then implement the approved ones. */
-function RedlinesAndRfis({ siteId, x, reload }: { siteId: string; x: { redlines: R[]; rfis: R[] }; reload: () => void }) {
+const REDLINE_TEXT: Record<string, { label: string; color: string }> = {
+  REQUIRED: { label: 'Redline', color: colors.danger },
+  SUBJECT_TO_RFI: { label: 'Redline, subject to RFI', color: colors.warn },
+  NONE: { label: 'No redline', color: colors.muted },
+};
+
+/** Stage 4's decision: does the drawing have to be marked up, does anybody have to be asked, and why. */
+function RedlineDecisionCard({ d }: { d: any }) {
+  const items: R[] = d.items ?? [];
+  return (
+    <Card style={{ marginBottom: space(3), borderColor: d.required ? colors.danger : colors.ok, borderWidth: 1.5 }}>
+      <Row style={{ alignItems: 'center', gap: space(3) }}>
+        <IconBadge name={d.required ? 'edit-3' : 'check-circle'} color={d.required ? colors.danger : colors.ok} size={40} />
+        <View style={{ flex: 1 }}>
+          <Title style={{ fontSize: 16 }}>{d.required ? 'A redlined drawing is needed' : 'No redlined drawing is needed'}</Title>
+          <Muted>{d.reason}</Muted>
+        </View>
+      </Row>
+      <Row style={{ gap: space(1), flexWrap: 'wrap', marginVertical: space(2) }}>
+        <Badge text={`${d.findings_checked} finding${d.findings_checked === 1 ? '' : 's'} checked`} color={colors.primary} />
+        <Badge text={`${d.redlines} redline${d.redlines === 1 ? '' : 's'}`} color={d.redlines ? colors.danger : colors.muted} />
+        <Badge text={`${d.rfis} RFI${d.rfis === 1 ? '' : 's'}`} color={d.rfis ? colors.warn : colors.muted} />
+      </Row>
+      {items.map((i) => {
+        const rl = REDLINE_TEXT[i.redline] ?? REDLINE_TEXT.NONE;
+        return (
+          <View key={i.disc_id} style={{ paddingVertical: space(2), borderTopWidth: 1, borderTopColor: colors.border }}>
+            <Row style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: space(1) }}>
+              <Row style={{ gap: space(2), flex: 1, minWidth: 200 }}>
+                <Badge text={i.rule_id} color={colors.muted} />
+                <Muted style={{ color: colors.text, fontWeight: '600', flex: 1 }}>{i.title}</Muted>
+              </Row>
+              <Row style={{ gap: space(1) }}>
+                <Badge text={rl.label} color={rl.color} />
+                <Badge text={i.rfi ? 'RFI needed' : 'No RFI'} color={i.rfi ? colors.warn : colors.muted} />
+              </Row>
+            </Row>
+            <Muted style={{ fontSize: 12, marginTop: 2 }}>{`Redline: ${i.redline_reason}.`}</Muted>
+            <Muted style={{ fontSize: 12 }}>{`RFI: ${i.rfi_reason}.`}</Muted>
+          </View>
+        );
+      })}
+    </Card>
+  );
+}
+
+function RedlinesAndRfis({ siteId, x, reload }: { siteId: string; x: { redlines: R[]; rfis: R[]; decision?: any; files?: Record<string, string> }; reload: () => void }) {
   const live = useApi<R[]>(`/redlines?site_id=${siteId}`);        // carries the role-specific workflow buttons and the PDF link
   const redlines = live.data ?? x.redlines;
-  const pdf = redlines.find((r) => r.PDF_PATH)?.PDF_PATH;
+  const pdf = x.files?.redlined_cd_pdf ?? redlines.find((r) => r.PDF_PATH)?.PDF_PATH;
+  const needed = x.decision ? x.decision.required : redlines.length > 0;
   return (
     <View>
-      {pdf ? <Button small kind="secondary" title="Open red-marked CD (PDF)" onPress={() => Linking.openURL(authedUrl(`/files/${pdf}`))} /> : null}
+      {x.decision ? <RedlineDecisionCard d={x.decision} /> : null}
+      {pdf && needed ? (
+        <Row style={{ gap: space(2), marginBottom: space(2), alignItems: 'center', flexWrap: 'wrap' }}>
+          <Button small title="Open redlined drawing" onPress={() => Linking.openURL(authedUrl(`/files/${pdf}`))} />
+          <Button small kind="secondary" title="Preview in the Redlines tab" onPress={() => router.push({ pathname: '/site/[id]', params: { id: siteId, tab: 'redlines' } })} />
+        </Row>
+      ) : null}
       <Section title={`Redlines (${redlines.length})`}>
         {!redlines.length ? <Muted>No drawing changes are needed.</Muted> : null}
         {redlines.map((r, i) => <RedlineCard key={r.REDLINE_ID} r={r} n={i + 1} reload={() => { void live.reload(); reload(); }} />)}
