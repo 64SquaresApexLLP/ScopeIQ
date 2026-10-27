@@ -4,8 +4,9 @@ import * as DocumentPicker from 'expo-document-picker';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { colors, shadow, space } from '../../components/theme';
-import { Badge, Button, Card, Chips, ErrorView, Hero, Icon, IconBadge, Muted, s } from '../../components/ui';
+import { Badge, Button, Card, Chips, ErrorView, Hero, Icon, IconBadge, Muted, Row, s } from '../../components/ui';
 import { api, ApiError } from '../../lib/api';
+import { computeFileSha256 } from '../../lib/hash';
 import { getLogger } from '../../lib/logger';
 import { Row as R } from '../../lib/types';
 import { useApi } from '../../lib/useApi';
@@ -17,8 +18,32 @@ const TYPES = [
   { key: 'DRONE_IMAGE', label: 'Photo' }, { key: 'DRONE_VIDEO', label: 'Video' }, { key: 'DRONE_META', label: 'Metadata' },
 ] as const;
 type T = (typeof TYPES)[number]['key'];
-type Picked = { name: string; size?: number; uri: string; mimeType?: string; file?: File };
-type Result = { name: string; ok: boolean; message: string };
+type Picked = {
+  name: string;
+  size?: number;
+  uri: string;
+  mimeType?: string;
+  file?: File;
+  hash?: string | null;
+  duplicateOf?: string | null;
+  isDuplicate?: boolean;
+  isUpdated?: boolean;
+  updatedFrom?: string | null;
+  diffSummary?: string | null;
+  additions?: string[];
+  replace?: boolean;
+};
+type Result = {
+  name: string;
+  ok: boolean;
+  message: string;
+  isDuplicate?: boolean;
+  duplicateOf?: string | null;
+  isUpdated?: boolean;
+  updatedFrom?: string | null;
+  replaced?: boolean;
+  hash?: string | null;
+};
 
 const kb = (n?: number) => (!n ? '' : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 const fileIcon = (name: string) => (/\.(jpe?g|png|tif)$/i.test(name) ? 'image' : /\.(mp4|mov|avi)$/i.test(name) ? 'video' : /\.(xlsx|csv)$/i.test(name) ? 'grid' : /\.(laz|las)$/i.test(name) ? 'box' : 'file-text') as any;
@@ -61,7 +86,56 @@ export default function SharePoint() {
     return g;
   }, [files.data]);
 
-  const addFiles = (list: Picked[]) => { setPicked((p) => [...p, ...list.filter((n) => !p.some((o) => o.name === n.name))]); setResults([]); };
+  const addFiles = async (list: Picked[]) => {
+    const existing = files.data?.files ?? [];
+    const enriched: Picked[] = await Promise.all(
+      list.map(async (item) => {
+        const hash = await computeFileSha256(item);
+        const match = hash ? existing.find((ef: any) => ef.hash === hash) : null;
+        let isDup = Boolean(match);
+        let dupOf = match ? (match.name as string) : null;
+        let isUpd = false;
+        let updFrom: string | null = null;
+        let diffSum: string | null = null;
+        let additionsList: string[] = [];
+
+        if (siteId) {
+          try {
+            const form = new FormData();
+            if (type !== 'AUTO') form.append('doc_type', type);
+            if (Platform.OS === 'web' && item.file) form.append('file', item.file, item.name);
+            else form.append('file', { uri: item.uri, name: item.name, type: item.mimeType ?? 'application/octet-stream' } as unknown as Blob);
+            const insp = await api.upload<any>(`/sharepoint/sites/${siteId}/check-content`, form);
+            if (insp) {
+              if (insp.status === 'DUPLICATE') {
+                isDup = true;
+                dupOf = insp.duplicate_of || insp.existing_file || dupOf;
+              } else if (insp.status === 'UPDATED') {
+                isUpd = true;
+                updFrom = insp.updated_from || insp.existing_file;
+                diffSum = insp.diff?.summary;
+                additionsList = insp.diff?.additions || [];
+              }
+            }
+          } catch {}
+        }
+
+        return {
+          ...item,
+          hash,
+          isDuplicate: isDup,
+          duplicateOf: dupOf,
+          isUpdated: isUpd,
+          updatedFrom: updFrom,
+          diffSummary: diffSum,
+          additions: additionsList,
+          replace: isDup || isUpd,
+        };
+      })
+    );
+    setPicked((p) => [...p, ...enriched.filter((n) => !p.some((o) => o.name === n.name))]);
+    setResults([]);
+  };
 
   useEffect(() => {      // drag and drop (web only)
     const el = dropRef.current as HTMLElement | null;
@@ -75,7 +149,7 @@ export default function SharePoint() {
     };
     el.addEventListener('dragover', over); el.addEventListener('dragleave', leave); el.addEventListener('drop', drop);
     return () => { el.removeEventListener('dragover', over); el.removeEventListener('dragleave', leave); el.removeEventListener('drop', drop); };
-  }, [siteId]);
+  }, [siteId, files.data]);
 
   const choose = (id: string) => { setSiteId(id === siteId ? null : id); setPicked([]); setResults([]); setError(null); };
 
@@ -94,10 +168,41 @@ export default function SharePoint() {
       try {
         const form = new FormData();
         if (type !== 'AUTO') form.append('doc_type', type);
+        if (f.replace) {
+          form.append('action', 'REPLACE');
+          const target = f.duplicateOf || f.updatedFrom;
+          if (target) form.append('replace_file', target);
+        }
         if (Platform.OS === 'web' && f.file) form.append('file', f.file, f.name);
         else form.append('file', { uri: f.uri, name: f.name, type: f.mimeType ?? 'application/octet-stream' } as unknown as Blob);
         const res = await api.upload<R>(`/sharepoint/sites/${siteId}/upload`, form);
-        out.push({ name: f.name, ok: true, message: `Saved in ${res.folder}${res.replaced ? ' (replaced older file)' : ''}${res.duplicate_of ? ` - same content as ${res.duplicate_of}` : ''}` });
+        const dupName = (res.duplicate_of as string) || f.duplicateOf;
+        const isDup = Boolean(dupName || res.is_duplicate);
+        const isUpd = Boolean(res.is_updated || f.isUpdated);
+        const updName = (res.updated_from as string) || f.updatedFrom;
+        const wasReplaced = Boolean(res.replaced || f.replace);
+        const hashVal = (res.hash as string) || f.hash;
+
+        let msg = `Saved in ${res.folder}`;
+        if (wasReplaced) {
+          msg = `Replaced existing file "${dupName || updName || f.name}" in ${res.folder}`;
+        } else if (isDup) {
+          msg = `Duplicate document detected! Identical content to "${dupName}". Saved in ${res.folder}.`;
+        } else if (isUpd) {
+          msg = `Updated document saved in ${res.folder} (based on ${updName})`;
+        }
+
+        out.push({
+          name: f.name,
+          ok: true,
+          isDuplicate: isDup,
+          duplicateOf: dupName,
+          isUpdated: isUpd,
+          updatedFrom: updName,
+          replaced: wasReplaced,
+          hash: hashVal,
+          message: msg,
+        });
         log.info(`uploaded ${f.name} to ${siteId}/${res.folder}`);
       } catch (e) {
         out.push({ name: f.name, ok: false, message: (e as ApiError).message });
@@ -112,6 +217,7 @@ export default function SharePoint() {
   };
 
   const okCount = results.filter((r) => r.ok).length;
+  const dupCount = results.filter((r) => r.isDuplicate).length;
 
   return (
     <ScrollView style={s.screen} contentContainerStyle={[s.content, { maxWidth: 820, width: '100%', alignSelf: 'center' }]}
@@ -162,16 +268,141 @@ export default function SharePoint() {
 
             {picked.length > 0 ? (
               <View style={{ marginTop: space(4), borderRadius: 12, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' }}>
-                {picked.map((f, i) => (
-                  <View key={f.name} style={{ flexDirection: 'row', alignItems: 'center', gap: space(3), padding: space(3), borderTopWidth: i ? 1 : 0, borderTopColor: colors.border }}>
-                    <IconBadge name={fileIcon(f.name)} size={34} />
-                    <Text style={{ flex: 1, color: colors.text, fontWeight: '600' }} numberOfLines={1}>{f.name}</Text>
-                    <Muted>{kb(f.size)}</Muted>
-                    <Pressable onPress={() => setPicked((p) => p.filter((x) => x.name !== f.name))} accessibilityLabel={`Remove ${f.name}`} style={{ padding: 4 }}>
-                      <Icon name="x" size={16} />
-                    </Pressable>
-                  </View>
-                ))}
+                {picked.map((f, i) => {
+                  const isDup = Boolean(f.isDuplicate || f.duplicateOf);
+                  const isUpd = Boolean(f.isUpdated);
+                  return (
+                    <View
+                      key={f.name}
+                      style={{
+                        padding: space(3.5),
+                        borderTopWidth: i ? 1 : 0,
+                        borderTopColor: colors.border,
+                        backgroundColor: isDup ? '#FFFBEB' : isUpd ? '#EFF6FF' : '#FFFFFF',
+                        gap: space(2),
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space(3) }}>
+                        <IconBadge name={fileIcon(f.name)} size={34} color={isDup ? colors.warn : isUpd ? '#2563EB' : undefined} />
+                        <View style={{ flex: 1 }}>
+                          <Row style={{ alignItems: 'center', gap: space(2) }}>
+                            <Text style={{ color: colors.text, fontWeight: '700' }} numberOfLines={1}>
+                              {f.name}
+                            </Text>
+                            {isDup ? <Badge text="DUPLICATE" color={colors.warn} /> : null}
+                            {isUpd ? <Badge text="UPDATED" color="#2563EB" /> : null}
+                          </Row>
+                          {isDup ? (
+                            <Text style={{ fontSize: 12, color: '#B45309', fontWeight: '600', marginTop: 2 }}>
+                              ⚠️ Duplicate data detected (identical to &quot;{f.duplicateOf}&quot;)
+                            </Text>
+                          ) : isUpd ? (
+                            <Text style={{ fontSize: 12, color: '#1E40AF', fontWeight: '600', marginTop: 2 }}>
+                              ✨ Contains data from &quot;{f.updatedFrom}&quot; with new additions ({f.diffSummary})
+                            </Text>
+                          ) : f.hash ? (
+                            <Text style={{ fontSize: 11, fontFamily: 'monospace', color: colors.muted, marginTop: 2 }}>
+                              SHA-256: {f.hash.slice(0, 16)}...
+                            </Text>
+                          ) : null}
+                        </View>
+                        <Muted>{kb(f.size)}</Muted>
+                        <Pressable onPress={() => setPicked((p) => p.filter((x) => x.name !== f.name))} accessibilityLabel={`Remove ${f.name}`} style={{ padding: 4 }}>
+                          <Icon name="x" size={16} />
+                        </Pressable>
+                      </View>
+
+                      {/* Replace choice prompt for duplicates */}
+                      {isDup ? (
+                        <Pressable
+                          onPress={() => setPicked((p) => p.map((x) => (x.name === f.name ? { ...x, replace: !x.replace } : x)))}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: space(2),
+                            backgroundColor: '#FEF3C7',
+                            padding: space(2),
+                            borderRadius: 6,
+                            marginTop: space(1),
+                          }}
+                        >
+                          <View
+                            style={{
+                              width: 18,
+                              height: 18,
+                              borderRadius: 4,
+                              borderWidth: 1.5,
+                              borderColor: '#D97706',
+                              backgroundColor: f.replace ? '#D97706' : '#FFFFFF',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            {f.replace ? <Icon name="check" size={12} color="#FFFFFF" /> : null}
+                          </View>
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#92400E', flex: 1 }}>
+                            Replace existing file &quot;{f.duplicateOf}&quot; with this file
+                          </Text>
+                        </Pressable>
+                      ) : null}
+
+                      {/* Replace choice prompt for updated files */}
+                      {isUpd ? (
+                        <Pressable
+                          onPress={() => setPicked((p) => p.map((x) => (x.name === f.name ? { ...x, replace: !x.replace } : x)))}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: space(2),
+                            backgroundColor: '#DBEAFE',
+                            padding: space(2),
+                            borderRadius: 6,
+                            marginTop: space(1),
+                          }}
+                        >
+                          <View
+                            style={{
+                              width: 18,
+                              height: 18,
+                              borderRadius: 4,
+                              borderWidth: 1.5,
+                              borderColor: '#2563EB',
+                              backgroundColor: f.replace ? '#2563EB' : '#FFFFFF',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            {f.replace ? <Icon name="check" size={12} color="#FFFFFF" /> : null}
+                          </View>
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#1E40AF', flex: 1 }}>
+                            Replace old data &quot;{f.updatedFrom}&quot; with this updated data
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
+
+            {picked.some((f) => f.isDuplicate || f.duplicateOf || f.isUpdated) ? (
+              <View
+                style={{
+                  backgroundColor: picked.some((f) => f.isUpdated) ? '#EFF6FF' : '#FFFBEB',
+                  borderWidth: 1,
+                  borderColor: picked.some((f) => f.isUpdated) ? '#BFDBFE' : '#FDE68A',
+                  borderRadius: 10,
+                  padding: space(3),
+                  marginTop: space(3),
+                  flexDirection: 'row',
+                  gap: space(2),
+                  alignItems: 'center',
+                }}
+              >
+                <Icon name="alert-triangle" size={18} color={picked.some((f) => f.isUpdated) ? '#2563EB' : colors.warn} />
+                <Text style={{ fontSize: 12.5, color: picked.some((f) => f.isUpdated) ? '#1E40AF' : '#92400E', flex: 1, lineHeight: 18 }}>
+                  <Text style={{ fontWeight: '700' }}>Notice:</Text> Review the duplicate or updated data files above. You can choose whether to replace existing files or keep both.
+                </Text>
               </View>
             ) : null}
 
@@ -188,16 +419,51 @@ export default function SharePoint() {
 
             {results.length > 0 ? (
               <View style={{ marginTop: space(5) }}>
-                <Text style={{ fontWeight: '800', color: colors.text, marginBottom: space(2) }}>{okCount} of {results.length} uploaded</Text>
-                {results.map((r) => (
-                  <View key={r.name} style={{ flexDirection: 'row', gap: space(3), padding: space(3), marginBottom: space(2), borderRadius: 12, backgroundColor: r.ok ? '#F0FBF4' : '#FEF2F2', borderWidth: 1, borderColor: r.ok ? '#C6EBD3' : '#FAD0D0' }}>
-                    <Icon name={r.ok ? 'check-circle' : 'x-circle'} size={20} color={r.ok ? colors.ok : colors.danger} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontWeight: '700', color: colors.text }}>{r.name}</Text>
-                      <Text style={{ fontSize: 12.5, color: r.ok ? '#3C6B4E' : colors.danger }}>{r.message}</Text>
+                <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: space(2) }}>
+                  <Text style={{ fontWeight: '800', color: colors.text }}>
+                    {okCount} of {results.length} uploaded
+                  </Text>
+                  {dupCount > 0 ? (
+                    <Badge text={`${dupCount} duplicate warning${dupCount === 1 ? '' : 's'}`} color={colors.warn} />
+                  ) : null}
+                </Row>
+                {results.map((r) => {
+                  const isWarn = r.ok && r.isDuplicate;
+                  const bg = !r.ok ? '#FEF2F2' : isWarn ? '#FFFBEB' : '#F0FBF4';
+                  const border = !r.ok ? '#FAD0D0' : isWarn ? '#FDE68A' : '#C6EBD3';
+                  const iconName = !r.ok ? 'x-circle' : isWarn ? 'alert-triangle' : 'check-circle';
+                  const iconColor = !r.ok ? colors.danger : isWarn ? colors.warn : colors.ok;
+                  const msgColor = !r.ok ? colors.danger : isWarn ? '#92400E' : '#3C6B4E';
+                  return (
+                    <View
+                      key={r.name}
+                      style={{
+                        flexDirection: 'row',
+                        gap: space(3),
+                        padding: space(3.5),
+                        marginBottom: space(2),
+                        borderRadius: 12,
+                        backgroundColor: bg,
+                        borderWidth: 1,
+                        borderColor: border,
+                      }}
+                    >
+                      <Icon name={iconName} size={20} color={iconColor} />
+                      <View style={{ flex: 1 }}>
+                        <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Text style={{ fontWeight: '700', color: colors.text }}>{r.name}</Text>
+                          {isWarn ? <Badge text="DUPLICATE WARNING" color={colors.warn} /> : null}
+                        </Row>
+                        <Text style={{ fontSize: 12.5, color: msgColor, marginTop: 2, lineHeight: 17 }}>{r.message}</Text>
+                        {r.hash ? (
+                          <Text style={{ fontSize: 11, fontFamily: 'monospace', color: colors.muted, marginTop: 3 }}>
+                            SHA-256: {r.hash.slice(0, 16)}...
+                          </Text>
+                        ) : null}
+                      </View>
                     </View>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             ) : null}
           </Step>

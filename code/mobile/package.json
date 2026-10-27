@@ -28,6 +28,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "postinstall": "node scripts/patch-web.js",
     "typecheck": "tsc --noEmit",
     "start:test": "APP_ENV=test expo start",
     "start:prod": "APP_ENV=prod expo start"

@@ -92,8 +92,27 @@ def site_files(site_id: str, user: dict = Depends(current_user)):
     return {"site_id": sid, "location": f"{store.location} / {sid}", "files": files}
 
 
+from scopeiq.services.document_compare import inspect_file_against_site
+
+
+@router.post("/sharepoint/sites/{site_id}/check-content")
+async def check_content(site_id: str, file: UploadFile = File(...), doc_type: str | None = Form(default=None),
+                        user: dict = Depends(require("SCOPER", "AE_ENGINEER", "CX_SP", "ERICSSON"))):
+    """Pre-upload inspection for SharePoint: checks if file data is NEW, DUPLICATE, or UPDATED with additions."""
+    sid = validate_site_id(site_id)
+    store = get_store()
+    if not store.site_exists(sid):
+        raise NotFound(f"Site {sid} has no folder in SharePoint")
+    data = await file.read()
+    if not data:
+        raise ValidationError("File is empty")
+    inspection = inspect_file_against_site(sid, file.filename or "", data, doc_type=doc_type, repo=repo())
+    return inspection.to_dict()
+
+
 @router.post("/sharepoint/sites/{site_id}/upload")
 async def upload(site_id: str, file: UploadFile = File(...), doc_type: str | None = Form(default=None),
+                 replace_file: str | None = Form(default=None),
                  user: dict = Depends(require("SCOPER", "AE_ENGINEER", "CX_SP", "ERICSSON"))):
     """Upload one file into the selected site's folder. The site comes from the path, so a file can only go to that one site."""
     sid = validate_site_id(site_id)
@@ -105,7 +124,20 @@ async def upload(site_id: str, file: UploadFile = File(...), doc_type: str | Non
     if doc_type and doc_type not in TYPE_FOLDERS:
         raise ValidationError(f"Unknown document type {doc_type}", details={"allowed": list(TYPE_FOLDERS)})
     data = await file.read()
-    saved = store.upload(sid, file.filename or "", data, doc_type or None)
-    AuditTrail.record(entity_type="SHAREPOINT_FILE", entity_id=f"{sid}/{saved['folder']}/{saved['name']}", action="UPLOAD",
-                      after={"doc_type": saved["doc_type"], "size": saved["size"], "replaced": saved["replaced"]}, site_id=sid, source="api")
-    return {"site_id": sid, **saved}
+    saved = store.upload(sid, file.filename or "", data, doc_type or None, replace_file=replace_file)
+    inspection = inspect_file_against_site(sid, file.filename or "", data, doc_type=doc_type, repo=repo(), exclude_filename=file.filename)
+    AuditTrail.record(entity_type="SHAREPOINT_FILE", entity_id=f"{sid}/{saved['folder']}/{saved['name']}",
+                      action="REPLACE_FILE" if (replace_file or saved.get("replaced")) else "UPLOAD",
+                      after={"doc_type": saved["doc_type"], "size": saved["size"], "replaced": saved["replaced"],
+                             "replace_file": replace_file}, site_id=sid, source="api")
+    out = {"site_id": sid, **saved}
+    if inspection.status == "UPDATED":
+        out["is_updated"] = True
+        out["updated_from"] = inspection.existing_file
+        out["diff"] = inspection.to_dict()["diff"]
+        out["message"] = f"Updated data: Contains previous content from '{inspection.existing_file}' with {inspection.added_count} additions."
+    elif inspection.status == "DUPLICATE" and not out.get("duplicate_of"):
+        out["is_duplicate"] = True
+        out["duplicate_of"] = inspection.existing_file
+    return out
+
