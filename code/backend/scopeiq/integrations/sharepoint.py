@@ -89,10 +89,11 @@ class SharePointStore(ABC):
     def list_files(self, site_id: str) -> list[dict]: ...
 
     @abstractmethod
-    def save_file(self, site_id: str, folder: str, file_name: str, data: bytes) -> dict: ...
+    def save_file(self, site_id: str, folder: str, file_name: str, data: bytes, replace_file: str | None = None) -> dict: ...
 
     # shared behaviour -----------------------------------------------------------------------------------------------
-    def upload(self, site_id: str, file_name: str, data: bytes, doc_type: str | None = None) -> dict:
+    def upload(self, site_id: str, file_name: str, data: bytes, doc_type: str | None = None,
+               replace_file: str | None = None) -> dict:
         """Validate and store one file in the selected site's folder (and nowhere else)."""
         site_id = validate_site_id(site_id)
         if not self.site_exists(site_id):
@@ -112,8 +113,16 @@ class SharePointStore(ABC):
         folder = TYPE_FOLDERS[doc_type]
         digest = hashlib.sha256(data).hexdigest()
         same = [f for f in self.list_files(site_id) if f.get("hash") == digest and f["name"] != file_name]
-        saved = self.save_file(site_id, folder, file_name, data)
-        saved.update({"doc_type": doc_type, "hash": digest, "duplicate_of": same[0]["name"] if same else None})
+        exact = [f for f in self.list_files(site_id) if f.get("hash") == digest and f["name"] == file_name]
+        dup_target = same[0]["name"] if same else (exact[0]["name"] if exact else None)
+        saved = self.save_file(site_id, folder, file_name, data, replace_file=replace_file)
+        saved.update({
+            "doc_type": doc_type,
+            "hash": digest,
+            "duplicate_of": dup_target,
+            "is_duplicate": bool(dup_target),
+            "warning": f"Duplicate document detected! Identical SHA-256 ({digest[:12]}...) to '{dup_target}'" if dup_target else None,
+        })
         log.info("uploaded %s (%s) to %s/%s", file_name, doc_type, site_id, folder, extra={"site_id": site_id})
         return saved
 
@@ -188,10 +197,24 @@ class LocalSharePoint(SharePointStore):
                         "hash": hashlib.sha256(p.read_bytes()).hexdigest() if st.st_size <= 64 * 1024 * 1024 else None})
         return out
 
-    def save_file(self, site_id: str, folder: str, file_name: str, data: bytes) -> dict:
+    def save_file(self, site_id: str, folder: str, file_name: str, data: bytes, replace_file: str | None = None) -> dict:
         if folder not in SITE_FOLDERS:
             raise ValidationError(f"Unknown folder {folder}")
         d = self._site_dir(site_id)
+        if replace_file and replace_file != file_name:
+            old_dest = d / folder / replace_file
+            if old_dest.is_file():
+                try:
+                    old_dest.unlink()
+                except Exception:
+                    pass
+            try:
+                sites_dir = get_settings().path("paths.sites_dir")
+                old_pipe = sites_dir / site_id / folder / replace_file
+                if old_pipe.is_file():
+                    old_pipe.unlink()
+            except Exception:
+                pass
         dest = (d / folder / file_name).resolve()
         if d.resolve() not in dest.parents:
             raise ValidationError("Invalid target path")
@@ -319,8 +342,14 @@ class GraphSharePoint(SharePointStore):
         walk("")
         return sorted(out, key=lambda f: (f["folder"], f["name"]))
 
-    def save_file(self, site_id: str, folder: str, file_name: str, data: bytes) -> dict:
+    def save_file(self, site_id: str, folder: str, file_name: str, data: bytes, replace_file: str | None = None) -> dict:
         path = f"{self.library_root}/{site_id}/{folder}/{file_name}"
+        if replace_file and replace_file != file_name:
+            old_path = f"{self.library_root}/{site_id}/{folder}/{replace_file}"
+            try:
+                self.http.delete(self.GRAPH + self._item(old_path), headers=self._auth())
+            except Exception:
+                pass
         existed = self.http.get(self.GRAPH + self._item(path), headers=self._auth()).status_code == 200
         if len(data) <= self.SIMPLE_LIMIT:
             self._call("PUT", self._item(path) + ":/content", content=data, headers={"Content-Type": "application/octet-stream"})
