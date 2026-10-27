@@ -40,8 +40,17 @@ def no_issued_drawings_left_behind():
     shutil.rmtree(get_settings().path("paths.upload_dir"), ignore_errors=True)
 
 
+TEST_PASSWORD = "test-password-1"
+
+
 def login(client, user_id):
-    r = client.post("/auth/login", json={"user_id": user_id, "password": "demo"})
+    """Demo accounts sign in directly; SCOPER signs in with a username + password, which the admin creates first."""
+    if user_id.startswith("scoper"):
+        admin = login(client, "admin")
+        client.post("/admin/logins", json={"username": user_id, "display_name": user_id, "password": TEST_PASSWORD}, headers=admin)
+        r = client.post("/auth/login", json={"username": user_id, "password": TEST_PASSWORD})
+    else:
+        r = client.post("/auth/login", json={"user_id": user_id, "password": "demo"})
     assert r.status_code == 200, r.text
     return {"Authorization": f"Bearer {r.json()['token']}"}
 
@@ -52,6 +61,35 @@ def test_health_and_auth(client):
     assert client.get("/sites").json()["error"]["code"] == "SIQ-AUTH-401"
     users = client.get("/auth/users").json()
     assert {u["role"] for u in users} >= {"SCOPER", "REVIEWER", "CX_SP", "ERICSSON", "ADMIN"}
+    assert {u["role"] for u in users if u["password_required"]} == {"SCOPER"}
+
+
+def test_scoper_signs_in_with_admin_created_password(client):
+    admin = login(client, "admin")
+    new = {"username": "Asha.Rao", "display_name": "Asha Rao", "password": "s3cret-pass"}
+    # only the admin creates logins, the password has a minimum length, usernames are unique
+    assert client.post("/admin/logins", json=new, headers=login(client, "reviewer1")).status_code == 403
+    assert client.post("/admin/logins", json={**new, "password": "short"}, headers=admin).status_code == 400
+    created = client.post("/admin/logins", json=new, headers=admin)
+    assert created.status_code == 200 and created.json()["USERNAME"] == "asha.rao" and "PASSWORD_HASH" not in created.json()
+    assert client.post("/admin/logins", json=new, headers=admin).status_code == 409
+    assert all("PASSWORD_HASH" not in x for x in client.get("/admin/logins", headers=admin).json())
+
+    # the demo shortcut no longer works for SCOPER; right password works, wrong password and unknown user do not
+    assert client.post("/auth/login", json={"user_id": "scoper1", "password": "demo"}).status_code == 401
+    ok = client.post("/auth/login", json={"username": "asha.rao", "password": "s3cret-pass"})
+    assert ok.status_code == 200 and ok.json()["user"]["role"] == "SCOPER" and ok.json()["user"]["name"] == "Asha Rao"
+    assert client.post("/auth/login", json={"username": "asha.rao", "password": "wrong-pass"}).status_code == 401
+    assert client.post("/auth/login", json={"username": "nobody", "password": "s3cret-pass"}).status_code == 401
+    h = {"Authorization": f"Bearer {ok.json()['token']}"}
+    assert client.get("/sites", headers=h).status_code == 200
+
+    # a disabled login can no longer sign in; a new password replaces the old one
+    assert client.patch("/admin/logins/asha.rao", json={"active": False}, headers=admin).json()["ACTIVE"] is False
+    assert client.post("/auth/login", json={"username": "asha.rao", "password": "s3cret-pass"}).status_code == 401
+    client.patch("/admin/logins/asha.rao", json={"active": True, "password": "n3w-password"}, headers=admin)
+    assert client.post("/auth/login", json={"username": "asha.rao", "password": "s3cret-pass"}).status_code == 401
+    assert client.post("/auth/login", json={"username": "asha.rao", "password": "n3w-password"}).status_code == 200
 
 
 def test_sites_and_detail(client, api_results):
