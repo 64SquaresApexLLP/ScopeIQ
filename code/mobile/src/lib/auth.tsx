@@ -1,4 +1,5 @@
-// Mock login: pick a persona, get a signed token. Session persisted with AsyncStorage (works on web and native).
+// Sign-in: SCOPER uses a username + password the admin created; other roles still pick a demo account. Session persisted
+// with AsyncStorage (works on web and native).
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { api, setToken, setUnauthorizedHandler } from './api';
@@ -8,10 +9,13 @@ import { User } from './types';
 const KEY = 'scopeiq.session';
 const log = getLogger('auth');
 
+// Either a demo account ({ userId }) or a username + password created by the admin.
+export type LoginCreds = { userId: string } | { username: string; password: string };
+
 interface AuthState {
   user: User | null;
   ready: boolean;
-  login: (userId: string) => Promise<void>;
+  login: (creds: LoginCreds) => Promise<void>;
   logout: () => Promise<void>;
   can: (...roles: string[]) => boolean;
 }
@@ -53,8 +57,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, [logout]);
 
-  const login = useCallback(async (userId: string) => {
-    const res = await api.post<{ token: string; user: User }>('/auth/login', { user_id: userId, password: 'demo' });
+  const login = useCallback(async (creds: LoginCreds) => {
+    const body = 'username' in creds ? { username: creds.username.trim(), password: creds.password } : { user_id: creds.userId, password: 'demo' };
+    const res = await api.post<{ token: string; user: User }>('/auth/login', body);
     setToken(res.token);
     setUser(res.user);
     log.info(`signed in as ${res.user.user_id} (${res.user.role})`);

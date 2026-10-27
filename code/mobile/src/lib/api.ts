@@ -8,7 +8,7 @@ let token: string | null = null;
 let onUnauthorized: (() => void) | null = null;
 
 export class ApiError extends Error {
-  constructor(public status: number, public code: string, message: string, public correlationId?: string, public details?: unknown) {
+  constructor(public status: number, public code: string, message: string, public correlationId?: string, public details?: Record<string, any>) {
     super(message);
   }
 }
