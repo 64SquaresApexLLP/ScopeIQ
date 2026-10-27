@@ -316,7 +316,12 @@ def get_existing_site_files(site_id: str, repo: Any | None = None) -> list[dict[
                     continue
                 rel = d.get("REL_PATH") or ""
                 prefix, _, rest = rel.partition("/")
-                base = st.path("paths.sites_dir") if prefix == "sites" else st.path("paths.upload_dir")
+                if prefix == "sites":
+                    base = st.path("paths.sites_dir")
+                elif prefix == "sharepoint":
+                    base = st.path("sharepoint.local_root") / st.get("sharepoint.library_root", "Ericsson-Scoping/Sites")
+                else:
+                    base = st.path("paths.upload_dir")
                 p = base / rest
                 found[name] = {
                     "name": name,
@@ -380,9 +385,16 @@ def get_existing_site_files(site_id: str, repo: Any | None = None) -> list[dict[
 
     # 4. SharePoint local library
     try:
-        sp_local = st.path("sharepoint.local_root")
-        sp_lib = st.get("sharepoint.library_root", "Ericsson-Scoping/Sites")
-        sp_site = Path(sp_local) / sp_lib / site_id
+        from scopeiq.integrations.sharepoint import get_store
+        store = get_store()
+        if hasattr(store, "base") and store.base:
+            sp_site = Path(store.base) / site_id
+        elif hasattr(store, "root") and store.root:
+            sp_site = Path(store.root) / getattr(store, "library_root", "Ericsson-Scoping/Sites") / site_id
+        else:
+            sp_local = st.path("sharepoint.local_root")
+            sp_lib = st.get("sharepoint.library_root", "Ericsson-Scoping/Sites")
+            sp_site = Path(sp_local) / sp_lib / site_id
         if sp_site.is_dir():
             for p in sp_site.rglob("*"):
                 if p.is_file() and not p.name.startswith("."):

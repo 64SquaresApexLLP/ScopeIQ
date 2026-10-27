@@ -1,4 +1,5 @@
 // Admin: create a site. This creates its SharePoint folder and the site record; the site then appears for uploads.
+import { router } from 'expo-router';
 import React, { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { colors, space } from '../../components/theme';
@@ -7,7 +8,7 @@ import { api, ApiError } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { getLogger } from '../../lib/logger';
 import { Row as R } from '../../lib/types';
-import { useApi } from '../../lib/useApi';
+import { mutateApi, useApi } from '../../lib/useApi';
 
 const log = getLogger('admin');
 const STREAMS = ['BOM', 'DESIGN', 'DEPLOYMENT'] as const;
@@ -65,6 +66,8 @@ export default function Admin() {
       log.info(`created site ${siteId}`);
       setSiteId(''); setName(''); setCity(''); setHeight('');
       sites.reload();
+      mutateApi('/sites');
+      mutateApi('/sharepoint/sites');
     } catch (e) {
       setError(e as ApiError);
     } finally {
@@ -116,6 +119,12 @@ export default function Admin() {
               <Text style={{ fontWeight: '800', color: colors.text }}>{created.id} is ready</Text>
               <Text style={{ fontSize: 12.5, color: '#3C6B4E' }}>SharePoint folder: {created.path}</Text>
             </View>
+            <Button
+              title="View in Sites"
+              kind="secondary"
+              small
+              onPress={() => router.push('/(tabs)/sites')}
+            />
           </View>
         ) : null}
       </Card>

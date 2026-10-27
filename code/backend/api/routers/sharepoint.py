@@ -65,17 +65,62 @@ def create_site(body: SiteIn, user: dict = Depends(require("ADMIN"))):
     """Admin: create a site. This creates its folder tree in SharePoint and the site record, so the site shows up for uploads."""
     sid = validate_site_id(body.site_id)
     store, r = get_store(), repo()
-    if r.select("CORE.SITE", {"SITE_ID": sid}) or store.site_exists(sid):
+    if r.select("CORE.SITE", {"SITE_ID": sid}):
         raise Conflict(f"Site {sid} already exists")
-    folder = store.create_site_folder(sid)                      # SharePoint first: if it fails, no database row is left behind
+    if hasattr(store, "site_exists") and store.site_exists(sid):
+        lib_root = getattr(store, "library_root", "Ericsson-Scoping/Sites")
+        folder = {"path": f"{lib_root}/{sid}"}
+    else:
+        folder = store.create_site_folder(sid)                      # SharePoint first: if it fails, no database row is left behind
     row = {"SITE_ID": sid, "SITE_NAME": body.site_name.strip(), "MARKET": body.market or get_settings().get("app.market", ""),
            "CUSTOMER": get_settings().get("app.carrier", ""), "ADDRESS": body.address, "CITY": body.city.strip(), "STATE": body.state.upper(),
            "STRUCTURE_TYPE": body.structure_type, "HEIGHT_FT": body.height_ft, "SITE_STATUS": "New", "STREAM": body.stream,
            "WORKFLOW_STATE": "ASSIGNED", "ASSIGNED_DATE": now_iso()[:10], "UPDATED_AT": now_iso(), "UPDATED_BY": user["sub"]}
     r.insert("CORE.SITE", [row])
-    AuditTrail.record(entity_type="SITE", entity_id=sid, action="CREATE", after={"site_name": row["SITE_NAME"], "sharepoint_path": folder["path"]},
+    AuditTrail.record(entity_type="SITE", entity_id=sid, action="CREATE",
+                      after={"site_name": row["SITE_NAME"], "city": row["CITY"], "state": row["STATE"], "sharepoint_path": folder["path"]},
                       site_id=sid, source="api")
     return {"site": row, "sharepoint": folder}
+
+
+class SiteUpdate(BaseModel):
+    site_name: str | None = None
+    city: str | None = None
+    state: str | None = None
+    address: str | None = None
+    structure_type: Literal["Monopole", "Self-support tower", "Guyed tower", "Rooftop"] | None = None
+    height_ft: float | None = None
+    stream: Literal["BOM", "DESIGN", "DEPLOYMENT"] | None = None
+
+
+@router.patch("/admin/sites/{site_id}")
+def update_site(site_id: str, body: SiteUpdate, user: dict = Depends(require("ADMIN"))):
+    """Admin: update site name, city, state, or other metadata."""
+    sid = validate_site_id(site_id)
+    r = repo()
+    existing = r.select("CORE.SITE", {"SITE_ID": sid})
+    if not existing:
+        raise NotFound(f"Site {sid} not found")
+    updates: dict = {}
+    if body.site_name is not None and body.site_name.strip():
+        updates["SITE_NAME"] = body.site_name.strip()
+    if body.city is not None and body.city.strip():
+        updates["CITY"] = body.city.strip()
+    if body.state is not None and body.state.strip():
+        updates["STATE"] = body.state.strip().upper()
+    if body.address is not None:
+        updates["ADDRESS"] = body.address.strip()
+    if body.structure_type is not None:
+        updates["STRUCTURE_TYPE"] = body.structure_type
+    if body.height_ft is not None:
+        updates["HEIGHT_FT"] = body.height_ft
+    if body.stream is not None:
+        updates["STREAM"] = body.stream
+    if updates:
+        updates["UPDATED_AT"] = now_iso()
+        updates["UPDATED_BY"] = user["sub"]
+        r.update("CORE.SITE", updates, {"SITE_ID": sid})
+    return {"site": r.get("CORE.SITE", SITE_ID=sid)}
 
 
 @router.get("/sharepoint/sites/{site_id}/files")

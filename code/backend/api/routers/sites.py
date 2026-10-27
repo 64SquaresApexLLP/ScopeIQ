@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends
 
 from api.deps import current_user, repo, site_scope, workflow
 from scopeiq.common.errors import PermissionDenied
+from scopeiq.integrations.sharepoint import get_store
 
 router = APIRouter(prefix="/sites", tags=["sites"])
 
@@ -19,10 +20,51 @@ def _check_scope(user: dict, site: dict) -> None:
 def list_sites(user: dict = Depends(current_user)):
     r = repo()
     sites = r.select("CORE.SITE", site_scope(user) or None, order_by="SITE_ID")
+
+    # Document counts: one query for all sites, grouped by SITE_ID + DOC_TYPE
+    # NOTE: DOC_COUNT only reflects files processed by the pipeline (CORE.DOCUMENT).
+    # SHAREPOINT_FILES reflects all files in the SharePoint/disk folder (pre- and post-pipeline).
+    all_docs = r.query("SELECT SITE_ID, DOC_TYPE FROM CORE.DOCUMENT WHERE STATUS = 'CURRENT'")
+    doc_by_site: dict = {}
+    for d in all_docs:
+        sid = d["SITE_ID"]
+        doc_by_site.setdefault(sid, []).append(d["DOC_TYPE"])
+
+    # Upload counts (RECEIVED / DUPLICATE — not yet pipelined)
+    all_uploads = r.query("SELECT SITE_ID, DOC_TYPE FROM CORE.UPLOAD WHERE STATUS IN ('RECEIVED', 'DUPLICATE')")
+    uploads_by_site: dict = {}
+    for u in all_uploads:
+        sid = u["SITE_ID"]
+        uploads_by_site.setdefault(sid, 0)
+        uploads_by_site[sid] += 1
+
     discs = Counter((d["SITE_ID"], d["STATUS"]) for d in r.query("SELECT SITE_ID, STATUS FROM CORE.DISCREPANCY"))
+
+    # SharePoint file counts — read directly from the store (same source as the SharePoint tab).
+    # This captures uploaded files even before the pipeline has run, so sites never show 0
+    # when files have actually been uploaded.
+    try:
+        store = get_store()
+        sp_files_by_site: dict = {
+            sid: len(store.list_files(sid))
+            for sid in store.list_site_ids()
+        }
+    except Exception:
+        sp_files_by_site = {}
+
     for s in sites:
-        s["OPEN_DISCREPANCIES"] = discs.get((s["SITE_ID"], "OPEN"), 0)
+        sid = s["SITE_ID"]
+        doc_types = doc_by_site.get(sid, [])
+        by_type = Counter(doc_types)
+        sp_files = sp_files_by_site.get(sid, 0)
+        s["OPEN_DISCREPANCIES"] = discs.get((sid, "OPEN"), 0)
         s["ACTIONS"] = [a["action"] for a in workflow().actions("SITE_SCOPING", s["WORKFLOW_STATE"] or "ASSIGNED", user["role"])]
+        s["DOC_COUNT"] = len(doc_types)            # pipeline-registered documents
+        s["DOC_BY_TYPE"] = dict(by_type)           # e.g. {"RFDS": 1, "CD": 2, "MA_SA": 1}
+        s["PENDING_UPLOADS"] = uploads_by_site.get(sid, 0)
+        s["SHAREPOINT_FILES"] = sp_files           # total files in SharePoint folder (pre+post pipeline)
+        # PIPELINE_NEEDED is true when files exist in SharePoint but haven't been processed yet
+        s["PIPELINE_NEEDED"] = sp_files > 0 and len(doc_types) == 0
     return sites
 
 

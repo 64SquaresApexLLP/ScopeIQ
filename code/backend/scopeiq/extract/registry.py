@@ -21,7 +21,7 @@ log = get_logger(__name__)
 TYPE_RULES = [
     ("rfds", re.compile(r"RFDS", re.I), "RFDS"),
     ("cds", re.compile(r"_CD_|_PCD_", re.I), "CD"),
-    ("ma_sa", re.compile(r"MA|SA", re.I), "MA_SA"),
+    ("ma_sa", re.compile(r"(?<![A-Za-z0-9])(?:MA|SA)(?![A-Za-z0-9])", re.I), "MA_SA"),
     ("bom", re.compile(r"BOM", re.I), "BOM_REV0"),
     ("drone", re.compile(r"capture_metadata\.json$", re.I), "DRONE_META"),
     ("drone", re.compile(r"vendor_measurements\.csv$", re.I), "DRONE_VENDOR"),
@@ -128,19 +128,31 @@ def register_site_folder(site_dir: Path, site_id: str | None = None, *, upload_d
             roots.append((sp_site_dir, "sharepoint", "sharepoint"))
     except Exception:
         pass
+    files_by_subpath: dict[str, tuple[Path, str, str]] = {}
     for root, prefix, source in roots:
+        if not root.is_dir():
+            continue
         for p in sorted(root.rglob("*")):
             if not p.is_file() or p.name.startswith("."):
                 continue
-            rel = f"{prefix}/{site_id}/{p.relative_to(root).as_posix()}"
-            try:
-                d = make_document(site_id, p, rel, source=source)
-            except ValidationError as exc:
-                log.warning("skipped unrecognised file %s: %s", rel, exc.message, extra={"site_id": site_id})
-                continue
-            docs.append(d)
-            if paths is not None:
-                paths[d.doc_id] = p
+            subpath = p.relative_to(root).as_posix()
+            if subpath in files_by_subpath:
+                prev_p, _, _ = files_by_subpath[subpath]
+                if p.stat().st_mtime > prev_p.stat().st_mtime:
+                    files_by_subpath[subpath] = (p, prefix, source)
+            else:
+                files_by_subpath[subpath] = (p, prefix, source)
+
+    for subpath, (p, prefix, source) in sorted(files_by_subpath.items()):
+        rel = f"{prefix}/{site_id}/{subpath}"
+        try:
+            d = make_document(site_id, p, rel, source=source)
+        except ValidationError as exc:
+            log.warning("skipped unrecognised file %s: %s", rel, exc.message, extra={"site_id": site_id})
+            continue
+        docs.append(d)
+        if paths is not None:
+            paths[d.doc_id] = p
     resolve_current(docs)
     log.info("registered %d documents for %s", len(docs), site_id, extra={"site_id": site_id,
              "by_type": {t: sum(1 for d in docs if d.doc_type == t) for t in sorted({d.doc_type for d in docs})}})
