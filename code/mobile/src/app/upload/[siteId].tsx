@@ -215,13 +215,13 @@ export default function Upload() {
                 ) : inspection?.isDuplicate ? (
                   <Row style={{ gap: space(1.5), alignItems: 'center' }}>
                     <Icon name="alert-triangle" size={14} color="#D97706" />
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#D97706' }}>Duplicate Data Detected</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#D97706' }}>Already Exists</Text>
                   </Row>
                 ) : inspection?.isUpdated ? (
                   <Row style={{ gap: space(1.5), alignItems: 'center' }}>
                     <Icon name="file-text" size={14} color="#2563EB" />
                     <Text style={{ fontSize: 12, fontWeight: '700', color: '#2563EB' }}>
-                      {`Updated Data (+${inspection.diff?.added_count ?? 0} additions)`}
+                      {inspection.diff?.added_count ? `Changes Detected (+${inspection.diff.added_count})` : 'Changes Detected'}
                     </Text>
                   </Row>
                 ) : (
@@ -241,7 +241,7 @@ export default function Upload() {
           </Card>
         ) : null}
 
-        {/* 1. DUPLICATE DATA DETECTED ALERT & ACTION */}
+        {/* 1. SAME DATA DETECTED -> "ALREADY EXISTS" MESSAGE (NO REPLACE FILE OPTION) */}
         {inspection?.isDuplicate ? (
           <View
             style={{
@@ -256,19 +256,19 @@ export default function Upload() {
             <Row style={{ gap: space(2), alignItems: 'center' }}>
               <Icon name="alert-triangle" size={24} color="#D97706" />
               <View style={{ flex: 1 }}>
-                <Text style={{ fontWeight: '800', color: '#92400E', fontSize: 16 }}>Duplicate Data Detected</Text>
+                <Text style={{ fontWeight: '800', color: '#92400E', fontSize: 16 }}>Already Exists</Text>
                 <Text style={{ color: '#B45309', fontSize: 12.5, marginTop: 2 }}>
-                  Content inside this file matches an existing site document
+                  File with identical data already exists on this site
                 </Text>
               </View>
             </Row>
 
             <Text style={{ color: '#B45309', fontSize: 13.5, lineHeight: 19 }}>
-              This file contains identical data to existing file{' '}
+              This file already exists. The data inside matches existing file{' '}
               <Text style={{ fontWeight: '800', color: '#78350F' }}>
-                {inspection.duplicateOf || 'another document'}
+                {inspection.duplicateOf || 'an existing file'}
               </Text>{' '}
-              on this site (even though file names may differ).
+              on this site. Upload is not required because no new data was detected.
             </Text>
 
             <View
@@ -281,27 +281,21 @@ export default function Upload() {
               }}
             >
               <Text style={{ fontSize: 13.5, fontWeight: '700', color: '#78350F' }}>
-                It is duplicate data. Do you want to replace it with existing file?
+                File already exists. No changes found to replace.
               </Text>
             </View>
 
             <Row style={{ gap: space(2.5), flexWrap: 'wrap', marginTop: space(1) }}>
               <Button
-                title={busy ? 'Replacing...' : 'Replace Existing File'}
-                disabled={busy}
-                onPress={() => send({ replace: true, targetFile: inspection.duplicateOf || undefined })}
-              />
-              <Button
                 kind="secondary"
-                title={busy ? 'Uploading...' : 'Upload Anyway (Keep Both)'}
-                disabled={busy}
-                onPress={() => send({ confirmDuplicate: true })}
+                title="Choose a different file"
+                onPress={pick}
               />
             </Row>
           </View>
         ) : null}
 
-        {/* 2. UPDATED DATA DETECTED (OLD DATA WITH NEW ADDITIONS) ALERT & ACTION */}
+        {/* 2. SAME FILE WITH CHANGES DETECTED -> SHOW REPLACE FILE OPTION */}
         {inspection?.isUpdated ? (
           <View
             style={{
@@ -317,27 +311,22 @@ export default function Upload() {
               <Icon name="file-text" size={24} color="#2563EB" />
               <View style={{ flex: 1 }}>
                 <Row style={{ gap: space(2), alignItems: 'center' }}>
-                  <Text style={{ fontWeight: '800', color: '#1E40AF', fontSize: 16 }}>Updated Data Detected</Text>
+                  <Text style={{ fontWeight: '800', color: '#1E40AF', fontSize: 16 }}>Changes Detected</Text>
                   {inspection.diff?.added_count ? (
-                    <Badge text={`+${inspection.diff.added_count} additions`} color="#2563EB" />
+                    <Badge text={`${inspection.diff.added_count} change${inspection.diff.added_count > 1 ? 's' : ''}`} color="#2563EB" />
                   ) : null}
                 </Row>
                 <Text style={{ color: '#3B82F6', fontSize: 12.5, marginTop: 2 }}>
-                  Incremental update with previous data retained plus new additions
+                  File contains changes compared to {inspection.updatedFrom || 'the existing file'}
                 </Text>
               </View>
             </Row>
 
             <Text style={{ color: '#1E3A8A', fontSize: 13.5, lineHeight: 19 }}>
-              This file contains existing data from{' '}
+              This file contains changes compared to existing file{' '}
               <Text style={{ fontWeight: '800', color: '#172554' }}>
                 {inspection.updatedFrom || 'an existing file'}
-              </Text>{' '}
-              with{' '}
-              <Text style={{ fontWeight: '700', color: '#1E40AF' }}>
-                {inspection.diff?.added_count ?? 'new'}
-              </Text>{' '}
-              new additions.
+              </Text>.
             </Text>
 
             {/* Prompt Question */}
@@ -351,11 +340,11 @@ export default function Upload() {
               }}
             >
               <Text style={{ fontSize: 13.5, fontWeight: '700', color: '#1E3A8A' }}>
-                Replace old data with this updated data?
+                Do you want to replace the existing file with this updated file?
               </Text>
             </View>
 
-            {/* What is new in new file section */}
+            {/* What is new / changed section */}
             <View style={{ marginTop: space(1) }}>
               <Pressable
                 onPress={() => setShowAdditions(!showAdditions)}
@@ -364,11 +353,11 @@ export default function Upload() {
                 <Row style={{ gap: space(1.5), alignItems: 'center' }}>
                   <Icon name="layers" size={16} color="#2563EB" />
                   <Text style={{ fontWeight: '800', fontSize: 13.5, color: '#1E40AF' }}>
-                    What is new in this file:
+                    What is changed in this file:
                   </Text>
                 </Row>
                 <Text style={{ fontSize: 12, color: '#3B82F6', fontWeight: '700' }}>
-                  {showAdditions ? 'Hide additions ▲' : `Show ${inspection.diff?.added_count ?? ''} additions ▼`}
+                  {showAdditions ? 'Hide changes ▲' : `Show ${inspection.diff?.added_count ?? ''} changes ▼`}
                 </Text>
               </Pressable>
 
@@ -398,14 +387,14 @@ export default function Upload() {
                       >
                         <View
                           style={{
-                            backgroundColor: '#DCFCE7',
+                            backgroundColor: '#DBEAFE',
                             borderRadius: 4,
                             paddingHorizontal: 6,
                             paddingVertical: 2,
                             marginTop: 1,
                           }}
                         >
-                          <Text style={{ fontSize: 10, fontWeight: '800', color: '#15803D' }}>+ NEW</Text>
+                          <Text style={{ fontSize: 10, fontWeight: '800', color: '#1D4ED8' }}>DIFF</Text>
                         </View>
                         <Text style={{ flex: 1, fontSize: 12, fontFamily: 'monospace', color: '#1E293B', lineHeight: 18 }}>
                           {item}
@@ -419,13 +408,13 @@ export default function Upload() {
 
             <Row style={{ gap: space(2.5), flexWrap: 'wrap', marginTop: space(1) }}>
               <Button
-                title={busy ? 'Updating...' : 'Replace Old Data with Updated Data'}
+                title={busy ? 'Replacing...' : 'Replace Existing File'}
                 disabled={busy}
                 onPress={() => send({ replace: true, targetFile: inspection.updatedFrom || undefined })}
               />
               <Button
                 kind="secondary"
-                title={busy ? 'Uploading...' : 'Upload as New Version (Keep Both)'}
+                title={busy ? 'Uploading...' : 'Keep Both (Upload as New Version)'}
                 disabled={busy}
                 onPress={() => send({ confirmUpdate: true })}
               />

@@ -31,15 +31,15 @@ class SiteIn(BaseModel):
 
 
 @router.get("/sharepoint/status")
-def status(user: dict = Depends(current_user)):
+def status(user: dict = Depends(require("ADMIN"))):
     s = get_store()
     return {"provider": s.name, "location": s.location, "document_types": TYPE_FOLDERS,
             "max_upload_mb": int(get_settings().get("sharepoint.max_upload_mb", 400))}
 
 
 @router.get("/sharepoint/sites")
-def list_sites(user: dict = Depends(current_user)):
-    """Every site that has a SharePoint folder, with its file count. A CX SP only sees its own sites."""
+def list_sites(user: dict = Depends(require("ADMIN"))):
+    """Every site that has a SharePoint folder, with its file count. Admin only."""
     store, r = get_store(), repo()
     scope = site_scope(user)
     rows = {s["SITE_ID"]: s for s in r.select("CORE.SITE", scope or None, order_by="SITE_ID")}
@@ -79,7 +79,7 @@ def create_site(body: SiteIn, user: dict = Depends(require("ADMIN"))):
 
 
 @router.get("/sharepoint/sites/{site_id}/files")
-def site_files(site_id: str, user: dict = Depends(current_user)):
+def site_files(site_id: str, user: dict = Depends(require("ADMIN"))):
     sid = validate_site_id(site_id)
     store = get_store()
     if not store.site_exists(sid):
@@ -97,7 +97,7 @@ from scopeiq.services.document_compare import inspect_file_against_site
 
 @router.post("/sharepoint/sites/{site_id}/check-content")
 async def check_content(site_id: str, file: UploadFile = File(...), doc_type: str | None = Form(default=None),
-                        user: dict = Depends(require("SCOPER", "AE_ENGINEER", "CX_SP", "ERICSSON"))):
+                        user: dict = Depends(require("ADMIN"))):
     """Pre-upload inspection for SharePoint: checks if file data is NEW, DUPLICATE, or UPDATED with additions."""
     sid = validate_site_id(site_id)
     store = get_store()
@@ -113,7 +113,7 @@ async def check_content(site_id: str, file: UploadFile = File(...), doc_type: st
 @router.post("/sharepoint/sites/{site_id}/upload")
 async def upload(site_id: str, file: UploadFile = File(...), doc_type: str | None = Form(default=None),
                  replace_file: str | None = Form(default=None),
-                 user: dict = Depends(require("SCOPER", "AE_ENGINEER", "CX_SP", "ERICSSON"))):
+                 user: dict = Depends(require("ADMIN"))):
     """Upload one file into the selected site's folder. The site comes from the path, so a file can only go to that one site."""
     sid = validate_site_id(site_id)
     store = get_store()
@@ -135,9 +135,11 @@ async def upload(site_id: str, file: UploadFile = File(...), doc_type: str | Non
         out["is_updated"] = True
         out["updated_from"] = inspection.existing_file
         out["diff"] = inspection.to_dict()["diff"]
-        out["message"] = f"Updated data: Contains previous content from '{inspection.existing_file}' with {inspection.added_count} additions."
-    elif inspection.status == "DUPLICATE" and not out.get("duplicate_of"):
+        out["message"] = f"Changes detected: Contains updates compared to '{inspection.existing_file}'."
+    elif inspection.status == "DUPLICATE":
         out["is_duplicate"] = True
+        out["already_exists"] = True
         out["duplicate_of"] = inspection.existing_file
+        out["message"] = f"Already exists: Identical content matches '{inspection.existing_file}'."
     return out
 

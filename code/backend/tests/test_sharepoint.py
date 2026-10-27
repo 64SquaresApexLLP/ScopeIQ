@@ -42,8 +42,14 @@ def login(client, user_id):
 SITE = {"site_id": "TXZZ0001", "site_name": "Test Hill", "city": "Dallas", "state": "TX", "stream": "BOM", "structure_type": "Monopole", "height_ft": 120}
 
 
-def test_only_admin_creates_a_site(client):
-    assert client.post("/admin/sites", json=SITE, headers=login(client, "scoper1")).status_code == 403
+def test_scopers_cannot_access_sharepoint(client):
+    s = login(client, "scoper1")
+    assert client.post("/admin/sites", json=SITE, headers=s).status_code == 403
+    assert client.get("/sharepoint/status", headers=s).status_code == 403
+    assert client.get("/sharepoint/sites", headers=s).status_code == 403
+    assert client.get("/sharepoint/sites/TXZZ0001/files", headers=s).status_code == 403
+    assert client.post("/sharepoint/sites/TXZZ0001/check-content", files={"file": ("a.pdf", b"test")}, headers=s).status_code == 403
+    assert client.post("/sharepoint/sites/TXZZ0001/upload", files={"file": ("a.pdf", b"test")}, headers=s).status_code == 403
     assert client.post("/admin/sites", json=SITE).status_code == 401
 
 
@@ -56,8 +62,8 @@ def test_admin_creates_site_and_folder(client, env):
         assert (base / f).is_dir(), f
     assert env["repo"].select("CORE.SITE", {"SITE_ID": "TXZZ0001"})[0]["WORKFLOW_STATE"] == "ASSIGNED"
     assert env["repo"].select("AUDIT.AUDIT_LOG", {"ENTITY_ID": "TXZZ0001", "ACTION": "CREATE"})
-    # the new site is offered for uploads
-    sites = client.get("/sharepoint/sites", headers=login(client, "scoper1")).json()["sites"]
+    # the new site is offered for uploads to admin
+    sites = client.get("/sharepoint/sites", headers=h).json()["sites"]
     assert [s["site_id"] for s in sites] == ["TXZZ0001"] and sites[0]["files"] == 0
 
 
@@ -71,7 +77,7 @@ def test_create_site_rejects_bad_or_duplicate_ids(client):
 def test_upload_goes_to_the_selected_site_only(client, env):
     h = login(client, "admin")
     client.post("/admin/sites", json={**SITE, "site_id": "TXZZ0002", "site_name": "Other Hill"}, headers=h)
-    s = login(client, "scoper1")
+    s = h
     r = client.post("/sharepoint/sites/TXZZ0001/upload", files={"file": ("TXZZ0001_CD_REV2.pdf", b"%PDF-1.4 drawing")}, headers=s)
     assert r.status_code == 200, r.text
     assert r.json()["folder"] == "cds" and r.json()["doc_type"] == "CD"
@@ -87,7 +93,7 @@ def test_upload_goes_to_the_selected_site_only(client, env):
 
 
 def test_upload_validation(client):
-    s = login(client, "scoper1")
+    s = login(client, "admin")
     up = lambda site, name, data=b"abc", **kw: client.post(f"/sharepoint/sites/{site}/upload", files={"file": (name, data)}, headers=s, **kw)  # noqa: E731
     assert up("TXZZ0001", "TXZZ0002_CD_REV1.pdf").status_code == 400            # named for another site
     assert up("TXZZ0001", "holiday_notes.docx").status_code == 400                # type cannot be told
@@ -100,18 +106,18 @@ def test_upload_validation(client):
 
 
 def test_duplicate_content_is_flagged_not_blocked(client):
-    s = login(client, "scoper1")
+    s = login(client, "admin")
     a = client.post("/sharepoint/sites/TXZZ0002/upload", files={"file": ("TXZZ0002_RFDS_R3.xlsx", b"same-bytes")}, headers=s).json()
     b = client.post("/sharepoint/sites/TXZZ0002/upload", files={"file": ("TXZZ0002_RFDS_R3_copy.xlsx", b"same-bytes")}, headers=s).json()
     assert a["duplicate_of"] is None and b["duplicate_of"] == "TXZZ0002_RFDS_R3.xlsx"
 
 
-def test_cx_sp_cannot_see_unassigned_sites(client):
-    assert client.get("/sharepoint/sites", headers=login(client, "sp_prairie")).json()["sites"] == []
+def test_non_admin_cannot_access_sharepoint_sites(client):
+    assert client.get("/sharepoint/sites", headers=login(client, "sp_prairie")).status_code == 403
 
 
 def test_path_traversal_is_refused(client, env):
-    s = login(client, "scoper1")
+    s = login(client, "admin")
     r = client.post("/sharepoint/sites/TXZZ0001/upload", files={"file": ("../../evil_CD_REV1.pdf", b"x")}, headers=s)
     assert r.status_code in (200, 400)
     assert not list(env["root"].rglob("evil_CD_REV1.pdf")) or all(env["root"] in p.parents for p in env["root"].rglob("evil_CD_REV1.pdf"))

@@ -82,7 +82,7 @@ def test_content_duplicate_and_update_detection_flow(compare_setup):
     assert dup_res["status"] == "DUPLICATE"
     assert dup_res["is_duplicate"] is True
     assert dup_res["duplicate_of"] == f"{sid}_BOM_REV0.xlsx"
-    assert "replace it with the existing file" in dup_res["message"]
+    assert "already exists" in dup_res["message"].lower()
 
     # 3. Upload duplicate without confirmation -> 409 Conflict
     r_dup_blocked = client.post(
@@ -95,17 +95,19 @@ def test_content_duplicate_and_update_detection_flow(compare_setup):
     err = r_dup_blocked.json()["error"]["details"]
     assert err["is_duplicate"] is True
     assert err["duplicate_of"] == f"{sid}_BOM_REV0.xlsx"
+    assert "already exists" in err["message"].lower()
 
-    # 4. Upload duplicate with replace_file -> Replaces existing file
-    r_dup_replace = client.post(
-        f"/sites/{sid}/documents/upload",
-        data={"doc_type": "BOM_REV0", "replace_file": f"{sid}_BOM_REV0.xlsx"},
-        files={"file": (diff_filename, base_bytes)},
+    # 4. Same file uploaded with same data -> Already exists message
+    r_same_same = client.post(
+        f"/sites/{sid}/documents/check-content",
+        data={"doc_type": "BOM_REV0"},
+        files={"file": (f"{sid}_BOM_REV0.xlsx", base_bytes)},
         headers=h,
     )
-    assert r_dup_replace.status_code == 200
-    assert r_dup_replace.json()["replaced"] is True
-    assert r_dup_replace.json()["replaced_file"] == f"{sid}_BOM_REV0.xlsx"
+    assert r_same_same.status_code == 200
+    assert r_same_same.json()["status"] == "DUPLICATE"
+    assert r_same_same.json()["already_exists"] is True
+    assert "already exists" in r_same_same.json()["message"].lower()
 
     # 5. Updated file: contains old data PLUS new additions
     updated_rows = [
@@ -117,7 +119,7 @@ def test_content_duplicate_and_update_detection_flow(compare_setup):
     ]
     updated_bytes = make_excel(updated_rows)
 
-    # Pre-check content inspection for updated data
+    # Pre-check content inspection for updated data -> Gives replace file option
     r_check_upd = client.post(
         f"/sites/{sid}/documents/check-content",
         data={"doc_type": "BOM_REV0"},
@@ -128,7 +130,8 @@ def test_content_duplicate_and_update_detection_flow(compare_setup):
     upd_res = r_check_upd.json()
     assert upd_res["status"] == "UPDATED"
     assert upd_res["is_updated"] is True
-    assert "replace old data" in upd_res["message"].lower()
+    assert upd_res["can_replace"] is True
+    assert "replace" in upd_res["message"].lower()
     assert upd_res["diff"] is not None
     assert upd_res["diff"]["added_count"] == 2
     # Verify additions show what is new in the file
@@ -151,12 +154,32 @@ def test_content_duplicate_and_update_detection_flow(compare_setup):
     # 7. Upload with replace_file -> Successfully replaces old data with updated data!
     r_upd_replace = client.post(
         f"/sites/{sid}/documents/upload",
-        data={"doc_type": "BOM_REV0", "replace_file": diff_filename},
+        data={"doc_type": "BOM_REV0", "replace_file": f"{sid}_BOM_REV0.xlsx"},
         files={"file": (f"{sid}_BOM_REV1.xlsx", updated_bytes)},
         headers=h,
     )
     assert r_upd_replace.status_code == 200
     rep_res = r_upd_replace.json()
     assert rep_res["replaced"] is True
-    assert rep_res["replaced_file"] == diff_filename
+    assert rep_res["replaced_file"] == f"{sid}_BOM_REV0.xlsx"
     assert "Replaced" in rep_res["MESSAGE"]
+
+    # 8. Same file uploaded with some changes (same filename, modified data) -> shows replace file option
+    modified_rows = [
+        ["Site ID", "Sector", "Equipment", "Quantity"],
+        [sid, "Alpha", "AIR 6419 B41", 6],  # Quantity changed from 3 to 6
+        [sid, "Beta", "AIR 6419 B41", 3],
+    ]
+    modified_bytes = make_excel(modified_rows)
+    r_same_mod = client.post(
+        f"/sites/{sid}/documents/check-content",
+        data={"doc_type": "BOM_REV0"},
+        files={"file": (f"{sid}_BOM_REV1.xlsx", modified_bytes)},
+        headers=h,
+    )
+    assert r_same_mod.status_code == 200
+    mod_res = r_same_mod.json()
+    assert mod_res["status"] == "UPDATED"
+    assert mod_res["is_updated"] is True
+    assert mod_res["can_replace"] is True
+    assert "replace" in mod_res["message"].lower()

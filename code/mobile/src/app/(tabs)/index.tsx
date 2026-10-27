@@ -41,7 +41,7 @@ function Panel({ icon, title, hint, onPress, children }: { icon: IconName; title
 const Sub = ({ children }: { children: string }) => <Text style={{ fontSize: 11, fontWeight: '800', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.8 }}>{children}</Text>;
 
 export default function Dashboard() {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const d = useApi<Dash>('/sites/dashboard');
   return (
     <ScrollView style={s.screen} contentContainerStyle={[s.content, { maxWidth: 1100, width: '100%', alignSelf: 'center' }]} refreshControl={<RefreshControl refreshing={d.loading} onRefresh={d.reload} />}>
@@ -70,16 +70,18 @@ export default function Dashboard() {
               <Sub>RFIs</Sub><Counts data={d.data.rfis} />
             </Panel>
           </View>
-          <Pressable onPress={() => router.push('/(tabs)/sharepoint')} accessibilityRole="button">
-            <Card style={{ flexDirection: 'row', alignItems: 'center', gap: space(3) }}>
-              <IconBadge name="upload-cloud" color={colors.accent2} size={40} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontWeight: '700', color: colors.text }}>Add documents to a site</Text>
-                <Muted>Upload RFDS, drawings, MA/SA, BOM and drone files to SharePoint</Muted>
-              </View>
-              <Icon name="arrow-right" size={18} color={colors.accent} />
-            </Card>
-          </Pressable>
+          {can('ADMIN') ? (
+            <Pressable onPress={() => router.push('/(tabs)/sharepoint')} accessibilityRole="button">
+              <Card style={{ flexDirection: 'row', alignItems: 'center', gap: space(3) }}>
+                <IconBadge name="upload-cloud" color={colors.accent2} size={40} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontWeight: '700', color: colors.text }}>Add documents to a site</Text>
+                  <Muted>Upload RFDS, drawings, MA/SA, BOM and drone files to SharePoint</Muted>
+                </View>
+                <Icon name="arrow-right" size={18} color={colors.accent} />
+              </Card>
+            </Pressable>
+          ) : null}
         </>
       )}
     </ScrollView>

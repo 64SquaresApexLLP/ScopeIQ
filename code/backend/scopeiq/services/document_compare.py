@@ -26,7 +26,7 @@ log = get_logger(__name__)
 @dataclass
 class DiffResult:
     status: str  # "NEW" | "DUPLICATE" | "UPDATED"
-    match_type: str  # "EXACT_HASH" | "CONTENT_IDENTICAL" | "CONTENT_UPDATED" | "NONE"
+    match_type: str  # "EXACT_HASH" | "CONTENT_IDENTICAL" | "CONTENT_UPDATED" | "SAME_FILE_MODIFIED" | "NONE"
     existing_file: str | None = None
     existing_path: str | None = None
     existing_source: str | None = None  # "DOCUMENT" | "UPLOAD" | "SITE_FOLDER" | "SHAREPOINT"
@@ -46,6 +46,8 @@ class DiffResult:
             "is_duplicate": self.status == "DUPLICATE",
             "is_updated": self.status == "UPDATED",
             "is_new": self.status == "NEW",
+            "already_exists": self.status == "DUPLICATE",
+            "can_replace": self.status == "UPDATED",
             "match_type": self.match_type,
             "existing_file": self.existing_file,
             "duplicate_of": self.existing_file if self.status == "DUPLICATE" else None,
@@ -152,17 +154,16 @@ def compare_excel_data(new_sheets: dict[str, list[tuple[str, ...]]],
                        old_sheets: dict[str, list[tuple[str, ...]]]) -> tuple[str, list[str], int]:
     """
     Compares two parsed Excel workbooks.
-    Returns (status, additions, added_count):
+    Returns (status, additions/changes, count):
     status: "DUPLICATE" | "UPDATED" | "DIFFERENT"
     """
     if not new_sheets or not old_sheets:
         return "DIFFERENT", [], 0
 
-    # 1. Exact match check across all sheets and rows
+    # 1. Exact match check across all sheets and rows -> DUPLICATE (Same data)
     if new_sheets == old_sheets:
         return "DUPLICATE", [], 0
 
-    # 2. Check for subset / incremental update
     all_old_rows: set[tuple[str, ...]] = set()
     for s_rows in old_sheets.values():
         all_old_rows.update(s_rows)
@@ -174,42 +175,29 @@ def compare_excel_data(new_sheets: dict[str, list[tuple[str, ...]]],
     if not all_old_rows:
         return "DIFFERENT", [], 0
 
-    # How many of the old rows exist in the new workbook?
     common_rows = all_old_rows.intersection(all_new_rows)
-    old_coverage = len(common_rows) / len(all_old_rows)
-
-    # If at least 80% of old rows are retained, and new rows were added:
-    if old_coverage >= 0.80 and len(all_new_rows) > len(all_old_rows):
-        additions: list[str] = []
-        for sname, nrows in new_sheets.items():
-            orows = set(old_sheets.get(sname, []))
-            for i, r in enumerate(nrows, 1):
-                if r not in orows and any(r):
-                    clean = " | ".join(c for c in r if c)
-                    additions.append(f"[{sname}] Row {i}: {clean}")
-        if additions:
-            return "UPDATED", additions, len(additions)
-
-    # Check sheet by sheet if old sheets are subset
     shared_sheets = set(old_sheets.keys()).intersection(set(new_sheets.keys()))
-    if shared_sheets:
-        additions = []
-        is_superset = True
-        for sname in old_sheets.keys():
-            if sname not in new_sheets:
-                is_superset = False
-                break
-            orows = set(old_sheets[sname])
-            nrows = set(new_sheets[sname])
-            if len(orows.intersection(nrows)) / max(len(orows), 1) < 0.80:
-                is_superset = False
-                break
-            for i, r in enumerate(new_sheets[sname], 1):
-                if r not in orows and any(r):
-                    clean = " | ".join(c for c in r if c)
-                    additions.append(f"[{sname}] Row {i}: {clean}")
-        if is_superset and additions:
-            return "UPDATED", additions, len(additions)
+
+    changes: list[str] = []
+    for sname in set(old_sheets.keys()).union(set(new_sheets.keys())):
+        if sname not in old_sheets:
+            changes.append(f"New sheet added: '{sname}' ({len(new_sheets[sname])} rows)")
+            continue
+        if sname not in new_sheets:
+            changes.append(f"Sheet removed: '{sname}'")
+            continue
+        orows = old_sheets[sname]
+        nrows = new_sheets[sname]
+        oset = set(orows)
+        for i, r in enumerate(nrows, 1):
+            if r not in oset and any(r):
+                clean = " | ".join(c for c in r if c)
+                changes.append(f"[{sname}] Row {i}: {clean}")
+        if not changes and nrows != orows:
+            changes.append(f"[{sname}] Sheet content modified")
+
+    if changes and (shared_sheets or len(common_rows) > 0):
+        return "UPDATED", changes, len(changes)
 
     return "DIFFERENT", [], 0
 
@@ -225,12 +213,13 @@ def compare_csv_data(new_rows: list[tuple[str, ...]],
     old_set = set(old_rows)
     new_set = set(new_rows)
     common = old_set.intersection(new_set)
-    coverage = len(common) / max(len(old_set), 1)
 
-    if coverage >= 0.80 and len(new_rows) > len(old_rows):
-        additions = [f"Row {i}: {' | '.join(c for c in r if c)}" for i, r in enumerate(new_rows, 1) if r not in old_set]
-        if additions:
-            return "UPDATED", additions, len(additions)
+    changes = [f"Row {i}: {' | '.join(c for c in r if c)}" for i, r in enumerate(new_rows, 1) if r not in old_set]
+    if not changes and new_rows != old_rows:
+        changes = [f"{abs(len(new_rows) - len(old_rows))} rows modified"]
+
+    if changes and (len(common) > 0 or (len(new_rows) > 0 and len(old_rows) > 0 and new_rows[0] == old_rows[0])):
+        return "UPDATED", changes, len(changes)
 
     return "DIFFERENT", [], 0
 
@@ -240,27 +229,26 @@ def compare_json_data(new_obj: Any, old_obj: Any) -> tuple[str, list[str], int]:
     if new_obj == old_obj:
         return "DUPLICATE", [], 0
 
-    additions = []
+    changes = []
     if isinstance(new_obj, dict) and isinstance(old_obj, dict):
         new_keys = set(new_obj.keys()) - set(old_obj.keys())
         for k in sorted(new_keys):
-            additions.append(f"New property '{k}': {str(new_obj[k])[:80]}")
-        # Check shared keys that are lists or dicts
+            changes.append(f"New property '{k}': {str(new_obj[k])[:80]}")
         for k in set(new_obj.keys()).intersection(set(old_obj.keys())):
             nv, ov = new_obj[k], old_obj[k]
-            if isinstance(nv, list) and isinstance(ov, list) and len(nv) > len(ov):
-                for item in nv:
-                    if item not in ov:
-                        additions.append(f"In '{k}': added {str(item)[:80]}")
-        if additions and len(set(old_obj.keys()).intersection(set(new_obj.keys()))) >= len(old_obj) * 0.7:
-            return "UPDATED", additions, len(additions)
+            if nv != ov:
+                changes.append(f"Modified property '{k}'")
+        if changes:
+            return "UPDATED", changes, len(changes)
 
     if isinstance(new_obj, list) and isinstance(old_obj, list):
-        if len(new_obj) > len(old_obj) and all(item in new_obj for item in old_obj):
-            for item in new_obj:
-                if item not in old_obj:
-                    additions.append(f"Added item: {str(item)[:80]}")
-            return "UPDATED", additions, len(additions)
+        for item in new_obj:
+            if item not in old_obj:
+                changes.append(f"Added item: {str(item)[:80]}")
+        if not changes and new_obj != old_obj:
+            changes.append("List items modified")
+        if changes:
+            return "UPDATED", changes, len(changes)
 
     return "DIFFERENT", [], 0
 
@@ -275,13 +263,10 @@ def compare_text_data(new_text: str, old_text: str) -> tuple[str, list[str], int
         return "DUPLICATE", [], 0
 
     old_set = set(old_lines)
-    common = old_set.intersection(set(new_lines))
-    if len(common) / max(len(old_set), 1) >= 0.80 and len(new_lines) > len(old_lines):
-        additions = [f"Line {i}: {l}" for i, l in enumerate(new_lines, 1) if l not in old_set]
-        if additions:
-            return "UPDATED", additions, len(additions)
-
-    return "DIFFERENT", [], 0
+    changes = [f"Line {i}: {l}" for i, l in enumerate(new_lines, 1) if l not in old_set]
+    if not changes and new_lines != old_lines:
+        changes = ["Lines modified"]
+    return "UPDATED", changes, len(changes)
 
 
 def compare_pdf_data(new_pages: list[str], old_pages: list[str]) -> tuple[str, list[str], int]:
@@ -296,13 +281,16 @@ def compare_pdf_data(new_pages: list[str], old_pages: list[str]) -> tuple[str, l
     if new_full == old_full:
         return "DUPLICATE", [], 0
 
-    if len(new_pages) > len(old_pages) and all(p in new_pages for p in old_pages):
-        additions = [f"Page {i + 1} added: {p[:120]}..." for i, p in enumerate(new_pages) if p not in old_pages]
-        return "UPDATED", additions, len(additions)
+    changes = []
+    if len(new_pages) > len(old_pages):
+        for i, p in enumerate(new_pages):
+            if p not in old_pages:
+                changes.append(f"Page {i + 1} added: {p[:120]}...")
+    elif old_full != new_full:
+        changes.append("Text content modified")
 
-    if old_full in new_full and len(new_full) > len(old_full) + 15:
-        added_text = new_full.replace(old_full, "").strip()
-        return "UPDATED", [f"Added text: {added_text[:150]}"], 1
+    if changes:
+        return "UPDATED", changes, len(changes)
 
     return "DIFFERENT", [], 0
 
@@ -423,7 +411,9 @@ def inspect_file_against_site(
     """
     Main inspection engine:
     Takes an uploaded or picked file, and checks it against all existing files for the site.
-    Returns DiffResult with status: "NEW", "DUPLICATE", or "UPDATED".
+    - DUPLICATE (Same data): gives message "already exists" (NO replace option).
+    - UPDATED (Same file with changes, or revision with changes): gives message with replace file option.
+    - NEW: Brand new file with no matching existing file.
     """
     if not new_data:
         return DiffResult(status="NEW", match_type="NONE", message="File is empty")
@@ -440,7 +430,11 @@ def inspect_file_against_site(
 
     existing_files = get_existing_site_files(site_id, repo=repo)
 
-    # Prioritize files of the same doc_type or matching extension
+    # Prioritize candidates:
+    # 1. Exact same filename (e.g. re-uploading the same file)
+    # 2. Matching doc_type or matching extension
+    # 3. Other candidates
+    exact_name_candidates: list[dict[str, Any]] = []
     matching_candidates: list[dict[str, Any]] = []
     other_candidates: list[dict[str, Any]] = []
 
@@ -448,12 +442,14 @@ def inspect_file_against_site(
         if exclude_filename and f["name"] == exclude_filename:
             continue
         f_ext = Path(f["name"]).suffix.lower()
-        if f.get("doc_type") == doc_type or f_ext == ext:
+        if f["name"].lower() == new_filename.lower():
+            exact_name_candidates.append(f)
+        elif f.get("doc_type") == doc_type or f_ext == ext:
             matching_candidates.append(f)
         else:
             other_candidates.append(f)
 
-    all_candidates = matching_candidates + other_candidates
+    all_candidates = exact_name_candidates + matching_candidates + other_candidates
 
     best_update_match: DiffResult | None = None
 
@@ -464,8 +460,9 @@ def inspect_file_against_site(
         cand_path = cand["path"]
         cand_hash = cand.get("hash")
         cand_source = cand.get("source") or "SITE_FOLDER"
+        is_same_filename = (cand_name.lower() == new_filename.lower())
 
-        # 1. Exact SHA-256 hash match
+        # 1. Exact SHA-256 hash match -> SAME DATA (Already exists!)
         if cand_hash and cand_hash.lower() == new_hash.lower():
             return DiffResult(
                 status="DUPLICATE",
@@ -476,13 +473,29 @@ def inspect_file_against_site(
                 doc_type=cand.get("doc_type") or doc_type,
                 file_hash=new_hash,
                 existing_hash=cand_hash,
-                message=f"Duplicate data detected! The content of this file is identical to existing file '{cand_name}'. "
-                        f"Do you want to replace it with the existing file?",
-                warning=f"Duplicate document detected! Identical SHA-256 hash match to '{cand_name}'."
+                message=f"Already exists! A file with identical content already exists as '{cand_name}'.",
+                warning=f"Already exists: Identical SHA-256 hash match to '{cand_name}'."
             )
 
         # If we have the file on disk, read it for content comparison
         if not cand_path or not Path(cand_path).is_file():
+            # If same filename and no file on disk to compare bytes, but hashes differed
+            if is_same_filename and not best_update_match:
+                best_update_match = DiffResult(
+                    status="UPDATED",
+                    match_type="SAME_FILE_MODIFIED",
+                    existing_file=cand_name,
+                    existing_path=None,
+                    existing_source=cand_source,
+                    doc_type=cand.get("doc_type") or doc_type,
+                    file_hash=new_hash,
+                    existing_hash=cand_hash,
+                    message=f"Changes detected in '{cand_name}'. Do you want to replace the existing file?",
+                    warning=f"Changes detected: File '{cand_name}' already exists with previous data.",
+                    added_count=1,
+                    summary="File content modified",
+                    additions=["File content modified with changes"],
+                )
             continue
 
         try:
@@ -501,9 +514,8 @@ def inspect_file_against_site(
                 doc_type=cand.get("doc_type") or doc_type,
                 file_hash=new_hash,
                 existing_hash=cand_actual_hash,
-                message=f"Duplicate data detected! The content of this file is identical to existing file '{cand_name}'. "
-                        f"Do you want to replace it with the existing file?",
-                warning=f"Duplicate document detected! Identical SHA-256 hash match to '{cand_name}'."
+                message=f"Already exists! A file with identical content already exists as '{cand_name}'.",
+                warning=f"Already exists: Identical SHA-256 hash match to '{cand_name}'."
             )
 
         # 2. Content comparison by file type
@@ -523,12 +535,11 @@ def inspect_file_against_site(
                     doc_type=cand.get("doc_type") or doc_type,
                     file_hash=new_hash,
                     existing_hash=cand_actual_hash,
-                    message=f"Duplicate data detected! The content of this file is identical to existing file '{cand_name}' "
-                            f"(even though file names or binary formats differ). Do you want to replace it with the existing file?",
-                    warning=f"Duplicate data detected! All spreadsheet rows match existing file '{cand_name}'."
+                    message=f"Already exists! The content of this file is identical to existing file '{cand_name}'.",
+                    warning=f"Already exists: All spreadsheet rows match existing file '{cand_name}'."
                 )
             elif status == "UPDATED" and not best_update_match:
-                summary = f"{added_count} new row{'s' if added_count > 1 else ''} added across sheets"
+                summary = f"{added_count} change{'s' if added_count > 1 else ''} detected"
                 best_update_match = DiffResult(
                     status="UPDATED",
                     match_type="CONTENT_UPDATED",
@@ -538,9 +549,8 @@ def inspect_file_against_site(
                     doc_type=cand.get("doc_type") or doc_type,
                     file_hash=new_hash,
                     existing_hash=cand_actual_hash,
-                    message=f"Updated data detected! This file contains existing data from '{cand_name}' with {added_count} new addition{'s' if added_count > 1 else ''}. "
-                            f"Do you want to replace old data with this updated data?",
-                    warning=f"Updated data: Contains previous content from '{cand_name}' with new additions.",
+                    message=f"Changes detected compared to '{cand_name}'. Do you want to replace the existing file?",
+                    warning=f"Changes detected: Contains previous data with {added_count} changes.",
                     added_count=added_count,
                     summary=summary,
                     additions=additions,
@@ -560,9 +570,8 @@ def inspect_file_against_site(
                     doc_type=cand.get("doc_type") or doc_type,
                     file_hash=new_hash,
                     existing_hash=cand_actual_hash,
-                    message=f"Duplicate data detected! The content of this file is identical to existing file '{cand_name}'. "
-                            f"Do you want to replace it with the existing file?",
-                    warning=f"Duplicate data detected! All CSV rows match existing file '{cand_name}'."
+                    message=f"Already exists! The content of this file is identical to existing file '{cand_name}'.",
+                    warning=f"Already exists: All CSV rows match existing file '{cand_name}'."
                 )
             elif status == "UPDATED" and not best_update_match:
                 best_update_match = DiffResult(
@@ -574,11 +583,10 @@ def inspect_file_against_site(
                     doc_type=cand.get("doc_type") or doc_type,
                     file_hash=new_hash,
                     existing_hash=cand_actual_hash,
-                    message=f"Updated data detected! This file contains existing data from '{cand_name}' with {added_count} new row{'s' if added_count > 1 else ''}. "
-                            f"Do you want to replace old data with this updated data?",
-                    warning=f"Updated data: Contains previous CSV rows with {added_count} new row additions.",
+                    message=f"Changes detected compared to '{cand_name}'. Do you want to replace the existing file?",
+                    warning=f"Changes detected: Contains previous CSV rows with {added_count} changes.",
                     added_count=added_count,
-                    summary=f"{added_count} new row{'s' if added_count > 1 else ''} added",
+                    summary=f"{added_count} change{'s' if added_count > 1 else ''} detected",
                     additions=additions,
                 )
 
@@ -597,9 +605,8 @@ def inspect_file_against_site(
                         doc_type=cand.get("doc_type") or doc_type,
                         file_hash=new_hash,
                         existing_hash=cand_actual_hash,
-                        message=f"Duplicate data detected! The content of this file is identical to existing file '{cand_name}'. "
-                                f"Do you want to replace it with the existing file?",
-                        warning=f"Duplicate JSON data matches existing file '{cand_name}'."
+                        message=f"Already exists! The content of this file is identical to existing file '{cand_name}'.",
+                        warning=f"Already exists: JSON data matches existing file '{cand_name}'."
                     )
                 elif status == "UPDATED" and not best_update_match:
                     best_update_match = DiffResult(
@@ -611,11 +618,10 @@ def inspect_file_against_site(
                         doc_type=cand.get("doc_type") or doc_type,
                         file_hash=new_hash,
                         existing_hash=cand_actual_hash,
-                        message=f"Updated data detected! This file contains existing data from '{cand_name}' with {added_count} new addition{'s' if added_count > 1 else ''}. "
-                                f"Do you want to replace old data with this updated data?",
-                        warning=f"Updated JSON: Contains previous data with {added_count} new additions.",
+                        message=f"Changes detected compared to '{cand_name}'. Do you want to replace the existing file?",
+                        warning=f"Changes detected: JSON contains {added_count} modifications.",
                         added_count=added_count,
-                        summary=f"{added_count} new item{'s' if added_count > 1 else ''} added",
+                        summary=f"{added_count} change{'s' if added_count > 1 else ''} detected",
                         additions=additions,
                     )
 
@@ -633,9 +639,8 @@ def inspect_file_against_site(
                     doc_type=cand.get("doc_type") or doc_type,
                     file_hash=new_hash,
                     existing_hash=cand_actual_hash,
-                    message=f"Duplicate data detected! The content of this file is identical to existing file '{cand_name}'. "
-                            f"Do you want to replace it with the existing file?",
-                    warning=f"Duplicate text content matches existing file '{cand_name}'."
+                    message=f"Already exists! The content of this file is identical to existing file '{cand_name}'.",
+                    warning=f"Already exists: Text content matches existing file '{cand_name}'."
                 )
             elif status == "UPDATED" and not best_update_match:
                 best_update_match = DiffResult(
@@ -647,11 +652,10 @@ def inspect_file_against_site(
                     doc_type=cand.get("doc_type") or doc_type,
                     file_hash=new_hash,
                     existing_hash=cand_actual_hash,
-                    message=f"Updated data detected! This file contains existing data from '{cand_name}' with {added_count} new line{'s' if added_count > 1 else ''}. "
-                            f"Do you want to replace old data with this updated data?",
-                    warning=f"Updated text: Contains previous text with {added_count} new lines.",
+                    message=f"Changes detected compared to '{cand_name}'. Do you want to replace the existing file?",
+                    warning=f"Changes detected: Text contains {added_count} modified lines.",
                     added_count=added_count,
-                    summary=f"{added_count} new line{'s' if added_count > 1 else ''} added",
+                    summary=f"{added_count} line change{'s' if added_count > 1 else ''} detected",
                     additions=additions,
                 )
 
@@ -669,9 +673,8 @@ def inspect_file_against_site(
                     doc_type=cand.get("doc_type") or doc_type,
                     file_hash=new_hash,
                     existing_hash=cand_actual_hash,
-                    message=f"Duplicate data detected! The content of this file is identical to existing file '{cand_name}'. "
-                            f"Do you want to replace it with the existing file?",
-                    warning=f"Duplicate PDF text matches existing file '{cand_name}'."
+                    message=f"Already exists! The content of this file is identical to existing file '{cand_name}'.",
+                    warning=f"Already exists: PDF text matches existing file '{cand_name}'."
                 )
             elif status == "UPDATED" and not best_update_match:
                 best_update_match = DiffResult(
@@ -683,13 +686,30 @@ def inspect_file_against_site(
                     doc_type=cand.get("doc_type") or doc_type,
                     file_hash=new_hash,
                     existing_hash=cand_actual_hash,
-                    message=f"Updated data detected! This file contains existing data from '{cand_name}' with {added_count} new section{'s' if added_count > 1 else ''}. "
-                            f"Do you want to replace old data with this updated data?",
-                    warning=f"Updated PDF: Contains previous document pages with new additions.",
+                    message=f"Changes detected compared to '{cand_name}'. Do you want to replace the existing file?",
+                    warning=f"Changes detected: PDF contains modifications compared to '{cand_name}'.",
                     added_count=added_count,
-                    summary=f"{added_count} new section{'s' if added_count > 1 else ''}/page{'s' if added_count > 1 else ''} added",
+                    summary=f"{added_count} section/page change{'s' if added_count > 1 else ''} detected",
                     additions=additions,
                 )
+
+        # 3. If exact same filename uploaded with different content/hash -> SAME FILE WITH CHANGES
+        if is_same_filename and not best_update_match:
+            best_update_match = DiffResult(
+                status="UPDATED",
+                match_type="SAME_FILE_MODIFIED",
+                existing_file=cand_name,
+                existing_path=str(cand_path),
+                existing_source=cand_source,
+                doc_type=cand.get("doc_type") or doc_type,
+                file_hash=new_hash,
+                existing_hash=cand_actual_hash or cand_hash,
+                message=f"Changes detected in '{cand_name}'. Do you want to replace the existing file?",
+                warning=f"Changes detected: File '{cand_name}' already exists with previous data.",
+                added_count=1,
+                summary="File content has been modified",
+                additions=["File content modified with changes"],
+            )
 
     if best_update_match:
         return best_update_match

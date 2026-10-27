@@ -50,7 +50,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="sites" options={{ title: 'Sites', tabBarIcon: icon('map-pin') }} />
       <Tabs.Screen name="queue" options={{ title: user?.role === 'CX_SP' ? 'Handshake' : 'Work queue', tabBarLabel: wide ? undefined : 'Queue', tabBarIcon: icon('list') }} />
       <Tabs.Screen name="inbox" options={{ title: 'Inbox', tabBarIcon: icon('inbox') }} />
-      <Tabs.Screen name="sharepoint" options={{ title: 'SharePoint', tabBarLabel: wide ? 'SharePoint' : 'Files', tabBarIcon: icon('upload-cloud') }} />
+      <Tabs.Screen name="sharepoint" options={{ title: 'SharePoint', tabBarLabel: wide ? 'SharePoint' : 'Files', tabBarIcon: icon('upload-cloud'), href: user?.role === 'ADMIN' ? undefined : null }} />
       <Tabs.Screen name="admin" options={{ title: 'Admin', tabBarIcon: icon('settings'), href: user?.role === 'ADMIN' ? undefined : null }} />
       <Tabs.Screen name="more" options={{ title: 'More', tabBarIcon: icon('more-horizontal') }} />
     </Tabs>
