@@ -240,7 +240,7 @@ class PipelineService:
                 warn_suffix = f" ({len(facts.warnings)} warning(s))" if facts.warnings else ""
                 _pipeline_notify(self.repo, site_id, run_id, final_status,
                                  f"Pipeline {final_status} for site {site_id}: {done_count}/{total_count} stages passed{warn_suffix}. "
-                                 f"Discrepancies: {summary.get('discrepancies', 0)}, Redlines: {summary.get('redlines', {}).get('count', 0)}.")
+                                 f"Discrepancies: {summary.get('discrepancies', 0)}, Redlines: {summary.get('redlines', 0)}.")
                 log.info("pipeline finished for %s: %s", site_id, json.dumps({k: v for k, v in summary.items() if k != "files"}, default=str))
                 return {"run_id": run_id, "site_id": site_id, "status": "SUCCEEDED", "summary": summary, "warnings": facts.warnings}
             except Exception as exc:
