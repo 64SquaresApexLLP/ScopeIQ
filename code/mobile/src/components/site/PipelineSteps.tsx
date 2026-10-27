@@ -495,9 +495,9 @@ function Extracted({ x, isRunning }: { x: any; isRunning?: boolean }) {
         <CdDataCard cd={cd} isRunning={isRunning} />
       </View>
 
-      {/* Low-confidence / reviewable values section */}
-      {x.fields && x.fields.length > 0 ? (
-        <Section title={x.needs_review ? `Fields Requiring Review (${x.needs_review})` : 'Sample Extracted Engineering Attributes'}>
+      {/* Low-confidence / reviewable values section (only when something needs review) */}
+      {x.fields && x.fields.length > 0 && x.needs_review ? (
+        <Section title={`Fields Requiring Review (${x.needs_review})`}>
           {x.fields.slice(0, 15).map((f: R) => (
             <Row key={f.FIELD_ID} style={{ justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: colors.border }}>
               <View style={{ flex: 1 }}>
