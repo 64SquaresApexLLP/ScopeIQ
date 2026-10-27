@@ -238,7 +238,7 @@ class PipelineService:
                 done_count = sum(1 for s in prog.steps if s.get("status") == "DONE")
                 total_count = len(prog.steps)
                 warn_suffix = f" ({len(facts.warnings)} warning(s))" if facts.warnings else ""
-                _pipeline_notify(self.repo, site_id, run_id, final_status,
+                _pipeline_notify(self.repo, site_id, run_id, final_status, triggered_by,
                                  f"Pipeline {final_status} for site {site_id}: {done_count}/{total_count} stages passed{warn_suffix}. "
                                  f"Discrepancies: {summary.get('discrepancies', 0)}, Redlines: {summary.get('redlines', 0)}.")
                 log.info("pipeline finished for %s: %s", site_id, json.dumps({k: v for k, v in summary.items() if k != "files"}, default=str))
@@ -252,7 +252,7 @@ class PipelineService:
                 done_count = sum(1 for s in prog.steps if s.get("status") == "DONE")
                 total_count = len(prog.steps)
                 stage_label = failed_step.get("label", "Unknown stage") if failed_step else "Unknown stage"
-                _pipeline_notify(self.repo, site_id, run_id, "FAILED",
+                _pipeline_notify(self.repo, site_id, run_id, "FAILED", triggered_by,
                                  f"Pipeline FAILED for site {site_id}: stopped at '{stage_label}' "
                                  f"({done_count}/{total_count} stages passed). Error: {str(exc)[:200]}")
                 log.exception("pipeline failed for %s", site_id)
@@ -930,14 +930,21 @@ class PipelineService:
                 self.wf.transition("SITE_SCOPING", site_id, action, site_id=site_id)
 
 
-def _pipeline_notify(repo: Repository, site_id: str, run_id: str, status: str, message: str) -> None:
-    """Insert WF.NOTIFICATION rows so SCOPER and REVIEWER see pipeline results in their Inbox."""
+def _pipeline_notify(repo: Repository, site_id: str, run_id: str, status: str, triggered_by: str | None, message: str) -> None:
+    """Insert WF.NOTIFICATION rows for SCOPER, REVIEWER, ADMIN and the triggering user's inbox."""
+    roles = {"SCOPER", "REVIEWER", "ADMIN"}
     notes = [
         {"NOTIFICATION_ID": uuid.uuid4().hex, "ROLE_CODE": role, "USER_ID": None,
          "SITE_ID": site_id, "ENTITY_TYPE": "PIPELINE_RUN", "ENTITY_ID": run_id,
          "MESSAGE": message, "CREATED_AT": now_iso(), "READ_AT": None}
-        for role in ("SCOPER", "REVIEWER")
+        for role in roles
     ]
+    # Also write a direct user notification so the triggering user always sees it,
+    # regardless of which role they hold
+    if triggered_by and triggered_by != "system":
+        notes.append({"NOTIFICATION_ID": uuid.uuid4().hex, "ROLE_CODE": None, "USER_ID": triggered_by,
+                      "SITE_ID": site_id, "ENTITY_TYPE": "PIPELINE_RUN", "ENTITY_ID": run_id,
+                      "MESSAGE": message, "CREATED_AT": now_iso(), "READ_AT": None})
     try:
         repo.insert("WF.NOTIFICATION", notes)
     except Exception:  # noqa: BLE001 - notification failure must never kill the pipeline result
