@@ -1,5 +1,6 @@
 // Sign-in: choose a role. Roles marked password_required (SCOPER) then ask for the username + password the admin created;
 // the other roles still sign in with a demo account. The token carries the role.
+import { router } from 'expo-router';
 import React, { useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { brandGradient, colors, shadow, space } from '../components/theme';
@@ -13,7 +14,7 @@ interface DemoUser { user_id: string; name: string; role: string; organisation: 
 
 const ROLES = [
   { role: 'SCOPER', blurb: 'Upload documents, run the pipeline and review findings' },
-  { role: 'AE_ENGINEER', blurb: 'Review drawings, respond to RFIs and acknowledge redlines' },
+  { role: 'AE_ENGINEER', blurb: 'Review drawings, respond to RFIs and complete redlines in the work queue' },
   { role: 'ADMIN', blurb: 'Create sites and manage the platform' },
 ];
 
@@ -45,6 +46,7 @@ export default function Login() {
     setBusy(u.user_id);
     try {
       await login({ userId: u.user_id });
+      router.replace(u.role === 'AE_ENGINEER' ? '/(tabs)/rfis' : '/(tabs)');
     } catch (e) {
       setError(e as ApiError);
     } finally {
@@ -58,6 +60,7 @@ export default function Login() {
     setError(null);
     try {
       await login({ username, password });
+      router.replace(chosen.role === 'AE_ENGINEER' ? '/(tabs)/rfis' : '/(tabs)');
     } catch (e) {
       setError(e as ApiError);
       setPassword('');

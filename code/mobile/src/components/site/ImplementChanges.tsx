@@ -12,7 +12,7 @@ import { colors, space } from '../theme';
 import { Badge, Button, Card, ErrorView, Muted, Row, Section, Title } from '../ui';
 import { PipelineSteps } from './PipelineSteps';
 
-const APPROVED = ['APPROVED', 'SENT_TO_AE', 'ACKNOWLEDGED', 'INCORPORATED'];
+const APPROVED = ['APPROVED', 'SENT_TO_AE', 'ACKNOWLEDGED', 'INCORPORATED', 'IN_REVIEW', 'WORK_QUEUE', 'COMPLETED'];
 
 export function ImplementChanges({ siteId }: { siteId: string }) {
   const { can } = useAuth();

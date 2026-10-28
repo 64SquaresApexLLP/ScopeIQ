@@ -82,7 +82,7 @@ export default function Dashboard() {
               icon="edit-3"
               title="Redlines and RFIs"
               hint="Corrections and questions"
-              onPress={can('ADMIN', 'AE_ENGINEER') ? () => router.push('/(tabs)/rfis') : undefined}
+              onPress={can('ADMIN', 'AE_ENGINEER', 'SCOPER', 'REVIEWER', 'ERICSSON') ? () => router.push('/(tabs)/rfis') : undefined}
             >
               <Sub>Redlines</Sub><Counts data={d.data.redlines} />
               <Sub>RFIs</Sub><Counts data={d.data.rfis} />
