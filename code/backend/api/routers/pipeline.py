@@ -280,6 +280,7 @@ def step_detail(run_id: str, key: str, user: dict = Depends(current_user)):
             "items_count": len(cd_items),
             "trunk": cd_trunks[0] if cd_trunks else None,
             "items": cd_items,
+            "issues": [str(w)[4:].strip() for w in (run.get("WARNINGS") or []) if str(w).lower().startswith("cd:")],   # why the drawing could not be read
         }
 
         # Query structured comparison records stored directly in SQLite CORE.EXTRACTED_COMPARISON_RECORD

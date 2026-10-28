@@ -46,13 +46,15 @@ def client(env):
 
 
 TEST_PASSWORD = "test-password-1"
+PASSWORD_USERS = {"scoper": "SCOPER", "ae": "AE_ENGINEER"}      # demo user id prefix -> role that signs in with a password
 
 
 def login(client, user_id):
-    """Demo accounts sign in directly; SCOPER signs in with a username + password, which the admin creates first."""
-    if user_id.startswith("scoper"):
+    """Demo accounts sign in directly; SCOPER and AE_ENGINEER sign in with a username + password, which the admin creates first."""
+    role = next((r for prefix, r in PASSWORD_USERS.items() if user_id.startswith(prefix)), None)
+    if role:
         admin = login(client, "admin")
-        client.post("/admin/logins", json={"username": user_id, "display_name": user_id, "password": TEST_PASSWORD}, headers=admin)
+        client.post("/admin/logins", json={"username": user_id, "display_name": user_id, "password": TEST_PASSWORD, "role": role}, headers=admin)
         r = client.post("/auth/login", json={"username": user_id, "password": TEST_PASSWORD})
     else:
         r = client.post("/auth/login", json={"user_id": user_id, "password": "demo"})
