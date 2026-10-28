@@ -7,8 +7,8 @@
     "sheet": "A-2",
     "disc_id": "DSC-B5BDB3BC44AA",
     "markup": "REVISE RAD CENTER OF EXISTING ANTENNAS 135 FT -> 130.7/130.8/130.9/131.2/131.4 FT (MEASURED).",
-    "change_from": "[135.0]",
-    "change_to": "[130.7, 130.8, 130.9, 131.2, 131.4]",
+    "change_from": "135 ft",
+    "change_to": "130.7/130.8/130.9/131.2/131.4 ft",
     "status": "DRAFT"
   }
 ]

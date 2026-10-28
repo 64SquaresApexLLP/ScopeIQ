@@ -92,7 +92,6 @@ export default function TabsLayout() {
         options={{
           title: 'Sites',
           tabBarIcon: icon('map-pin'),
-          href: isAe ? null : undefined,
         }}
       />
       <Tabs.Screen
@@ -110,7 +109,7 @@ export default function TabsLayout() {
           title: 'SharePoint',
           tabBarLabel: wide ? 'SharePoint' : 'Files',
           tabBarIcon: icon('upload-cloud'),
-          href: user?.role === 'ADMIN' ? undefined : null,
+          href: user?.role === 'ADMIN' || isAe ? undefined : null,
         }}
       />
       <Tabs.Screen

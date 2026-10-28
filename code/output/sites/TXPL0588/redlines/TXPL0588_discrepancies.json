@@ -103,74 +103,11 @@
     "target_sheet": "A-3",
     "bom_impact": "+1 Remove RRUS11",
     "evidence": [
-      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXPL0588\\TXPL0588_f039.jpg",
-      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXPL0588\\TXPL0588_f042.jpg",
+      "C:\\Users\\Babita\\Desktop\\ScopeIQ\\code\\output\\evidence\\TXPL0588\\TXPL0588_f038.jpg",
+      "C:\\Users\\Babita\\Desktop\\ScopeIQ\\code\\output\\evidence\\TXPL0588\\TXPL0588_f044.jpg",
       "OBJ-019"
     ],
     "status": "OPEN",
     "confidence": 0.845
-  },
-  {
-    "disc_id": "DSC-FAC03F98DEFF",
-    "site_id": "TXPL0588",
-    "rule_id": "BOM-02",
-    "family": "REV0_BOM",
-    "severity": "MEDIUM",
-    "outcome": "BOM_CHANGE",
-    "title": "RFJ-43-6 quantity differs (Alpha, Beta, Gamma)",
-    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha RFJ-43-6 (R-RAD-06): REV 0 2 vs rules 4; Beta RFJ-43-6 (R-RAD-06): REV 0 2 vs rules 4; Gamma RFJ-43-6 (R-RAD-06): REV 0 2 vs rules 4. Corrected on REV 1 (RC-REV0-ERR).",
-    "sector": null,
-    "position": null,
-    "expected": [
-      {
-        "sector": "A",
-        "part": "RFJ6",
-        "qty": 4.0,
-        "rule": "R-RAD-06"
-      },
-      {
-        "sector": "B",
-        "part": "RFJ6",
-        "qty": 4.0,
-        "rule": "R-RAD-06"
-      },
-      {
-        "sector": "C",
-        "part": "RFJ6",
-        "qty": 4.0,
-        "rule": "R-RAD-06"
-      }
-    ],
-    "found": [
-      {
-        "sector": "A",
-        "part": "RFJ6",
-        "qty": 2.0,
-        "rule": "R-RAD-06"
-      },
-      {
-        "sector": "B",
-        "part": "RFJ6",
-        "qty": 2.0,
-        "rule": "R-RAD-06"
-      },
-      {
-        "sector": "C",
-        "part": "RFJ6",
-        "qty": 2.0,
-        "rule": "R-RAD-06"
-      }
-    ],
-    "governing": "KIT_RULES",
-    "sources": [
-      "BOM REV 0",
-      "Kit rules on CD as drawn"
-    ],
-    "target_doc": "BOM_REV0",
-    "target_sheet": "",
-    "bom_impact": "+6 RFJ6",
-    "evidence": [],
-    "status": "OPEN",
-    "confidence": 1.0
   }
 ]

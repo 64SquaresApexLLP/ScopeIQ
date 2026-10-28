@@ -34,6 +34,8 @@ type Picked = {
   diffSummary?: string | null;
   additions?: string[];
   replace?: boolean;
+  notAllowedForAe?: boolean;
+  notAllowedReason?: string | null;
 };
 type Result = {
   name: string;
@@ -46,6 +48,19 @@ type Result = {
   replaced?: boolean;
   hash?: string | null;
 };
+
+function classifyFileName(name: string): string | null {
+  if (/(?:_|-|\b)RFDS(?:_|-|\.|\b)/i.test(name) || /RFDS/i.test(name)) return 'RFDS';
+  if (/(?:^|[-_\s])(?:CD|PCD)(?:[-_\s.]|$)/i.test(name)) return 'CD';
+  if (/(?:^|[-_\s])(?:SAMA|MA_SA|SA_MA|MA|SA)(?:[-_\s.]|$)/i.test(name)) return 'MA_SA';
+  if (/BOM/i.test(name)) return 'BOM_REV0';
+  if (/capture_metadata\.json$/i.test(name)) return 'DRONE_META';
+  if (/vendor_measurements\.csv$/i.test(name)) return 'DRONE_VENDOR';
+  if (/\.la[sz]$/i.test(name)) return 'DRONE_POINTCLOUD';
+  if (/\.(jpe?g|png|tif)$/i.test(name)) return 'DRONE_IMAGE';
+  if (/\.(mp4|mov|avi)$/i.test(name)) return 'DRONE_VIDEO';
+  return null;
+}
 
 const kb = (n?: number) => (!n ? '' : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 const fileIcon = (name: string) => (/\.(jpe?g|png|tif)$/i.test(name) ? 'image' : /\.(mp4|mov|avi)$/i.test(name) ? 'video' : /\.(xlsx|csv)$/i.test(name) ? 'grid' : /\.(laz|las)$/i.test(name) ? 'box' : 'file-text') as any;
@@ -68,9 +83,11 @@ function Step({ n, title, hint, children }: { n: number; title: string; hint?: s
 }
 
 export default function SharePoint() {
-  const { can } = useAuth();
-  const isAdmin = can('ADMIN');
-  const sites = useApi<{ location: string; sites: R[] }>(isAdmin ? '/sharepoint/sites' : null);
+  const { user, can } = useAuth();
+  const isAdmin = user?.role === 'ADMIN' || can('ADMIN');
+  const isAe = user?.role === 'AE_ENGINEER';
+  const canUseSharePoint = isAdmin || isAe;
+  const sites = useApi<{ location: string; sites: R[] }>(canUseSharePoint ? '/sharepoint/sites' : null);
   const firstFocus = useRef(true);
   useFocusEffect(
     useCallback(() => {
@@ -78,10 +95,10 @@ export default function SharePoint() {
         firstFocus.current = false;
         return;
       }
-      if (isAdmin) {
+      if (canUseSharePoint) {
         sites.reload(true);
       }
-    }, [isAdmin, sites.reload]),
+    }, [canUseSharePoint, sites.reload]),
   );
   const [siteId, setSiteId] = useState<string | null>(null);
   const [type, setType] = useState<T>('AUTO');
@@ -92,10 +109,10 @@ export default function SharePoint() {
   const [results, setResults] = useState<Result[]>([]);
   const [error, setError] = useState<ApiError | null>(null);
   const [hover, setHover] = useState(false);
-  const files = useApi<{ files: R[] }>(isAdmin && siteId ? `/sharepoint/sites/${siteId}/files` : null);
+  const files = useApi<{ files: R[] }>(canUseSharePoint && siteId ? `/sharepoint/sites/${siteId}/files` : null);
   const dropRef = useRef<any>(null);
 
-  if (!isAdmin) {
+  if (!canUseSharePoint) {
     return (
       <View style={[s.screen, { alignItems: 'center', justifyContent: 'center', padding: space(8) }]}>
         <IconBadge name="lock" color={colors.muted} size={56} />
@@ -116,33 +133,73 @@ export default function SharePoint() {
     const existing = files.data?.files ?? [];
     const enriched: Picked[] = await Promise.all(
       list.map(async (item) => {
+        // If user is A&E Engineer, verify file type is allowed (strictly CD or MA_SA / SA_MA)
+        // Admin is NEVER restricted and can upload any file type (RFDS, BOM, CD, SAMA, DRONE, etc.)
+        const detectedType = classifyFileName(item.name);
+        const effectiveType = type !== 'AUTO' ? type : detectedType;
+        const isAllowedForAe = (detectedType === 'CD' || detectedType === 'MA_SA') || (!detectedType && (effectiveType === 'CD' || effectiveType === 'MA_SA'));
+        const isRestrictedForAe = isAe && !isAllowedForAe;
+
+        if (isRestrictedForAe) {
+          return {
+            ...item,
+            hash: null,
+            isDuplicate: false,
+            duplicateOf: null,
+            isUpdated: false,
+            updatedFrom: null,
+            diffSummary: null,
+            additions: [],
+            replace: false,
+            notAllowedForAe: true,
+            notAllowedReason: `A&E Engineers can only upload CD and SA_MA documents. "${item.name}" is ${detectedType ? `a ${detectedType}` : 'not a CD or SA_MA'} document.`,
+          };
+        }
+
         const hash = await computeFileSha256(item);
         const match = hash ? existing.find((ef: any) => ef.hash === hash) : null;
         const nameMatch = existing.find((ef: any) => ef.name?.toLowerCase() === item.name?.toLowerCase());
-        let isDup = Boolean(match || nameMatch);
-        let dupOf = match ? (match.name as string) : nameMatch ? (nameMatch.name as string) : null;
-        let isUpd = false;
-        let updFrom: string | null = null;
+
+        // 1. Exact hash match -> identical duplicate (Already exists)
+        // 2. Same filename but DIFFERENT hash -> updated (Changes detected)
+        // 3. Otherwise -> new file
+        let isDup = Boolean(match);
+        let dupOf = match ? (match.name as string) : null;
+        let isUpd = Boolean(!match && nameMatch);
+        let updFrom = !match && nameMatch ? (nameMatch.name as string) : null;
         let diffSum: string | null = null;
         let additionsList: string[] = [];
 
         if (siteId) {
           try {
             const form = new FormData();
-            if (type !== 'AUTO') form.append('doc_type', type);
+            const fileDocType = type !== 'AUTO' ? type : isAe ? detectedType : undefined;
+            if (fileDocType) form.append('doc_type', fileDocType);
             if (Platform.OS === 'web' && item.file) form.append('file', item.file, item.name);
             else form.append('file', { uri: item.uri, name: item.name, type: item.mimeType ?? 'application/octet-stream' } as unknown as Blob);
             const insp = await api.upload<any>(`/sharepoint/sites/${siteId}/check-content`, form);
             if (insp) {
               if (insp.status === 'DUPLICATE') {
                 isDup = true;
-                dupOf = insp.duplicate_of || insp.existing_file || dupOf;
+                dupOf = insp.duplicate_of || insp.existing_file || dupOf || item.name;
+                isUpd = false;
+                updFrom = null;
+                diffSum = null;
+                additionsList = [];
               } else if (insp.status === 'UPDATED') {
                 isUpd = true;
                 isDup = false;
-                updFrom = insp.updated_from || insp.existing_file;
+                dupOf = null;
+                updFrom = insp.updated_from || insp.existing_file || updFrom || item.name;
                 diffSum = insp.diff?.summary;
                 additionsList = insp.diff?.additions || [];
+              } else if (insp.status === 'NEW') {
+                isDup = false;
+                dupOf = null;
+                isUpd = false;
+                updFrom = null;
+                diffSum = null;
+                additionsList = [];
               }
             }
           } catch {}
@@ -151,18 +208,21 @@ export default function SharePoint() {
         return {
           ...item,
           hash,
-          isDuplicate: isDup,
-          duplicateOf: dupOf,
-          isUpdated: isUpd,
-          updatedFrom: updFrom,
-          diffSummary: diffSum,
-          additions: additionsList,
-          replace: isUpd, // ONLY files with changes can be replaced; duplicate (same data) is blocked
+          isDuplicate: isDup && !isUpd,
+          duplicateOf: isDup && !isUpd ? dupOf : null,
+          isUpdated: isUpd && !isDup,
+          updatedFrom: isUpd && !isDup ? updFrom : null,
+          diffSummary: isUpd && !isDup ? diffSum : null,
+          additions: isUpd && !isDup ? additionsList : [],
+          replace: isUpd && !isDup, // Default to true if updated; user can toggle to keep both files
+          notAllowedForAe: false,
+          notAllowedReason: null,
         };
       })
     );
-    setPicked((p) => [...p, ...enriched.filter((n) => !p.some((o) => o.name === n.name))]);
+    setPicked(enriched);
     setResults([]);
+    setError(null);
   };
 
   useEffect(() => {      // drag and drop (web only)
@@ -173,6 +233,8 @@ export default function SharePoint() {
     const drop = (e: DragEvent) => {
       e.preventDefault();
       setHover(false);
+      setResults([]);
+      setError(null);
       addFiles(Array.from(e.dataTransfer?.files ?? []).map((f) => ({ name: f.name, size: f.size, uri: '', file: f })));
     };
     el.addEventListener('dragover', over); el.addEventListener('dragleave', leave); el.addEventListener('drop', drop);
@@ -183,11 +245,15 @@ export default function SharePoint() {
 
   const pick = async () => {
     const r = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: true });
-    if (!r.canceled) addFiles(r.assets.map((a) => ({ name: a.name, size: a.size, uri: a.uri, mimeType: a.mimeType, file: a.file })));
+    if (!r.canceled) {
+      setResults([]);
+      setError(null);
+      addFiles(r.assets.map((a) => ({ name: a.name, size: a.size, uri: a.uri, mimeType: a.mimeType, file: a.file })));
+    }
   };
 
-  const uploadableFiles = picked.filter((f) => !f.isDuplicate && !f.duplicateOf);
-  const allDuplicates = picked.length > 0 && uploadableFiles.length === 0;
+  const uploadableFiles = picked.filter((f) => !f.isDuplicate && !f.notAllowedForAe);
+  const allBlocked = picked.length > 0 && uploadableFiles.length === 0;
 
   const upload = async () => {
     if (!siteId || !picked.length) return;
@@ -196,7 +262,16 @@ export default function SharePoint() {
     setError(null);
     const out: Result[] = [];
     for (const f of picked) {
-      if (f.isDuplicate || f.duplicateOf) {
+      if (f.notAllowedForAe) {
+        out.push({
+          name: f.name,
+          ok: false,
+          message: f.notAllowedReason || 'Upload blocked: A&E Engineers can only upload CD and MA/SA documents.',
+        });
+        setDone((n) => n + 1);
+        continue;
+      }
+      if (f.isDuplicate) {
         // Do NOT upload same/duplicate file to the site
         out.push({
           name: f.name,
@@ -211,7 +286,8 @@ export default function SharePoint() {
       }
       try {
         const form = new FormData();
-        if (type !== 'AUTO') form.append('doc_type', type);
+        const fileDocType = type !== 'AUTO' ? type : isAe ? (classifyFileName(f.name) || 'CD') : undefined;
+        if (fileDocType) form.append('doc_type', fileDocType);
         if (f.replace) {
           form.append('action', 'REPLACE');
           const target = f.updatedFrom || f.duplicateOf;
@@ -239,10 +315,10 @@ export default function SharePoint() {
         out.push({
           name: f.name,
           ok: true,
-          isDuplicate: isDup,
-          duplicateOf: dupName,
-          isUpdated: isUpd,
-          updatedFrom: updName,
+          isDuplicate: isDup && !isUpd,
+          duplicateOf: isDup && !isUpd ? dupName : null,
+          isUpdated: isUpd && !isDup,
+          updatedFrom: isUpd && !isDup ? updName : null,
           replaced: wasReplaced,
           hash: hashVal,
           message: msg,
@@ -307,15 +383,16 @@ export default function SharePoint() {
             <View ref={dropRef} style={{ borderWidth: 2, borderStyle: 'dashed', borderColor: hover ? colors.accent : '#CBD5E8', backgroundColor: hover ? colors.soft : '#F8FAFF', borderRadius: 16, paddingVertical: space(9), paddingHorizontal: space(4), alignItems: 'center', gap: space(2) }}>
               <IconBadge name="upload-cloud" color={colors.accent} size={56} />
               <Text style={{ fontSize: 17, fontWeight: '800', color: colors.text, marginTop: space(2) }}>{Platform.OS === 'web' ? 'Drag and drop files here' : 'Add your files'}</Text>
-              <Text style={{ color: colors.muted, fontSize: 13 }}>RFDS, drawings, MA/SA, BOM, drone data, photos and video</Text>
+              <Text style={{ color: colors.muted, fontSize: 13 }}>{isAe ? 'CD drawings and SA_MA reports' : 'RFDS, drawings, MA/SA, BOM, drone data, photos and video'}</Text>
               <View style={{ marginTop: space(3) }}><Button kind="secondary" title="Browse files" onPress={pick} /></View>
             </View>
 
             {picked.length > 0 ? (
               <View style={{ marginTop: space(4), borderRadius: 12, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' }}>
                 {picked.map((f, i) => {
-                  const isDup = Boolean(f.isDuplicate || f.duplicateOf);
-                  const isUpd = Boolean(f.isUpdated);
+                  const isBlockedAe = Boolean(f.notAllowedForAe);
+                  const isDup = !isBlockedAe && Boolean(f.isDuplicate && !f.isUpdated);
+                  const isUpd = !isBlockedAe && Boolean(f.isUpdated && !f.isDuplicate);
                   return (
                     <View
                       key={f.name}
@@ -323,27 +400,32 @@ export default function SharePoint() {
                         padding: space(3.5),
                         borderTopWidth: i ? 1 : 0,
                         borderTopColor: colors.border,
-                        backgroundColor: isDup ? '#FFFBEB' : isUpd ? '#EFF6FF' : '#FFFFFF',
+                        backgroundColor: isBlockedAe || isDup ? '#FFFBEB' : isUpd ? '#EFF6FF' : '#FFFFFF',
                         gap: space(2),
                       }}
                     >
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space(3) }}>
-                        <IconBadge name={fileIcon(f.name)} size={34} color={isDup ? colors.danger : isUpd ? '#2563EB' : undefined} />
+                        <IconBadge name={fileIcon(f.name)} size={34} color={isBlockedAe || isDup ? colors.danger : isUpd ? '#2563EB' : undefined} />
                         <View style={{ flex: 1 }}>
-                          <Row style={{ alignItems: 'center', gap: space(2) }}>
+                          <Row style={{ alignItems: 'center', gap: space(2), flexWrap: 'wrap' }}>
                             <Text style={{ color: colors.text, fontWeight: '700' }} numberOfLines={1}>
                               {f.name}
                             </Text>
+                            {isBlockedAe ? <Badge text="A&E RESTRICTED · WILL NOT UPLOAD" color={colors.danger} /> : null}
                             {isDup ? <Badge text="ALREADY EXISTS · WILL NOT UPLOAD" color={colors.danger} /> : null}
                             {isUpd ? <Badge text="CHANGES DETECTED" color="#2563EB" /> : null}
                           </Row>
-                          {isDup ? (
+                          {isBlockedAe ? (
                             <Text style={{ fontSize: 12, color: colors.danger, fontWeight: '600', marginTop: 2 }}>
-                              ⚠️ File already exists with identical data (matches &quot;{f.duplicateOf}&quot;) — upload blocked
+                              ⚠️ {f.notAllowedReason || 'A&E Engineers can only upload CD and SA_MA documents.'}
+                            </Text>
+                          ) : isDup ? (
+                            <Text style={{ fontSize: 12, color: colors.danger, fontWeight: '600', marginTop: 2 }}>
+                              ⚠️ File already exists with identical data (matches &quot;{f.duplicateOf || f.name}&quot;) — upload blocked
                             </Text>
                           ) : isUpd ? (
                             <Text style={{ fontSize: 12, color: '#1E40AF', fontWeight: '600', marginTop: 2 }}>
-                              ✨ Changes detected compared to &quot;{f.updatedFrom}&quot; ({f.diffSummary || 'modified content'})
+                              ✨ Changes detected compared to &quot;{f.updatedFrom || f.name}&quot; ({f.diffSummary || 'modified content'})
                             </Text>
                           ) : f.hash ? (
                             <Text style={{ fontSize: 11, fontFamily: 'monospace', color: colors.muted, marginTop: 2 }}>
@@ -357,6 +439,24 @@ export default function SharePoint() {
                         </Pressable>
                       </View>
 
+                      {/* A&E Restricted banner */}
+                      {isBlockedAe ? (
+                        <View
+                          style={{
+                            backgroundColor: '#FEF2F2',
+                            borderWidth: 1,
+                            borderColor: '#FECACA',
+                            padding: space(2.5),
+                            borderRadius: 8,
+                            marginTop: space(1),
+                          }}
+                        >
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#B91C1C' }}>
+                            A&E Engineers are only permitted to upload CD and SA_MA documents for this site.
+                          </Text>
+                        </View>
+                      ) : null}
+
                       {/* Same data detected: Already exists banner - NO replace option */}
                       {isDup ? (
                         <View
@@ -364,8 +464,8 @@ export default function SharePoint() {
                             backgroundColor: '#FEF2F2',
                             borderWidth: 1,
                             borderColor: '#FECACA',
-                            padding: space(2),
-                            borderRadius: 6,
+                            padding: space(2.5),
+                            borderRadius: 8,
                             marginTop: space(1),
                           }}
                         >
@@ -375,37 +475,46 @@ export default function SharePoint() {
                         </View>
                       ) : null}
 
-                      {/* Changes detected: Replace choice prompt ONLY for files with changes */}
+                      {/* Changes detected: Replace or keep both files choice prompt ONLY for files with changes */}
                       {isUpd ? (
                         <Pressable
                           onPress={() => setPicked((p) => p.map((x) => (x.name === f.name ? { ...x, replace: !x.replace } : x)))}
                           style={{
                             flexDirection: 'row',
                             alignItems: 'center',
-                            gap: space(2),
-                            backgroundColor: '#DBEAFE',
-                            padding: space(2),
-                            borderRadius: 6,
+                            gap: space(2.5),
+                            backgroundColor: f.replace ? '#DBEAFE' : '#F8FAFC',
+                            padding: space(2.5),
+                            borderRadius: 8,
                             marginTop: space(1),
+                            borderWidth: 1.5,
+                            borderColor: f.replace ? '#60A5FA' : '#CBD5E1',
                           }}
                         >
                           <View
                             style={{
-                              width: 18,
-                              height: 18,
-                              borderRadius: 4,
+                              width: 20,
+                              height: 20,
+                              borderRadius: 5,
                               borderWidth: 1.5,
-                              borderColor: '#2563EB',
+                              borderColor: f.replace ? '#2563EB' : colors.muted,
                               backgroundColor: f.replace ? '#2563EB' : '#FFFFFF',
                               alignItems: 'center',
                               justifyContent: 'center',
                             }}
                           >
-                            {f.replace ? <Icon name="check" size={12} color="#FFFFFF" /> : null}
+                            {f.replace ? <Icon name="check" size={14} color="#FFFFFF" /> : null}
                           </View>
-                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#1E40AF', flex: 1 }}>
-                            Replace existing file &quot;{f.updatedFrom}&quot; with this updated file
-                          </Text>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 12.5, fontWeight: '700', color: f.replace ? '#1E40AF' : colors.text }}>
+                              {f.replace
+                                ? `Replace existing file "${f.updatedFrom || f.name}" with this updated file`
+                                : `Keep both files (save as new file alongside "${f.updatedFrom || f.name}")`}
+                            </Text>
+                            <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
+                              {f.replace ? 'Checked: existing file will be replaced. Click to uncheck and keep both files.' : 'Unchecked: both files will be kept. Click to replace existing file.'}
+                            </Text>
+                          </View>
                         </Pressable>
                       ) : null}
                     </View>
@@ -416,19 +525,34 @@ export default function SharePoint() {
 
             <Pressable onPress={() => setShowType((v) => !v)} style={{ marginTop: space(4), flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Icon name="sliders" size={14} color={colors.accent} />
-              <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600' }}>Document type: {TYPES.find((t) => t.key === type)?.label}{type === 'AUTO' ? ' (from the file name)' : ''}</Text>
+              <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600' }}>
+                Document type: {isAe ? 'Auto-detect (CD/SA_MA)' : `${TYPES.find((t) => t.key === type)?.label}${type === 'AUTO' ? ' (from the file name)' : ''}`}
+              </Text>
             </Pressable>
-            {showType ? <Chips<T> value={type} onChange={setType} options={TYPES.map((t) => ({ key: t.key, label: t.label }))} /> : null}
+            {showType || isAe ? (
+              <View style={{ marginTop: space(2) }}>
+                <Chips<T>
+                  value={type}
+                  onChange={setType}
+                  options={TYPES
+                    .filter((t) => (!isAe ? true : t.key === 'AUTO'))
+                    .map((t) => ({
+                      key: t.key,
+                      label: isAe && t.key === 'AUTO' ? 'Auto-detect (CD/SA_MA)' : t.label,
+                    }))}
+                />
+              </View>
+            ) : null}
 
             <View style={{ marginTop: space(5) }}>
               <Button
                 title={
                   busy
                     ? `Uploading ${done}/${uploadableFiles.length}...`
-                    : allDuplicates
-                    ? 'Cannot upload: identical file(s) already exist'
+                    : allBlocked
+                    ? 'Cannot upload: identical or restricted file(s)'
                     : uploadableFiles.length < picked.length
-                    ? `Upload ${uploadableFiles.length} file${uploadableFiles.length === 1 ? '' : 's'} to ${siteId} (${picked.length - uploadableFiles.length} duplicate skipped)`
+                    ? `Upload ${uploadableFiles.length} file${uploadableFiles.length === 1 ? '' : 's'} to ${siteId} (${picked.length - uploadableFiles.length} skipped)`
                     : picked.length
                     ? `Upload ${picked.length} file${picked.length === 1 ? '' : 's'} to ${siteId}`
                     : `Upload to ${siteId}`
