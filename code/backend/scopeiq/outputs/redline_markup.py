@@ -36,7 +36,6 @@ RED = Color(0.85, 0.05, 0.05)
 # How the A-3 antenna layout plan is drawn (same constants as the drawings: sector centre, spacing between positions, label radius)
 CENTER, LABEL_R, SPACING, R_TOWER, R_ROOF = (130.0, 110.0), 82.0, 15.0, 52.0, 68.0
 BOX_W, FONT, LINE_H = 100.0, 1.7, 2.5          # callout box width, text height and line pitch, in sheet units
-THUMB_H = 24.0                                # room for the drone pictures inside a callout, in sheet units
 FREE_RIGHT = 272.0                             # the title block starts to the right of this
 
 
@@ -182,7 +181,6 @@ class Placed:
     box: tuple[float, float, float, float]       # x, y (bottom), w, h
     lines: list[str]
     ref: str
-    thumbs: tuple = ()                           # drone pictures shown inside the callout
 
 
 def _cloud(s: Spot, step: float = 4.0, depth: float = 0.22) -> list[tuple[float, float]]:
@@ -246,18 +244,17 @@ def _best_box(spot: Spot | None, bh: float, taken: list, ink: Ink | None) -> tup
     return best
 
 
-def layout(items: list[tuple[int, Redline]], locator: Locator, ink: Ink | None = None, thumbs: dict | None = None) -> list[Placed]:
+def layout(items: list[tuple[int, Redline]], locator: Locator, ink: Ink | None = None) -> list[Placed]:
     """Callout boxes in the emptiest paper next to the thing they are about, never on top of each other."""
     placed: list[Placed] = []
     taken: list[tuple[float, float, float, float]] = []
     for n, r in items:
         lines = textwrap.wrap(r.markup, 62) or [""]
-        pics = tuple((thumbs or {}).get(r.redline_id, ()))[:2]
-        bh = (len(lines) + 1) * LINE_H + 4 + (THUMB_H + 6 if pics else 0)
+        bh = (len(lines) + 1) * LINE_H + 4
         spot = locator.spot(locator.discs[r.disc_id], r) if r.disc_id in locator.discs else None
         x, y = _best_box(spot, bh, taken, ink)
         taken.append((x, y, BOX_W, bh))
-        placed.append(Placed(n, r, spot, (x, y, BOX_W, bh), lines, f"ref {r.disc_id} | was: {r.change_from[:34]} -> now: {r.change_to[:34]}", pics))
+        placed.append(Placed(n, r, spot, (x, y, BOX_W, bh), lines, f"ref {r.disc_id} | was: {r.change_from[:34]} -> now: {r.change_to[:34]}"))
     return placed
 
 
@@ -290,8 +287,6 @@ def ops_for(placed: list[Placed]) -> list[tuple]:
             ops.append(("text", x + 10, ty, ln, FONT, "left"))
             ty -= LINE_H
         ops.append(("text", x + 10, ty, p.ref[:92], FONT * 0.78, "left"))
-        if p.thumbs:
-            ops.append(("text", x + 4, y + THUMB_H + 3.5, "Drone evidence", FONT * 0.78, "left"))
     return ops
 
 
@@ -404,8 +399,7 @@ def remove_redlined_cd(out_dir: Path, facts: SiteFacts) -> None:
 
 @log_call()
 def write_redlined_cd(*, facts: SiteFacts, discs: list[Discrepancy], redlines: list[Redline], dxf_path: Path | None, pdf_path: Path | None,
-                      out_dir: Path, ref: ReferenceData, prepared_by: str = "ScopeIQ", pages: dict[str, int] | None = None,
-                      proofs: list | None = None) -> dict[str, str]:
+                      out_dir: Path, ref: ReferenceData, prepared_by: str = "ScopeIQ", pages: dict[str, int] | None = None) -> dict[str, str]:
     """Write the redlined CD. `pages`, if given, is filled with the page of the written PDF that holds each sheet."""
     cd = [r for r in redlines if r.doc_type == "CD"]
     out_dir = Path(out_dir)
@@ -419,11 +413,6 @@ def write_redlined_cd(*, facts: SiteFacts, discs: list[Discrepancy], redlines: l
     stamp = f"{prepared_by} - {date.today().isoformat()} - {len(cd)} markup(s) on {source.name} - status per ScopeIQ workflow"
     by_sheet = {s: [(n, r) for n, r in numbered if r.sheet == s] for s in SHEETS}
     name, files, writer = _final_name(facts), {}, PdfWriter()
-    thumbs: dict[str, list[Path]] = {}
-    for pr in sorted(proofs or [], key=lambda q: q.rank):
-        if pr.kind != "SHEET" and Path(pr.path).exists():
-            thumbs.setdefault(pr.redline_id, []).append(Path(pr.path))
-    placed: dict[str, list[Placed]] = {}
     rv = None
     if use_dxf:
         rv = _DxfRevision(source, facts.site_id, 0, "ISSUED FOR REVIEW", facts, ref, {d.disc_id: d for d in discs}, None)
@@ -441,8 +430,7 @@ def write_redlined_cd(*, facts: SiteFacts, discs: list[Discrepancy], redlines: l
         plain.unlink(missing_ok=True)
         for sheet, items in by_sheet.items():
             if items:
-                placed[sheet] = layout(items, locator, inks.get(sheet), thumbs)
-                _draw_dxf(rv, sheet, ops_for(placed[sheet]))
+                _draw_dxf(rv, sheet, ops_for(layout(items, locator, inks.get(sheet))))
         tmp = out_dir / f".{name}.render.pdf"
         rv.render_pdf(tmp, title=f"{facts.site_id} CD {facts.cd_revision} - redlines")
         reader = PdfReader(str(tmp))
@@ -462,8 +450,7 @@ def write_redlined_cd(*, facts: SiteFacts, discs: list[Discrepancy], redlines: l
             pw, ph = float(page.mediabox.width), float(page.mediabox.height)
             buf = io.BytesIO()
             c = canvas.Canvas(buf, pagesize=(pw, ph))
-            placed[sheet] = layout(items, locator, Ink(base[page_of[sheet]]), thumbs)
-            _draw_pdf(c, pw, ph, ops_for(placed[sheet]))
+            _draw_pdf(c, pw, ph, ops_for(layout(items, locator, Ink(base[page_of[sheet]]))))
             c.save()
             buf.seek(0)
             page.merge_page(PdfReader(buf).pages[0])
@@ -480,41 +467,9 @@ def write_redlined_cd(*, facts: SiteFacts, discs: list[Discrepancy], redlines: l
         writer.write(fh)
     if use_dxf:
         (out_dir / f".{name}.render.pdf").unlink(missing_ok=True)
-    place_proofs(pdf_out, placed, page_index)
     files["redlined_cd_pdf"] = str(pdf_out)
     log.info("redlined CD written: %s (%d markups, from %s)", pdf_out.name, len(cd), source.name, extra={"site_id": facts.site_id})
     return files
-
-
-def place_proofs(pdf_path: Path, placed: dict[str, list[Placed]], page_index: dict[str, int]) -> int:
-    """Put each redline's drone pictures inside its own callout on the sheet (the room was reserved by `layout`), so the drawing is
-    shared with its proof in the place the redline is marked. Returns the number of pictures placed."""
-    import pymupdf
-
-    pdf_path, count = Path(pdf_path), 0
-    if not any(p.thumbs for ps in placed.values() for p in ps) or not pdf_path.exists():
-        return 0
-    with pymupdf.open(str(pdf_path)) as doc:
-        for sheet, items in placed.items():
-            if sheet not in page_index or page_index[sheet] >= len(doc):
-                continue
-            page = doc[page_index[sheet]]
-            sx, sy = page.rect.width / W, page.rect.height / H
-            for p in items:
-                if not p.thumbs:
-                    continue
-                x, y, w, _ = p.box
-                cell = (w - 8 - 3 * (len(p.thumbs) - 1)) / len(p.thumbs)
-                for i, img in enumerate(p.thumbs):
-                    x0 = x + 4 + i * (cell + 3)
-                    rect = pymupdf.Rect(x0 * sx, (H - y - 2 - THUMB_H) * sy, (x0 + cell) * sx, (H - y - 2) * sy)
-                    page.insert_image(rect, filename=str(img), keep_proportion=True)
-                    page.draw_rect(rect, color=(0.85, 0.05, 0.05), width=0.4)
-                    count += 1
-        tmp = pdf_path.with_suffix(".tmp.pdf")
-        doc.save(str(tmp), garbage=3, deflate=True)
-    tmp.replace(pdf_path)
-    return count
 
 
 def render_sheet_previews(pdf_path: Path, redlines: list[Redline], pages: dict[str, int], out_dir: Path, width_px: int = 1700) -> dict[str, Path]:

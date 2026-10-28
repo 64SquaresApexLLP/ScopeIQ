@@ -399,13 +399,6 @@ function CdDataCard({ cd, isRunning }: { cd: any; isRunning?: boolean }) {
         </View>
       ) : null}
 
-      {(cd.issues ?? []).length ? (
-        <View style={{ marginBottom: space(2), padding: space(2), backgroundColor: '#FCE8E6', borderRadius: 8, borderWidth: 1, borderColor: colors.danger }}>
-          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.danger }}>The drawing could not be read</Text>
-          {(cd.issues as string[]).map((m, i) => <Muted key={i} style={{ color: colors.text }}>{m}</Muted>)}
-        </View>
-      ) : null}
-
       {/* 1. Data Format Check: the real drawing files found for this site */}
       <View style={{ marginBottom: space(2), padding: space(2), backgroundColor: colors.surfaceAlt, borderRadius: 8 }}>
         <Muted style={{ fontWeight: '700', color: colors.text, marginBottom: 6 }}>1. Data Format Check</Muted>

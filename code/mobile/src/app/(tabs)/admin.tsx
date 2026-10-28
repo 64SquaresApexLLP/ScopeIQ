@@ -347,7 +347,7 @@ export default function Admin() {
     <ScrollView style={s.screen} contentContainerStyle={[s.content, { maxWidth: 820, width: '100%', alignSelf: 'center' }]}
       refreshControl={<RefreshControl refreshing={sites.loading} onRefresh={sites.reload} />}>
       <View style={{ marginBottom: space(4) }}>
-        <Chips value={section} onChange={setSection} options={[{ key: 'sites', label: 'Sites' }, { key: 'logins', label: 'User logins' }]} />
+        <Chips value={section} onChange={setSection} options={[{ key: 'sites', label: 'Sites' }, { key: 'logins', label: 'Scoper logins' }]} />
       </View>
       {section === 'logins' ? <ScoperLogins /> : <>
       <Hero icon="settings" title="Create a site" subtitle="Adds the site with geolocation and its SharePoint folder so documents can be uploaded." />

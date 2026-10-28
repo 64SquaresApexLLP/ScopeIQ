@@ -91,5 +91,5 @@ api:
   token_ttl_minutes: 480
 
 auth:
-  password_roles: [SCOPER, AE_ENGINEER]    # these roles sign in with a username + password the admin creates (CORE.USER_LOGIN); others use the demo login
+  password_roles: [SCOPER]    # these roles sign in with a username + password the admin creates (CORE.USER_LOGIN); others use the demo login
   min_password_length: 8

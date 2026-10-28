@@ -10,7 +10,7 @@ import { useApi } from '../../lib/useApi';
 import { colors, space } from '../theme';
 import { Badge, Button, Card, Empty, ErrorView, KV, Loading, Muted, Row, Title } from '../ui';
 import { PipelineSteps } from './PipelineSteps';
-import { RunNotes, RunResult } from './RunResult';
+import { RunResult } from './RunResult';
 
 export function Pipeline({ siteId, onFinished }: { siteId: string; onFinished?: () => void }) {
   const { can } = useAuth();
@@ -299,7 +299,6 @@ export function Pipeline({ siteId, onFinished }: { siteId: string; onFinished?: 
       {err ? <ErrorView error={err} /> : null}
       {run.error ? <ErrorView error={run.error} onRetry={run.reload} /> : null}
       {id && !r && !run.error ? <Loading /> : null}
-      {r && !running ? <RunNotes run={r} /> : null}
       {r ? (
         <View style={{ marginTop: space(1) }}>
           <View style={{ marginTop: space(1) }}>

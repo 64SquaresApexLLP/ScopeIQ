@@ -41,15 +41,13 @@ def no_issued_drawings_left_behind():
 
 
 TEST_PASSWORD = "test-password-1"
-PASSWORD_USERS = {"scoper": "SCOPER", "ae": "AE_ENGINEER"}      # demo user id prefix -> role that signs in with a password
 
 
 def login(client, user_id):
-    """Demo accounts sign in directly; SCOPER and AE_ENGINEER sign in with a username + password, which the admin creates first."""
-    role = next((r for prefix, r in PASSWORD_USERS.items() if user_id.startswith(prefix)), None)
-    if role:
+    """Demo accounts sign in directly; SCOPER signs in with a username + password, which the admin creates first."""
+    if user_id.startswith("scoper"):
         admin = login(client, "admin")
-        client.post("/admin/logins", json={"username": user_id, "display_name": user_id, "password": TEST_PASSWORD, "role": role}, headers=admin)
+        client.post("/admin/logins", json={"username": user_id, "display_name": user_id, "password": TEST_PASSWORD}, headers=admin)
         r = client.post("/auth/login", json={"username": user_id, "password": TEST_PASSWORD})
     else:
         r = client.post("/auth/login", json={"user_id": user_id, "password": "demo"})
@@ -63,7 +61,7 @@ def test_health_and_auth(client):
     assert client.get("/sites").json()["error"]["code"] == "SIQ-AUTH-401"
     users = client.get("/auth/users").json()
     assert {u["role"] for u in users} >= {"SCOPER", "REVIEWER", "CX_SP", "ERICSSON", "ADMIN"}
-    assert {u["role"] for u in users if u["password_required"]} == {"SCOPER", "AE_ENGINEER"}
+    assert {u["role"] for u in users if u["password_required"]} == {"SCOPER"}
 
 
 def test_scoper_signs_in_with_admin_created_password(client):
@@ -92,19 +90,6 @@ def test_scoper_signs_in_with_admin_created_password(client):
     client.patch("/admin/logins/asha.rao", json={"active": True, "password": "n3w-password"}, headers=admin)
     assert client.post("/auth/login", json={"username": "asha.rao", "password": "s3cret-pass"}).status_code == 401
     assert client.post("/auth/login", json={"username": "asha.rao", "password": "n3w-password"}).status_code == 200
-
-
-def test_ae_engineer_signs_in_with_admin_created_password(client):
-    admin = login(client, "admin")
-    new = {"username": "meridian.ae", "display_name": "Meridian A&E", "password": "ae-pass-123", "role": "AE_ENGINEER"}
-    assert client.post("/admin/logins", json=new, headers=admin).json()["ROLE_CODE"] == "AE_ENGINEER"
-    # the demo shortcut no longer works for AE_ENGINEER; the created login does, and carries the A&E role
-    assert client.post("/auth/login", json={"user_id": "ae1", "password": "demo"}).status_code == 401
-    ok = client.post("/auth/login", json={"username": "meridian.ae", "password": "ae-pass-123"})
-    assert ok.status_code == 200 and ok.json()["user"]["role"] == "AE_ENGINEER" and ok.json()["user"]["name"] == "Meridian A&E"
-    assert client.post("/auth/login", json={"username": "meridian.ae", "password": "wrong-pass"}).status_code == 401
-    # roles that do not sign in with a password cannot be given one
-    assert client.post("/admin/logins", json={**new, "username": "eric", "role": "ERICSSON"}, headers=admin).status_code == 400
 
 
 @pytest.mark.later_stages

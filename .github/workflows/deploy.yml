@@ -126,32 +126,6 @@ jobs:
           Write-Host "Dependencies up to date."
 
       # -------------------------------------------------------------------------
-      # STEP 4b - Make sure Tesseract OCR is installed (reads CDs that exist only as a PDF)
-      # Without it the PDF-only sites (TXAD0405, TXIR1340) extract nothing from the drawing.
-      # The app finds it at the default path below, so no PATH or service change is needed.
-      # -------------------------------------------------------------------------
-      - name: Ensure Tesseract OCR is installed
-        shell: powershell
-        run: |
-          $tess = "C:\Program Files\Tesseract-OCR\tesseract.exe"
-          if (-not (Test-Path $tess)) {
-              Write-Host "Tesseract not found - installing..."
-              if (Get-Command choco -ErrorAction SilentlyContinue) {
-                  choco install tesseract -y --no-progress
-              } elseif (Get-Command winget -ErrorAction SilentlyContinue) {
-                  winget install --id UB-Mannheim.TesseractOCR -e --silent --accept-package-agreements --accept-source-agreements
-              } else {
-                  Write-Host "::warning::Neither Chocolatey nor winget is available on this runner."
-              }
-          }
-          if (Test-Path $tess) {
-              & $tess --version | Select-Object -First 1
-              Write-Host "Tesseract OCR is available."
-          } else {
-              Write-Host "::warning::Tesseract OCR is NOT installed. PDF-only CD sites will show no extracted drawing data. Install the UB Mannheim build on the server (see code/INSTALL.md)."
-          }
-
-      # -------------------------------------------------------------------------
       # STEP 5 - Build the Expo web frontend (React Native Web → static bundle)
       # -------------------------------------------------------------------------
       - name: Build Expo web frontend

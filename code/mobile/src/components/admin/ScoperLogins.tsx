@@ -1,19 +1,17 @@
-// Admin: create the usernames + passwords Scopers and A&E Engineers sign in with, and disable / enable them. Stored in the
-// local database (CORE.USER_LOGIN) as a salted hash; the password is never shown again after it is created.
+// Admin: create the usernames + passwords Scopers sign in with, and disable / enable them. Stored in the local database
+// (CORE.USER_LOGIN) as a salted hash; the password is never shown again after it is created.
 import React, { useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 import { getLogger } from '../../lib/logger';
 import { api, ApiError } from '../../lib/api';
-import { roleLabel } from '../../lib/format';
 import { Row as R } from '../../lib/types';
 import { useApi } from '../../lib/useApi';
 import { colors, space } from '../theme';
-import { Badge, Button, Card, Chips, ErrorView, Hero, Icon, IconBadge, Muted, s } from '../ui';
+import { Badge, Button, Card, ErrorView, Hero, Icon, IconBadge, Muted, s } from '../ui';
 
 const log = getLogger('admin.logins');
 const PH = '#A9B3C2';
 const MIN_PASSWORD = 8;
-const ROLES = ['SCOPER', 'AE_ENGINEER'] as const;   // roles that sign in with a password (auth.password_roles)
 
 function Field({ label, hint, error, children }: { label: string; hint?: string; error?: string; children: React.ReactNode }) {
   return (
@@ -27,7 +25,6 @@ function Field({ label, hint, error, children }: { label: string; hint?: string;
 
 export function ScoperLogins() {
   const logins = useApi<R[]>('/admin/logins');
-  const [role, setRole] = useState<(typeof ROLES)[number]>('SCOPER');
   const [username, setUsername] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
@@ -43,7 +40,7 @@ export function ScoperLogins() {
     setError(null);
     setCreated(null);
     try {
-      const res = await api.post<R>('/admin/logins', { username, display_name: name.trim(), password, role });
+      const res = await api.post<R>('/admin/logins', { username, display_name: name.trim(), password, role: 'SCOPER' });
       setCreated(res.USERNAME);
       log.info(`created login ${res.USERNAME}`);
       setUsername(''); setName(''); setPassword('');
@@ -67,14 +64,10 @@ export function ScoperLogins() {
 
   return (
     <View>
-      <Hero icon="users" title="User logins" subtitle="Create the username and password a Scoper or A&E Engineer signs in with." />
+      <Hero icon="users" title="Scoper logins" subtitle="Create the username and password a Scoper signs in with." />
 
       <Card style={{ padding: space(5) }}>
         <View style={{ gap: space(4) }}>
-          <View>
-            <Text style={{ fontSize: 12.5, fontWeight: '700', color: colors.text, marginBottom: 6 }}>Role</Text>
-            <Chips value={role} onChange={setRole} options={ROLES.map((r) => ({ key: r, label: roleLabel(r) }))} />
-          </View>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space(4) }}>
             <Field label="Username" hint="Letters, digits, dot, dash or underscore" error={username && !userOk ? 'Use 3-40 letters, digits, . _ or -' : undefined}>
               <TextInput style={s.input} placeholder="asha.rao" placeholderTextColor={PH} value={username} onChangeText={setUsername}
@@ -84,7 +77,7 @@ export function ScoperLogins() {
               <TextInput style={s.input} placeholder="Asha Rao" placeholderTextColor={PH} value={name} onChangeText={setName} />
             </Field>
           </View>
-          <Field label="Password" hint={`At least ${MIN_PASSWORD} characters. Share it with the person privately.`}
+          <Field label="Password" hint={`At least ${MIN_PASSWORD} characters. Share it with the Scoper privately.`}
             error={password && password.length < MIN_PASSWORD ? `At least ${MIN_PASSWORD} characters` : undefined}>
             <TextInput style={s.input} value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} />
           </Field>
@@ -96,7 +89,7 @@ export function ScoperLogins() {
             <Icon name="check-circle" size={22} color={colors.ok} />
             <View style={{ flex: 1 }}>
               <Text style={{ fontWeight: '800', color: colors.text }}>Login {created} is ready</Text>
-              <Text style={{ fontSize: 12.5, color: '#3C6B4E' }}>The password is not shown again. Share it with the person now.</Text>
+              <Text style={{ fontSize: 12.5, color: '#3C6B4E' }}>The password is not shown again. Share it with the Scoper now.</Text>
             </View>
           </View>
         ) : null}
@@ -115,7 +108,7 @@ export function ScoperLogins() {
           <IconBadge name="user" size={38} />
           <View style={{ flex: 1 }}>
             <Text style={{ fontWeight: '800', color: colors.text }}>{x.USERNAME}</Text>
-            <Muted>{[x.DISPLAY_NAME, roleLabel(x.ROLE_CODE)].filter(Boolean).join(' · ')}</Muted>
+            <Muted>{[x.DISPLAY_NAME, x.ROLE_CODE].filter(Boolean).join(' · ')}</Muted>
           </View>
           <Badge text={x.ACTIVE ? 'Active' : 'Disabled'} color={x.ACTIVE ? colors.ok : colors.muted} />
           <Button small kind="secondary" title={x.ACTIVE ? 'Disable' : 'Enable'} onPress={() => setActive(x, !x.ACTIVE)} />
