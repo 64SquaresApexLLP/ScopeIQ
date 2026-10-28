@@ -244,3 +244,45 @@ def test_site_prefix_and_auto_id_generation(client, env):
     assert res2["site_id"] == "HPUA0002"
     assert res2["sequence"] == 2
 
+
+def test_ae_engineer_permissions_and_restrictions(client, env):
+    ae = login(client, "ae1")
+    # A&E can see all sites
+    sites_res = client.get("/sharepoint/sites", headers=ae)
+    assert sites_res.status_code == 200
+    assert len(sites_res.json()["sites"]) > 0
+
+    # A&E can list files for a site
+    files_res = client.get("/sharepoint/sites/TXZZ0001/files", headers=ae)
+    assert files_res.status_code == 200
+
+    # A&E CAN upload CD documents
+    cd_res = client.post("/sharepoint/sites/TXZZ0001/upload", data={"doc_type": "CD"},
+                         files={"file": ("TXZZ0001_CD_REV9.pdf", b"%PDF-1.4 CD by AE")}, headers=ae)
+    assert cd_res.status_code == 200, cd_res.text
+    assert cd_res.json()["doc_type"] == "CD"
+
+    # A&E CAN upload MA_SA documents
+    ma_res = client.post("/sharepoint/sites/TXZZ0001/upload", data={"doc_type": "MA_SA"},
+                         files={"file": ("TXZZ0001_MA_SA_REV1.pdf", b"%PDF-1.4 MA SA by AE")}, headers=ae)
+    assert ma_res.status_code == 200, ma_res.text
+    assert ma_res.json()["doc_type"] == "MA_SA"
+
+    # A&E CAN upload SAMA documents with auto-detection
+    sama_res = client.post("/sharepoint/sites/TXZZ0001/upload",
+                           files={"file": ("TXZZ0001_SAMA.xlsx", b"SAMA content by AE")}, headers=ae)
+    assert sama_res.status_code == 200, sama_res.text
+    assert sama_res.json()["doc_type"] == "MA_SA"
+
+    # A&E CAN upload CD documents with auto-detection (e.g. TXZZ0001_CD.pdf)
+    cd_auto_res = client.post("/sharepoint/sites/TXZZ0001/upload",
+                              files={"file": ("TXZZ0001_CD.pdf", b"%PDF-1.4 CD by AE")}, headers=ae)
+    assert cd_auto_res.status_code == 200, cd_auto_res.text
+    assert cd_auto_res.json()["doc_type"] == "CD"
+
+    # A&E CANNOT upload unclassifiable / non-CD/SAMA documents (403 forbidden)
+    unknown_res = client.post("/sharepoint/sites/TXZZ0001/upload",
+                              files={"file": ("TXZZ0001_random_notes.txt", b"notes")}, headers=ae)
+    assert unknown_res.status_code == 403, unknown_res.text
+
+

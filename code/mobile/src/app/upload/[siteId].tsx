@@ -7,6 +7,7 @@ import { ActivityIndicator, Platform, Pressable, ScrollView, Text, View } from '
 import { colors, space } from '../../components/theme';
 import { Badge, Button, Card, Chips, ErrorView, Icon, KV, Muted, Row, s, Title } from '../../components/ui';
 import { api, ApiError } from '../../lib/api';
+import { useAuth } from '../../lib/auth';
 import { computeFileSha256 } from '../../lib/hash';
 import { getLogger } from '../../lib/logger';
 import { Row as R } from '../../lib/types';
@@ -47,6 +48,11 @@ interface InspectionResult {
 
 export default function Upload() {
   const { siteId } = useLocalSearchParams<{ siteId: string }>();
+  const { user } = useAuth();
+  const isAe = user?.role === 'AE_ENGINEER';
+  const availableTypes = isAe
+    ? TYPES.filter((t) => t.key === 'CD' || t.key === 'MA_SA')
+    : TYPES;
   const [type, setType] = useState<T>('CD');
   const [file, setFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
   const [hash, setHash] = useState<string | null>(null);
@@ -73,17 +79,19 @@ export default function Upload() {
 
       const res = await api.upload<any>(`/sites/${siteId}/documents/check-content`, form);
       if (res) {
+        const isDup = res.status === 'DUPLICATE' || (Boolean(res.is_duplicate) && res.status !== 'UPDATED');
+        const isUpd = !isDup && (res.status === 'UPDATED' || Boolean(res.is_updated));
         setInspection({
-          status: res.status,
-          isDuplicate: res.status === 'DUPLICATE' || Boolean(res.is_duplicate),
-          isUpdated: res.status === 'UPDATED' || Boolean(res.is_updated),
-          isNew: res.status === 'NEW',
-          duplicateOf: res.duplicate_of || res.existing_file,
-          updatedFrom: res.updated_from || res.existing_file,
+          status: isDup ? 'DUPLICATE' : isUpd ? 'UPDATED' : 'NEW',
+          isDuplicate: isDup,
+          isUpdated: isUpd,
+          isNew: !isDup && !isUpd,
+          duplicateOf: isDup ? (res.duplicate_of || res.existing_file) : null,
+          updatedFrom: isUpd ? (res.updated_from || res.existing_file) : null,
           hash: res.file_hash,
           message: res.message,
           warning: res.warning,
-          diff: res.diff,
+          diff: isUpd ? res.diff : null,
         });
       }
     } catch {
@@ -188,13 +196,13 @@ export default function Upload() {
     }
   };
 
-  const hint = TYPES.find((t) => t.key === type)?.hint;
+  const hint = availableTypes.find((t) => t.key === type)?.hint;
 
   return (
     <ScrollView style={s.screen} contentContainerStyle={s.content}>
       <Title>{`Upload to ${siteId}`}</Title>
       <Muted>Use the site naming convention so the revision is recognised, for example {`${siteId}_CD_REV2.pdf`}.</Muted>
-      <Chips<T> value={type} onChange={onTypeChange} options={TYPES.map((t) => ({ key: t.key, label: t.label }))} />
+      <Chips<T> value={type} onChange={onTypeChange} options={availableTypes.map((t) => ({ key: t.key, label: t.label }))} />
       <Muted>{`Expected file: ${hint}`}</Muted>
 
       <View style={{ marginTop: space(3), gap: space(3) }}>

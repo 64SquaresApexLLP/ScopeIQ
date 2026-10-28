@@ -64,48 +64,9 @@
     "target_sheet": "A-3",
     "bom_impact": "None (service: re-orient sector)",
     "evidence": [
-      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXDE0831\\TXDE0831_f012.jpg",
-      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXDE0831\\TXDE0831_f015.jpg"
+      "C:\\Users\\Babita\\Desktop\\ScopeIQ\\code\\output\\evidence\\TXDE0831\\TXDE0831_f012.jpg",
+      "C:\\Users\\Babita\\Desktop\\ScopeIQ\\code\\output\\evidence\\TXDE0831\\TXDE0831_f015.jpg"
     ],
-    "status": "OPEN",
-    "confidence": 1.0
-  },
-  {
-    "disc_id": "DSC-0F91F0ABE0B2",
-    "site_id": "TXDE0831",
-    "rule_id": "BOM-02",
-    "family": "REV0_BOM",
-    "severity": "MEDIUM",
-    "outcome": "BOM_CHANGE",
-    "title": "SNAP-3S quantity differs (Site)",
-    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Site SNAP-3S (R-TRK-04): REV 0 84 vs rules 100. Corrected on REV 1 (RC-REV0-ERR).",
-    "sector": "SITE",
-    "position": null,
-    "expected": [
-      {
-        "sector": "SITE",
-        "part": "HANGER",
-        "qty": 100.0,
-        "rule": "R-TRK-04"
-      }
-    ],
-    "found": [
-      {
-        "sector": "SITE",
-        "part": "HANGER",
-        "qty": 84.0,
-        "rule": "R-TRK-04"
-      }
-    ],
-    "governing": "KIT_RULES",
-    "sources": [
-      "BOM REV 0",
-      "Kit rules on CD as drawn"
-    ],
-    "target_doc": "BOM_REV0",
-    "target_sheet": "",
-    "bom_impact": "+16 HANGER",
-    "evidence": [],
     "status": "OPEN",
     "confidence": 1.0
   }

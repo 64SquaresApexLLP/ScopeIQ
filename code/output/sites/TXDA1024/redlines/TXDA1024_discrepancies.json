@@ -21,48 +21,9 @@
     "target_sheet": "A-3",
     "bom_impact": "+1 PIPE if position is used",
     "evidence": [
-      "D:\\visual_code\\ScopeIQ-POC\\ScopeIQ\\code\\output\\evidence\\TXDA1024\\TXDA1024_f000.jpg",
-      "D:\\visual_code\\ScopeIQ-POC\\ScopeIQ\\code\\output\\evidence\\TXDA1024\\TXDA1024_f060.jpg"
+      "C:\\Users\\Babita\\Desktop\\ScopeIQ\\code\\output\\evidence\\TXDA1024\\TXDA1024_f062.jpg",
+      "C:\\Users\\Babita\\Desktop\\ScopeIQ\\code\\output\\evidence\\TXDA1024\\TXDA1024_f070.jpg"
     ],
-    "status": "OPEN",
-    "confidence": 1.0
-  },
-  {
-    "disc_id": "DSC-064B3ACBD479",
-    "site_id": "TXDA1024",
-    "rule_id": "BOM-01",
-    "family": "REV0_BOM",
-    "severity": "MEDIUM",
-    "outcome": "BOM_CHANGE",
-    "title": "GK-6-TW missing from REV 0 (Gamma)",
-    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Gamma GK-6-TW (R-AIR-05): REV 0 0 vs rules 1. Corrected on REV 1 (RC-REV0-ERR).",
-    "sector": "C",
-    "position": null,
-    "expected": [
-      {
-        "sector": "C",
-        "part": "GK6",
-        "qty": 1.0,
-        "rule": "R-AIR-05"
-      }
-    ],
-    "found": [
-      {
-        "sector": "C",
-        "part": "GK6",
-        "qty": 0,
-        "rule": "R-AIR-05"
-      }
-    ],
-    "governing": "KIT_RULES",
-    "sources": [
-      "BOM REV 0",
-      "Kit rules on CD as drawn"
-    ],
-    "target_doc": "BOM_REV0",
-    "target_sheet": "",
-    "bom_impact": "+1 GK6",
-    "evidence": [],
     "status": "OPEN",
     "confidence": 1.0
   }

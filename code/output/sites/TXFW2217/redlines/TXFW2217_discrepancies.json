@@ -70,48 +70,9 @@
     "target_sheet": "A-3",
     "bom_impact": "None",
     "evidence": [
-      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXFW2217\\TXFW2217_f009.jpg",
-      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXFW2217\\TXFW2217_f012.jpg"
+      "C:\\Users\\Babita\\Desktop\\ScopeIQ\\code\\output\\evidence\\TXFW2217\\TXFW2217_f009.jpg",
+      "C:\\Users\\Babita\\Desktop\\ScopeIQ\\code\\output\\evidence\\TXFW2217\\TXFW2217_f010.jpg"
     ],
-    "status": "OPEN",
-    "confidence": 1.0
-  },
-  {
-    "disc_id": "DSC-53E438DF2C2A",
-    "site_id": "TXFW2217",
-    "rule_id": "BOM-03",
-    "family": "REV0_BOM",
-    "severity": "MEDIUM",
-    "outcome": "BOM_CHANGE",
-    "title": "Duplicate SFP28 25G LR line (Alpha)",
-    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha SFP28 25G LR (R-AIR-04): REV 0 4 vs rules 2. Corrected on REV 1 (RC-REV0-ERR).",
-    "sector": "A",
-    "position": null,
-    "expected": [
-      {
-        "sector": "A",
-        "part": "SFP25",
-        "qty": 2.0,
-        "rule": "R-AIR-04"
-      }
-    ],
-    "found": [
-      {
-        "sector": "A",
-        "part": "SFP25",
-        "qty": 4.0,
-        "rule": "R-AIR-04"
-      }
-    ],
-    "governing": "KIT_RULES",
-    "sources": [
-      "BOM REV 0",
-      "Kit rules on CD as drawn"
-    ],
-    "target_doc": "BOM_REV0",
-    "target_sheet": "",
-    "bom_impact": "-2 SFP25",
-    "evidence": [],
     "status": "OPEN",
     "confidence": 1.0
   }

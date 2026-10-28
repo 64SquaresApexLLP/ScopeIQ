@@ -20,8 +20,8 @@ log = get_logger(__name__)
 # (folder, filename pattern) -> document type
 TYPE_RULES = [
     ("rfds", re.compile(r"RFDS", re.I), "RFDS"),
-    ("cds", re.compile(r"_CD_|_PCD_", re.I), "CD"),
-    ("ma_sa", re.compile(r"(?<![A-Za-z0-9])(?:MA|SA)(?![A-Za-z0-9])", re.I), "MA_SA"),
+    ("cds", re.compile(r"(?:^|[-_\s])(?:CD|PCD)(?:[-_\s.]|$)", re.I), "CD"),
+    ("ma_sa", re.compile(r"(?:^|[-_\s])(?:SAMA|MA_SA|SA_MA|MA|SA)(?:[-_\s.]|$)", re.I), "MA_SA"),
     ("bom", re.compile(r"BOM", re.I), "BOM_REV0"),
     ("drone", re.compile(r"capture_metadata\.json$", re.I), "DRONE_META"),
     ("drone", re.compile(r"vendor_measurements\.csv$", re.I), "DRONE_VENDOR"),
