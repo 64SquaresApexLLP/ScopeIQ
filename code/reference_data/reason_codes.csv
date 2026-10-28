@@ -12,9 +12,9 @@ RC-RAPID-RESP,Rework,Rapid response rework,ERICSSON,BOM_REVISION
 RC-OWN-ERROR,Rework,Rework caused by our own error (no charge),INNOSQUARES,BOM_REVISION;BOM_LINE
 RC-FALSE-POS,Discrepancy,Not a real discrepancy (false positive),NONE,DISCREPANCY
 RC-DUPLICATE,Discrepancy,Duplicate of another discrepancy,NONE,DISCREPANCY
-RC-ACCEPT-RISK,Discrepancy,Accepted by Ericsson without change,ERICSSON,DISCREPANCY
+RC-ACCEPT-RISK,Discrepancy,Accepted by Admin without change,ADMIN,DISCREPANCY
 RC-AE-REVISED,Redline,A&E issued a corrected revision,A&E,REDLINE;DISCREPANCY
 RC-AE-REJECTED,Redline,A&E rejected the redline with justification,A&E,REDLINE
-RC-RFI-ANSWERED,RFI,Ericsson answered the RFI,ERICSSON,RFI;DISCREPANCY
+RC-RFI-ANSWERED,RFI,Admin answered the RFI,ADMIN,RFI;DISCREPANCY
 RC-DATA-FIX,Admin,Reference data correction,NONE,REFERENCE
 RC-OTHER,General,Other (comment required),NONE,ALL

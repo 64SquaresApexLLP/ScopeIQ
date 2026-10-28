@@ -32,7 +32,7 @@ log = get_logger(__name__)
 
 SHEETS = ["T-1", "A-2", "A-3", "A-4", "E-1"]
 GAP, W, H = 400, 340, 220                 # DXF sheet layout (model space offset, sheet size)
-REVIEWED = {"APPROVED", "SENT_TO_AE", "ACKNOWLEDGED", "INCORPORATED"}
+REVIEWED = {"APPROVED", "SENT_TO_AE", "ACKNOWLEDGED", "INCORPORATED", "IN_REVIEW", "WORK_QUEUE", "COMPLETED"}
 SKIP = {"REJECTED"}
 STATUS_TAG = {"EXISTING": "(E)", "NEW": "(P)", "PROPOSED": "(P)", "REMOVE": "(R)"}
 SCHED_STATUS = {"EXISTING": "EXISTING", "NEW": "PROPOSED", "REMOVE": "REMOVE"}

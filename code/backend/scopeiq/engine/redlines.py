@@ -146,7 +146,7 @@ def decide(facts: SiteFacts, discrepancies: list[Discrepancy], ref: ReferenceDat
         else:
             redline, why = "SUBJECT_TO_RFI", f"{d.rule_id} needs an answer first; the markup is drafted as 'subject to the RFI'"
         asks = live and d.outcome in RFI_OUTCOMES
-        party = {"ERICSSON": "Ericsson", "AE_ENGINEER": "the A&E engineer"}.get(RFI_TO.get(d.rule_id, "AE_ENGINEER"), "the A&E engineer")
+        party = {"ADMIN": "Admin", "ERICSSON": "Admin", "AE_ENGINEER": "the A&E engineer"}.get(RFI_TO.get(d.rule_id, "AE_ENGINEER"), "the A&E engineer")
         rfi_why = (f"{d.rule_id} cannot be settled from the documents: {party} has to answer" if asks
                    else ("already settled" if not live else "the documents settle it: no question needed"))
         items.append(FindingDecision(d.disc_id, d.rule_id, d.title, redline, why, asks, rfi_why,
@@ -161,9 +161,9 @@ def decide(facts: SiteFacts, discrepancies: list[Discrepancy], ref: ReferenceDat
     return RedlineDecision(bool(on_drawing), reason, len(discrepancies), items)
 
 
-RFI_TO = {"RFC-01": "ERICSSON", "RFC-02": "ERICSSON", "RFC-03": "ERICSSON", "RFC-04": "ERICSSON", "RFC-06": "ERICSSON", "FLD-01": "ERICSSON",
-          "FLD-03": "AE_ENGINEER", "FLD-04": "ERICSSON", "FLD-07": "AE_ENGINEER", "REV-01": "AE_ENGINEER", "DOC-01": "ERICSSON",
-          "CBL-01": "AE_ENGINEER", "SA-01": "ERICSSON"}
+RFI_TO = {"RFC-01": "ADMIN", "RFC-02": "ADMIN", "RFC-03": "ADMIN", "RFC-04": "ADMIN", "RFC-06": "ADMIN", "FLD-01": "ADMIN",
+          "FLD-03": "AE_ENGINEER", "FLD-04": "ADMIN", "FLD-07": "AE_ENGINEER", "REV-01": "AE_ENGINEER", "DOC-01": "ADMIN",
+          "CBL-01": "AE_ENGINEER", "SA-01": "ADMIN"}
 
 
 def _nums(v) -> str:

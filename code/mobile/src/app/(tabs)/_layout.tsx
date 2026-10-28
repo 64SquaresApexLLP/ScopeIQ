@@ -45,6 +45,7 @@ export default function TabsLayout() {
 
   return (
     <Tabs
+      initialRouteName={isAe ? 'rfis' : 'index'}
       screenOptions={{
         headerStyle: { backgroundColor: colors.primary, height: 64, shadowOpacity: 0, borderBottomWidth: 0 } as any,
         headerTintColor: '#fff',
@@ -62,22 +63,6 @@ export default function TabsLayout() {
         tabBarActiveBackgroundColor: wide ? colors.soft : undefined,
       } as any}
     >
-      <Tabs.Screen
-        name="rfis"
-        options={{
-          title: 'Redlines & RFIs',
-          tabBarLabel: wide ? 'Redlines & RFIs' : 'Redlines & RFIs',
-          tabBarIcon: icon('edit-3'),
-          href: user?.role === 'ADMIN' || isAe ? undefined : null,
-        }}
-      />
-      <Tabs.Screen
-        name="inbox"
-        options={{
-          title: 'Inbox',
-          tabBarIcon: icon('inbox'),
-        }}
-      />
       <Tabs.Screen
         name="index"
         options={{
@@ -100,7 +85,22 @@ export default function TabsLayout() {
           title: user?.role === 'CX_SP' ? 'Handshake' : 'Work queue',
           tabBarLabel: wide ? undefined : 'Queue',
           tabBarIcon: icon('list'),
-          href: isAe ? null : undefined,
+        }}
+      />
+      <Tabs.Screen
+        name="rfis"
+        options={{
+          title: 'Redlines & RFIs',
+          tabBarLabel: wide ? 'Redlines & RFIs' : 'Redlines & RFIs',
+          tabBarIcon: icon('edit-3'),
+          href: user?.role === 'ADMIN' || isAe ? undefined : null,
+        }}
+      />
+      <Tabs.Screen
+        name="inbox"
+        options={{
+          title: 'Inbox',
+          tabBarIcon: icon('inbox'),
         }}
       />
       <Tabs.Screen
