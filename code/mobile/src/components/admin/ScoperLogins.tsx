@@ -118,7 +118,9 @@ export function ScoperLogins() {
             <Muted>{[x.DISPLAY_NAME, roleLabel(x.ROLE_CODE)].filter(Boolean).join(' · ')}</Muted>
           </View>
           <Badge text={x.ACTIVE ? 'Active' : 'Disabled'} color={x.ACTIVE ? colors.ok : colors.muted} />
-          <Button small kind="secondary" title={x.ACTIVE ? 'Disable' : 'Enable'} onPress={() => setActive(x, !x.ACTIVE)} />
+          {x.ROLE_CODE === 'ADMIN' ? null : (
+            <Button small kind="secondary" title={x.ACTIVE ? 'Disable' : 'Enable'} onPress={() => setActive(x, !x.ACTIVE)} />
+          )}
         </Card>
       ))}
     </View>

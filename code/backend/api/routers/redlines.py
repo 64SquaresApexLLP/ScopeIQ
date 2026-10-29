@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends
 
 from api.deps import check_site_scope, current_user, pipeline, repo, require, site_scope, workflow
 from api.schemas import RfiAnswerIn, TransitionIn
-from scopeiq.common.errors import ValidationError
+from scopeiq.common.errors import PermissionDenied, ValidationError
 from scopeiq.db.repository import now_iso
 
 router = APIRouter(tags=["redlines & RFIs"])
@@ -135,6 +135,10 @@ def list_rfis(site_id: str | None = None, status: str | None = None, to_party: s
         # AE_ENGINEER only has action buttons on RFIs addressed to AE_ENGINEER:
         if user["role"] == "AE_ENGINEER" and x.get("TO_PARTY") != "AE_ENGINEER":
             acts = []
+        # ADMIN / ERICSSON only has review/answer action buttons on RFIs addressed to Admin:
+        # For RFIs sent to A&E, only A&E Engineer starts review and answers; Admin can only CLOSE once answered.
+        if user["role"] in ("ADMIN", "ERICSSON") and x.get("TO_PARTY") == "AE_ENGINEER":
+            acts = [a for a in acts if a == "CLOSE"]
         x["ACTIONS"] = acts
     return rows
 
@@ -144,9 +148,20 @@ def rfi_transition(rfi_id: str, body: TransitionIn, user: dict = Depends(current
     if body.action.upper() == "ANSWER":
         raise ValidationError("Use POST /rfis/{id}/answer to answer an RFI")
     action = "SUBMIT" if body.action.upper() == "SEND" else body.action
+    row = repo().get("CORE.RFI", RFI_ID=rfi_id)
+    if action == "START_REVIEW":
+        if row.get("TO_PARTY") == "AE_ENGINEER" and user["role"] != "AE_ENGINEER":
+            raise PermissionDenied("Only A&E Engineer can start review on RFIs addressed to A&E")
+        if row.get("TO_PARTY") != "AE_ENGINEER" and user["role"] == "AE_ENGINEER":
+            raise PermissionDenied("A&E Engineer cannot start review on RFIs addressed to Admin")
     return workflow().transition("RFI", rfi_id, action, reason_code=body.reason_code, comment=body.comment)
 
 
 @router.post("/rfis/{rfi_id}/answer")
 def answer_rfi(rfi_id: str, body: RfiAnswerIn, user: dict = Depends(require("ADMIN", "ERICSSON", "AE_ENGINEER"))):
+    row = repo().get("CORE.RFI", RFI_ID=rfi_id)
+    if row.get("TO_PARTY") == "AE_ENGINEER" and user["role"] != "AE_ENGINEER":
+        raise PermissionDenied("Only A&E Engineer can answer RFIs addressed to A&E")
+    if row.get("TO_PARTY") != "AE_ENGINEER" and user["role"] == "AE_ENGINEER":
+        raise PermissionDenied("A&E Engineer cannot answer RFIs addressed to Admin")
     return workflow().transition("RFI", rfi_id, "ANSWER", comment=body.answer, extra_updates={"ANSWER": body.answer, "UPDATED_AT": now_iso()})
