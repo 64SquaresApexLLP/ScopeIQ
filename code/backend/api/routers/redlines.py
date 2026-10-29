@@ -47,13 +47,9 @@ def redline_transition(redline_id: str, body: TransitionIn, user: dict = Depends
 def list_rfis(site_id: str | None = None, status: str | None = None, to_party: str | None = None, user: dict = Depends(current_user)):
     where = {k: v for k, v in {"SITE_ID": site_id, "STATUS": status, "TO_PARTY": to_party}.items() if v}
 
-    # Filter by TO_PARTY:
-    #   AE_ENGINEER       → only RFIs addressed to A&E
-    #   ADMIN             → all RFIs (both Admin and A&E) so admin oversees all questions
-    #   SCOPER / REVIEWER → all RFIs for the sites they scope
-    role = user.get("role", "")
-    if role == "AE_ENGINEER" and "TO_PARTY" not in where:
-        where["TO_PARTY"] = "AE_ENGINEER"
+    # Filter by TO_PARTY if explicitly provided in query params:
+    # All authorized roles (ADMIN, AE_ENGINEER, SCOPER, REVIEWER) oversee all RFIs across sites
+    # for full project context, while action/answer permissions are enforced per role.
 
     rows = _scoped(repo().select("CORE.RFI", where or None, order_by="SITE_ID"), user)
     for x in rows:
