@@ -196,7 +196,7 @@ export default function RfisScreen() {
   const redlines = useApi<R[]>(allowed ? '/redlines' : null);
 
   const [section, setSection] = useState<'RFIS' | 'REDLINES'>('RFIS');
-  const [rfiFilter, setRfiFilter] = useState<RfiFilter>('IN_REVIEW');
+  const [rfiFilter, setRfiFilter] = useState<RfiFilter>('ALL');
   const [redFilter, setRedFilter] = useState<RedFilter>('ALL');
   const [query, setQuery] = useState('');
 
@@ -317,6 +317,7 @@ export default function RfisScreen() {
             value={rfiFilter}
             onChange={setRfiFilter}
             options={[
+              { key: 'ALL', label: `All (${rfiCounts.ALL})` },
               { key: 'IN_REVIEW', label: `In Review (${rfiCounts.IN_REVIEW})` },
               { key: 'REQUEST', label: `Request (${rfiCounts.REQUEST})` },
               { key: 'ANSWERED', label: `Answered (${rfiCounts.ANSWERED})` },
