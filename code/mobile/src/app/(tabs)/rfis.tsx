@@ -216,13 +216,20 @@ export default function RfisScreen() {
   const rfiList = useMemo(() => (rfis.data ?? []).filter((x) => x.STATUS !== 'DRAFT'), [rfis.data]);
   const redList = redlines.data ?? [];
 
-  const rfiCounts = useMemo(() => ({
-    ALL: rfiList.length,
-    IN_REVIEW: rfiList.filter((x) => x.STATUS === 'SUBMITTED' || x.STATUS === 'IN_REVIEW').length,
-    REQUEST: rfiList.filter((x) => x.TO_PARTY === 'ADMIN').length,
-    ANSWERED: rfiList.filter((x) => x.STATUS === 'ANSWERED' || x.STATUS === 'CLOSED').length,
-    SENT_TO_AE: rfiList.filter((x) => x.TO_PARTY === 'AE_ENGINEER').length,
-  }), [rfiList]);
+  const rfiCounts = useMemo(() => {
+    const inReview = rfiList.filter((x) => x.STATUS === 'SUBMITTED' || x.STATUS === 'IN_REVIEW').length;
+    const request = rfiList.filter((x) => x.TO_PARTY === 'ADMIN').length;
+    const answered = rfiList.filter((x) => x.STATUS === 'ANSWERED' || x.STATUS === 'CLOSED').length;
+    const sentToAe = rfiList.filter((x) => x.TO_PARTY === 'AE_ENGINEER').length;
+    return {
+      DISTINCT: rfiList.length,
+      ALL: inReview + request + answered + sentToAe,
+      IN_REVIEW: inReview,
+      REQUEST: request,
+      ANSWERED: answered,
+      SENT_TO_AE: sentToAe,
+    };
+  }, [rfiList]);
 
   const redCounts = useMemo(() => ({
     ALL: redList.length,
@@ -305,7 +312,7 @@ export default function RfisScreen() {
         value={section}
         onChange={setSection}
         options={[
-          { key: 'RFIS', label: `RFIs (${rfiCounts.ALL})` },
+          { key: 'RFIS', label: `RFIs (${rfiCounts.DISTINCT})` },
           { key: 'REDLINES', label: `Redlines (${redCounts.ALL})` },
         ]}
       />
