@@ -221,15 +221,16 @@ export default function RfisScreen() {
     const request = rfiList.filter((x) => x.TO_PARTY === 'ADMIN').length;
     const answered = rfiList.filter((x) => x.STATUS === 'ANSWERED' || x.STATUS === 'CLOSED').length;
     const sentToAe = rfiList.filter((x) => x.TO_PARTY === 'AE_ENGINEER').length;
+    const all = isAe ? inReview + request + answered : inReview + request + answered + sentToAe;
     return {
       DISTINCT: rfiList.length,
-      ALL: inReview + request + answered + sentToAe,
+      ALL: all,
       IN_REVIEW: inReview,
       REQUEST: request,
       ANSWERED: answered,
       SENT_TO_AE: sentToAe,
     };
-  }, [rfiList]);
+  }, [rfiList, isAe]);
 
   const redCounts = useMemo(() => ({
     ALL: redList.length,
@@ -328,7 +329,7 @@ export default function RfisScreen() {
               { key: 'IN_REVIEW', label: `In Review (${rfiCounts.IN_REVIEW})` },
               { key: 'REQUEST', label: `Request (${rfiCounts.REQUEST})` },
               { key: 'ANSWERED', label: `Answered (${rfiCounts.ANSWERED})` },
-              { key: 'SENT_TO_AE', label: `Sent to A&E (${rfiCounts.SENT_TO_AE})` },
+              ...(!isAe ? [{ key: 'SENT_TO_AE' as const, label: `Sent to A&E (${rfiCounts.SENT_TO_AE})` }] : []),
             ]}
           />
         ) : (
