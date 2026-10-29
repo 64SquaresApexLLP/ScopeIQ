@@ -43,7 +43,9 @@ function RfiListItem({ r, reload }: { r: R; reload: () => void }) {
     r.STATUS === 'ANSWERED' || r.STATUS === 'CLOSED' ? colors.ok :
     colors.muted;
 
-  const canAnswer = can('ADMIN', 'AE_ENGINEER', 'ERICSSON') && (r.STATUS === 'SUBMITTED' || (r.ACTIONS ?? []).includes('ANSWER'));
+  const canAnswer =
+    (r.STATUS === 'SUBMITTED' || (r.ACTIONS ?? []).includes('ANSWER')) &&
+    (can('ADMIN', 'ERICSSON') || (user?.role === 'AE_ENGINEER' && r.TO_PARTY === 'AE_ENGINEER'));
 
   return (
     <Card style={{ padding: space(4), gap: space(2) }}>
@@ -183,8 +185,7 @@ function RedlineListItem({ x, reload }: { x: R; reload: () => void }) {
   );
 }
 
-type RfiFilter = 'ALL' | 'IN_REVIEW' | 'ANSWERED';
-type RfiRecipientFilter = 'ALL' | 'AE_ENGINEER' | 'ADMIN';
+type RfiFilter = 'ALL' | 'IN_REVIEW' | 'REQUEST' | 'ANSWERED' | 'SENT_TO_AE';
 type RedFilter = 'ALL' | 'IN_REVIEW' | 'WORK_QUEUE' | 'COMPLETED' | 'REJECTED';
 
 export default function RfisScreen() {
@@ -196,7 +197,6 @@ export default function RfisScreen() {
 
   const [section, setSection] = useState<'RFIS' | 'REDLINES'>('RFIS');
   const [rfiFilter, setRfiFilter] = useState<RfiFilter>('ALL');
-  const [rfiRecipient, setRfiRecipient] = useState<RfiRecipientFilter>('ALL');
   const [redFilter, setRedFilter] = useState<RedFilter>('ALL');
   const [query, setQuery] = useState('');
 
@@ -216,17 +216,21 @@ export default function RfisScreen() {
   const rfiList = useMemo(() => (rfis.data ?? []).filter((x) => x.STATUS !== 'DRAFT'), [rfis.data]);
   const redList = redlines.data ?? [];
 
-  const rfiCounts = useMemo(() => ({
-    ALL: rfiList.length,
-    IN_REVIEW: rfiList.filter((x) => x.STATUS === 'SUBMITTED' || x.STATUS === 'IN_REVIEW').length,
-    ANSWERED: rfiList.filter((x) => x.STATUS === 'ANSWERED' || x.STATUS === 'CLOSED').length,
-  }), [rfiList]);
-
-  const rfiRecipientCounts = useMemo(() => ({
-    ALL: rfiList.length,
-    AE_ENGINEER: rfiList.filter((x) => x.TO_PARTY === 'AE_ENGINEER').length,
-    ADMIN: rfiList.filter((x) => x.TO_PARTY === 'ADMIN').length,
-  }), [rfiList]);
+  const rfiCounts = useMemo(() => {
+    const inReview = rfiList.filter((x) => x.STATUS === 'SUBMITTED' || x.STATUS === 'IN_REVIEW').length;
+    const request = rfiList.filter((x) => x.TO_PARTY === 'ADMIN').length;
+    const answered = rfiList.filter((x) => x.STATUS === 'ANSWERED' || x.STATUS === 'CLOSED').length;
+    const sentToAe = rfiList.filter((x) => x.TO_PARTY === 'AE_ENGINEER').length;
+    const all = isAe ? inReview + request + answered : inReview + request + answered + sentToAe;
+    return {
+      DISTINCT: rfiList.length,
+      ALL: all,
+      IN_REVIEW: inReview,
+      REQUEST: request,
+      ANSWERED: answered,
+      SENT_TO_AE: sentToAe,
+    };
+  }, [rfiList, isAe]);
 
   const redCounts = useMemo(() => ({
     ALL: redList.length,
@@ -240,11 +244,12 @@ export default function RfisScreen() {
     let list = rfiList;
     if (rfiFilter === 'IN_REVIEW') {
       list = list.filter((x) => x.STATUS === 'SUBMITTED' || x.STATUS === 'IN_REVIEW');
+    } else if (rfiFilter === 'REQUEST') {
+      list = list.filter((x) => x.TO_PARTY === 'ADMIN');
     } else if (rfiFilter === 'ANSWERED') {
       list = list.filter((x) => x.STATUS === 'ANSWERED' || x.STATUS === 'CLOSED');
-    }
-    if (rfiRecipient !== 'ALL') {
-      list = list.filter((x) => x.TO_PARTY === rfiRecipient);
+    } else if (rfiFilter === 'SENT_TO_AE') {
+      list = list.filter((x) => x.TO_PARTY === 'AE_ENGINEER');
     }
     const q = query.trim().toLowerCase();
     if (q) {
@@ -257,7 +262,7 @@ export default function RfisScreen() {
       );
     }
     return list;
-  }, [rfiList, rfiFilter, rfiRecipient, query]);
+  }, [rfiList, rfiFilter, query]);
 
   const filteredRedlines = useMemo(() => {
     let list = redList;
@@ -308,7 +313,7 @@ export default function RfisScreen() {
         value={section}
         onChange={setSection}
         options={[
-          { key: 'RFIS', label: `RFIs (${rfiCounts.ALL})` },
+          { key: 'RFIS', label: `RFIs (${rfiCounts.DISTINCT})` },
           { key: 'REDLINES', label: `Redlines (${redCounts.ALL})` },
         ]}
       />
@@ -316,28 +321,17 @@ export default function RfisScreen() {
       {/* Sub filters and search */}
       <Row style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: space(2) }}>
         {section === 'RFIS' ? (
-          <Row style={{ gap: space(2), flexWrap: 'wrap', alignItems: 'center' }}>
-            <Chips<RfiFilter>
-              value={rfiFilter}
-              onChange={setRfiFilter}
-              options={[
-                { key: 'ALL', label: `All (${rfiCounts.ALL})` },
-                { key: 'IN_REVIEW', label: `Request / In Review (${rfiCounts.IN_REVIEW})` },
-                { key: 'ANSWERED', label: `Answered (${rfiCounts.ANSWERED})` },
-              ]}
-            />
-            {!isAe ? (
-              <Chips<RfiRecipientFilter>
-                value={rfiRecipient}
-                onChange={setRfiRecipient}
-                options={[
-                  { key: 'ALL', label: `All Recipients (${rfiRecipientCounts.ALL})` },
-                  { key: 'AE_ENGINEER', label: `Sent to A&E (${rfiRecipientCounts.AE_ENGINEER})` },
-                  { key: 'ADMIN', label: `To Admin (${rfiRecipientCounts.ADMIN})` },
-                ]}
-              />
-            ) : null}
-          </Row>
+          <Chips<RfiFilter>
+            value={rfiFilter}
+            onChange={setRfiFilter}
+            options={[
+              { key: 'ALL', label: `All (${rfiCounts.ALL})` },
+              { key: 'IN_REVIEW', label: `In Review (${rfiCounts.IN_REVIEW})` },
+              { key: 'REQUEST', label: `Request (${rfiCounts.REQUEST})` },
+              { key: 'ANSWERED', label: `Answered (${rfiCounts.ANSWERED})` },
+              ...(!isAe ? [{ key: 'SENT_TO_AE' as const, label: `Sent to A&E (${rfiCounts.SENT_TO_AE})` }] : []),
+            ]}
+          />
         ) : (
           <Chips<RedFilter>
             value={redFilter}
