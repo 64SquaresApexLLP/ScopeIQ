@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from scopeiq.common.context import bind
-from scopeiq.common.errors import AppError, ErrorRecorder
+from scopeiq.common.errors import AppError, ErrorRecorder, MissingDataError
 from scopeiq.common.logging import get_logger, log_call
 from scopeiq.config import get_settings
 from scopeiq.domain import SectorInfo, SiteFacts
@@ -61,6 +61,9 @@ def build_site_facts(site_dir: Path, ref: ReferenceData, *, sitetracker: SiteTra
         doc_paths: dict = {}
         facts.documents = register_site_folder(site_dir, site_id, upload_dir=Path(st.path("paths.upload_dir")) / site_id, paths=doc_paths)
         facts.site["doc_paths"] = {k: str(v) for k, v in doc_paths.items()}
+        if st.get("engine.require_drone_video", True) and not any(x.doc_type == "DRONE_VIDEO" and x.status == "CURRENT" for x in facts.documents):
+            raise MissingDataError(f"Missing data: no drone orbit video found for {site_id}. Add the survey's orbit video to the site's drone/video "
+                                   "folder and run the pipeline again.", details={"site_id": site_id, "missing": "DRONE_VIDEO"})
         if on_ingested:
             on_ingested(facts)
         path = lambda d: doc_paths.get(d.doc_id) or _abs(site_dir, d.rel_path)  # noqa: E731
@@ -149,12 +152,34 @@ def build_site_facts(site_dir: Path, ref: ReferenceData, *, sitetracker: SiteTra
                     facts.trunks["FIELD"] = trunk
         vid = next((x for x in facts.documents if x.doc_type == "DRONE_VIDEO" and x.status == "CURRENT"), None)
         if vid and evidence_dir:
+            meta = next((x for x in facts.documents if x.doc_type == "DRONE_META" and x.status == "CURRENT"), None)
+            orbit = _orbit_plan(facts, st, path(meta) if meta else None)
             facts.frames = _guard(facts, "video", video.sample_frames, path(vid), Path(evidence_dir) / site_id, site_id=site_id,
-                                  n_frames=st.get("engine.video_frames_per_site", 48), sector_azimuths=design_az) or []
+                                  n_frames=st.get("engine.video_frames_per_site", 48), sector_azimuths=design_az, orbit=orbit) or []
+            if not facts.frames and st.get("engine.require_drone_video", True):
+                raise MissingDataError(f"Missing data: the drone orbit video for {site_id} could not be read ({facts.warnings[-1] if facts.warnings else 'no frames'}). "
+                                       "Upload a playable orbit video and run the pipeline again.", details={"site_id": site_id, "missing": "DRONE_VIDEO"})
     log.info("site facts built: rfds=%s cd=%s(%s) field=%s(%d items) ma=%s sa=%s rev0=%d lines, %d warnings", facts.rfds_revision,
              facts.cd_revision, facts.cd_method, facts.field_method, len(facts.field_items), facts.ma.result if facts.ma else None,
              facts.sa.result if facts.sa else None, len(facts.rev0), len(facts.warnings), extra={"site_id": site_id})
     return facts
+
+
+def _orbit_plan(facts: SiteFacts, st, meta_path) -> tuple[float, bool]:
+    """Where the orbit starts and which way it turns, as (start bearing, bearing decreasing). The survey's metadata is used when it states them
+    (video.orbit_start_bearing_deg, video.orbit_direction); otherwise the configured flight plan, and the run says it was assumed."""
+    vid = {}
+    try:
+        vid = (drone.load_metadata(meta_path) if meta_path else {}).get("video") or {}
+    except AppError:
+        pass
+    start, way = vid.get("orbit_start_bearing_deg"), str(vid.get("orbit_direction") or "").lower().replace("_", "-")
+    declared = start is not None and way in ("clockwise", "counter-clockwise", "anticlockwise", "ccw", "cw")
+    if not declared:
+        start, way = st.get("engine.orbit_start_bearing_deg", 90), st.get("engine.orbit_direction", "counter-clockwise")
+        facts.warnings.append(f"video: the survey does not state where the orbit starts or which way it turns; frames are tagged assuming it starts at "
+                              f"{float(start):.0f} deg and turns {way}. Proof frames depend on that assumption.")
+    return float(start), way not in ("clockwise", "cw")
 
 
 def _abs(site_dir: Path, rel_path: str) -> Path:

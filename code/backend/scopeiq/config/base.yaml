@@ -64,6 +64,9 @@ engine:
   video_frames_per_site: 48
   proof_max_angle_deg: 45      # a video frame is proof for a place only if the camera faces it within this many degrees
   proof_per_redline: 2
+  require_drone_video: true    # no orbit video -> the run stops with 'Missing data' (the redline proof comes from it)
+  orbit_start_bearing_deg: 90  # used only when the survey metadata does not state where the orbit starts / which way it turns
+  orbit_direction: counter-clockwise
   ocr_dpi: 600
   ocr_enabled: true
   tesseract_cmd: ""           # empty = find tesseract on PATH; Windows: C:/Program Files/Tesseract-OCR/tesseract.exe

@@ -20,8 +20,8 @@ log = get_logger(__name__)
 
 
 def orbit_bearing(frame_index: int, total: int, start_deg: float = 90.0, clockwise: bool = True) -> float:
-    """Camera bearing for an orbit flight. Default matches the survey vendor's flight plan: the drone starts due
-    east (90 deg) and orbits counter-clockwise seen from above (bearing decreasing)."""
+    """Camera bearing for an orbit flight. `clockwise=True` means the bearing decreases (counter-clockwise seen from above); the
+    default (start due east, 90 deg) is the survey vendor's flight plan, used when the survey metadata does not say otherwise."""
     a = 360.0 * frame_index / max(total, 1)
     return (start_deg - a) % 360 if clockwise else (start_deg + a) % 360
 
@@ -56,7 +56,7 @@ def equipment_in_view(img) -> tuple[float, tuple[int, int, int, int] | None, boo
 
 @log_call()
 def sample_frames(video: Path, out_dir: Path, *, site_id: str, n_frames: int = 24, sector_azimuths: dict[str, float] | None = None,
-                  per_sector: int = 2, describe_frame: Callable[[Path], str] | None = None) -> list[VideoFrame]:
+                  per_sector: int = 2, orbit: tuple[float, bool] = (90.0, True), describe_frame: Callable[[Path], str] | None = None) -> list[VideoFrame]:
     import cv2
 
     cap = cv2.VideoCapture(str(video))
@@ -78,7 +78,7 @@ def sample_frames(video: Path, out_dir: Path, *, site_id: str, n_frames: int = 2
             continue
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         sharp = float(cv2.Laplacian(gray, cv2.CV_64F).var())
-        b = orbit_bearing(i, total)
+        b = orbit_bearing(i, total, *orbit)
         sec = None
         if sector_azimuths:
             sec, az = min(sector_azimuths.items(), key=lambda kv: abs((b - kv[1] + 180) % 360 - 180))
