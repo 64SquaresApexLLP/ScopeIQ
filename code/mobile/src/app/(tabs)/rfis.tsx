@@ -33,18 +33,20 @@ function RfiListItem({ r, reload }: { r: R; reload: () => void }) {
   };
 
   const displayStatus =
-    r.STATUS === 'SUBMITTED' ? 'IN REVIEW' :
+    r.STATUS === 'SUBMITTED' ? 'REQUEST' :
+    r.STATUS === 'IN_REVIEW' ? 'IN REVIEW' :
     r.STATUS === 'ANSWERED' ? 'ANSWERED' :
     r.STATUS === 'CLOSED' ? 'CLOSED' :
     r.STATUS;
 
   const statusColor =
-    r.STATUS === 'SUBMITTED' ? colors.warn :
+    r.STATUS === 'SUBMITTED' ? colors.primary :
+    r.STATUS === 'IN_REVIEW' ? colors.warn :
     r.STATUS === 'ANSWERED' || r.STATUS === 'CLOSED' ? colors.ok :
     colors.muted;
 
   const canAnswer =
-    (r.STATUS === 'SUBMITTED' || (r.ACTIONS ?? []).includes('ANSWER')) &&
+    r.STATUS === 'IN_REVIEW' &&
     (can('ADMIN', 'ERICSSON') || (user?.role === 'AE_ENGINEER' && r.TO_PARTY === 'AE_ENGINEER'));
 
   return (
@@ -64,7 +66,7 @@ function RfiListItem({ r, reload }: { r: R; reload: () => void }) {
             <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>{r.SITE_ID}</Text>
           </Pressable>
           <Badge
-            text={r.TO_PARTY === 'AE_ENGINEER' ? 'To AE_ENGINEER' : 'To Admin'}
+            text={r.TO_PARTY === 'AE_ENGINEER' ? 'For A&E ENGINEER' : 'For Admin'}
             color={r.TO_PARTY === 'AE_ENGINEER' ? colors.accent : colors.primary}
           />
         </Row>
@@ -124,10 +126,19 @@ function RedlineListItem({ x, reload }: { x: R; reload: () => void }) {
     displayStatus === 'COMPLETED' ? colors.ok :
     displayStatus === 'REJECTED' ? colors.danger : colors.muted;
 
+  const formatRole = (role?: string) => {
+    if (!role) return '';
+    if (role === 'ADMIN') return 'Admin';
+    if (role === 'AE_ENGINEER') return 'A&E Engineer';
+    if (role === 'SCOPER') return 'Scoper';
+    if (role === 'REVIEWER') return 'Reviewer';
+    return role.replace(/_/g, ' ');
+  };
+
   return (
     <Card style={{ padding: space(4), gap: space(2) }}>
       <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-        <Row style={{ gap: space(2), alignItems: 'center' }}>
+        <Row style={{ gap: space(2), alignItems: 'center', flexWrap: 'wrap', flex: 1 }}>
           <Pressable
             onPress={() => router.push({ pathname: '/site/[id]', params: { id: x.SITE_ID, tab: 'redlines' } })}
             style={({ pressed }) => ({
@@ -141,6 +152,16 @@ function RedlineListItem({ x, reload }: { x: R; reload: () => void }) {
             <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>{x.SITE_ID}</Text>
           </Pressable>
           <Title>{`${x.DOC_TYPE} ${x.DOC_REVISION ?? ''} sheet ${x.SHEET}`}</Title>
+
+          {/* Attribution badge: indicates who responded, or if it is pending for Admin & A&E */}
+          {x.LAST_RESPONSE ? (
+            <Badge
+              text={`Responded by ${formatRole(x.LAST_RESPONSE.ACTOR_ROLE)} (${x.LAST_RESPONSE.ACTOR_USER_ID})`}
+              color={x.LAST_RESPONSE.ACTOR_ROLE === 'ADMIN' ? colors.primary : colors.accent}
+            />
+          ) : (
+            <Badge text="For Admin & A&E" color={colors.muted} />
+          )}
         </Row>
         <Badge text={displayStatus.replace('_', ' ')} color={statusCol} />
       </Row>
@@ -148,8 +169,69 @@ function RedlineListItem({ x, reload }: { x: R; reload: () => void }) {
       <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13.5 }}>{x.MARKUP}</Text>
       <KV k="Was" v={x.CHANGE_FROM} />
       <KV k="Now" v={x.CHANGE_TO} />
-      {x.UPDATED_BY ? (
-        <KV k="Submitted by" v={`${x.UPDATED_BY}${x.UPDATED_AT ? ` (${when(x.UPDATED_AT)})` : ''}`} />
+
+      <KV
+        k="Submitted by"
+        v={`${x.SUBMITTED_BY || 'scoper'}${x.SUBMITTED_AT ? ` (${when(x.SUBMITTED_AT)})` : ''}`}
+      />
+
+      {x.REVIEWED_BY ? (
+        <KV
+          k="Reviewed by"
+          v={`${x.REVIEWED_BY} (${formatRole(x.REVIEWED_ROLE)})${x.REVIEWED_AT ? ` (${when(x.REVIEWED_AT)})` : ''}`}
+        />
+      ) : null}
+
+      {x.COMPLETED_BY ? (
+        <KV
+          k="Completed by"
+          v={`${x.COMPLETED_BY} (${formatRole(x.COMPLETED_ROLE)})${x.COMPLETED_AT ? ` (${when(x.COMPLETED_AT)})` : ''}`}
+        />
+      ) : null}
+
+      {x.REJECTED_BY ? (
+        <KV
+          k="Rejected by"
+          v={`${x.REJECTED_BY} (${formatRole(x.REJECTED_ROLE)})${x.REJECTED_AT ? ` (${when(x.REJECTED_AT)})` : ''}`}
+        />
+      ) : null}
+
+      {/* Response callout banner highlighting the latest action taken, actor role & note */}
+      {x.LAST_RESPONSE ? (
+        <View
+          style={{
+            marginTop: space(2),
+            padding: space(2.5),
+            backgroundColor: (x.LAST_RESPONSE.ACTOR_ROLE === 'ADMIN' ? colors.primary : colors.accent) + '12',
+            borderRadius: 8,
+            borderLeftWidth: 3,
+            borderLeftColor: x.LAST_RESPONSE.ACTOR_ROLE === 'ADMIN' ? colors.primary : colors.accent,
+            gap: 4,
+          }}
+        >
+          <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontWeight: '700', fontSize: 12.5, color: colors.text }}>
+              Response from {formatRole(x.LAST_RESPONSE.ACTOR_ROLE)} ({x.LAST_RESPONSE.ACTOR_USER_ID})
+            </Text>
+            <Text style={{ fontSize: 11.5, color: colors.muted }}>
+              {when(x.LAST_RESPONSE.EVENT_TS)}
+            </Text>
+          </Row>
+          <Text style={{ fontSize: 12, color: colors.text }}>
+            Action: <Text style={{ fontWeight: '700' }}>{x.LAST_RESPONSE.ACTION.replace('_', ' ')}</Text>
+            {`  ➔  Status: `}<Text style={{ fontWeight: '700', color: statusCol }}>{displayStatus.replace('_', ' ')}</Text>
+          </Text>
+          {x.LAST_RESPONSE.REASON_CODE ? (
+            <Text style={{ fontSize: 12, color: colors.danger, fontWeight: '600' }}>
+              Reason: {x.LAST_RESPONSE.REASON_CODE}
+            </Text>
+          ) : null}
+          {x.LAST_RESPONSE.COMMENT ? (
+            <Text style={{ fontSize: 12, color: colors.text, fontStyle: 'italic', marginTop: 2 }}>
+              "{x.LAST_RESPONSE.COMMENT}"
+            </Text>
+          ) : null}
+        </View>
       ) : null}
 
       <Row style={{ marginTop: space(1), gap: space(2), flexWrap: 'wrap' }}>
@@ -161,7 +243,7 @@ function RedlineListItem({ x, reload }: { x: R; reload: () => void }) {
             onPress={() => Linking.openURL(authedUrl(x.PDF_URL))}
           />
         ) : null}
-        {displayStatus === 'WORK_QUEUE' && user?.role === 'AE_ENGINEER' ? (
+        {displayStatus === 'WORK_QUEUE' && ['AE_ENGINEER', 'ADMIN'].includes(user?.role ?? '') ? (
           <Button
             small
             kind="secondary"
@@ -171,7 +253,7 @@ function RedlineListItem({ x, reload }: { x: R; reload: () => void }) {
         ) : null}
       </Row>
 
-      {user?.role === 'AE_ENGINEER' && (x.ACTIONS ?? []).length ? (
+      {['AE_ENGINEER', 'ADMIN'].includes(user?.role ?? '') && (x.ACTIONS ?? []).length ? (
         <View style={{ marginTop: space(1) }}>
           <WorkflowActions
             actions={x.ACTIONS ?? []}
@@ -217,11 +299,11 @@ export default function RfisScreen() {
   const redList = redlines.data ?? [];
 
   const rfiCounts = useMemo(() => {
-    const inReview = rfiList.filter((x) => x.STATUS === 'SUBMITTED' || x.STATUS === 'IN_REVIEW').length;
-    const request = rfiList.filter((x) => x.TO_PARTY === 'ADMIN').length;
+    const request = rfiList.filter((x) => x.STATUS === 'SUBMITTED').length;
+    const inReview = rfiList.filter((x) => x.STATUS === 'IN_REVIEW').length;
     const answered = rfiList.filter((x) => x.STATUS === 'ANSWERED' || x.STATUS === 'CLOSED').length;
     const sentToAe = rfiList.filter((x) => x.TO_PARTY === 'AE_ENGINEER').length;
-    const all = isAe ? inReview + request + answered : inReview + request + answered + sentToAe;
+    const all = inReview + request + answered + (!isAe ? sentToAe : 0);
     return {
       DISTINCT: rfiList.length,
       ALL: all,
@@ -242,10 +324,10 @@ export default function RfisScreen() {
 
   const filteredRfis = useMemo(() => {
     let list = rfiList;
-    if (rfiFilter === 'IN_REVIEW') {
-      list = list.filter((x) => x.STATUS === 'SUBMITTED' || x.STATUS === 'IN_REVIEW');
-    } else if (rfiFilter === 'REQUEST') {
-      list = list.filter((x) => x.TO_PARTY === 'ADMIN');
+    if (rfiFilter === 'REQUEST') {
+      list = list.filter((x) => x.STATUS === 'SUBMITTED');
+    } else if (rfiFilter === 'IN_REVIEW') {
+      list = list.filter((x) => x.STATUS === 'IN_REVIEW');
     } else if (rfiFilter === 'ANSWERED') {
       list = list.filter((x) => x.STATUS === 'ANSWERED' || x.STATUS === 'CLOSED');
     } else if (rfiFilter === 'SENT_TO_AE') {
@@ -313,7 +395,7 @@ export default function RfisScreen() {
         value={section}
         onChange={setSection}
         options={[
-          { key: 'RFIS', label: `RFIs (${rfiCounts.DISTINCT})` },
+          { key: 'RFIS', label: `RFIs (${rfiCounts.ALL})` },
           { key: 'REDLINES', label: `Redlines (${redCounts.ALL})` },
         ]}
       />

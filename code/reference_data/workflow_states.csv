@@ -25,6 +25,7 @@ REDLINE,COMPLETED,30,N,Y,N,AE_ENGINEER,Corrected revision issued / drawing compl
 REDLINE,REJECTED,40,N,Y,N,AE_ENGINEER,A&E rejected (justification required)
 RFI,DRAFT,10,Y,N,N,SCOPER,Drafted from a discrepancy
 RFI,SUBMITTED,20,N,N,N,ADMIN,Submitted to Admin
+RFI,IN_REVIEW,25,N,N,N,ADMIN;AE_ENGINEER,Under review by recipient
 RFI,ANSWERED,30,N,N,N,SCOPER,Admin answered
 RFI,CLOSED,40,N,Y,N,REVIEWER,Answer applied and closed
 BOM_REVISION,REV0_RECEIVED,10,Y,N,Y,SCOPER,Preliminary REV 0 (read-only)
