@@ -228,3 +228,19 @@ def test_rfi_wording_shows_plain_numbers_for_a_list_of_measurements(ref):
     d = _disc("FLD-03", "RFI", sector=None, position=None, expected=[63.0], found=[np.float64(67.9)])
     _, rfis = draft_redlines_and_rfis(f, [d], ref)
     assert rfis and "67.9 ft rad center vs 63 ft" in rfis[0].question and "np." not in rfis[0].question
+
+
+def test_site_without_orbit_video_stops_with_missing_data(tmp_path, ref):
+    """No drone video means no proof for the redlines: the run stops at ingest and says what to supply, instead of carrying on without it."""
+    import shutil
+
+    from scopeiq.common.errors import MissingDataError
+    from scopeiq.config import get_settings
+    from scopeiq.engine.facts import build_site_facts
+
+    src = next(p for p in get_settings().path("paths.sites_dir").iterdir() if (p / "drone" / "video").is_dir() and any((p / "drone" / "video").iterdir()))
+    site = tmp_path / "TXZZ9999"
+    shutil.copytree(src, site)
+    shutil.rmtree(site / "drone" / "video")
+    with pytest.raises(MissingDataError, match="Missing data: no drone orbit video"):
+        build_site_facts(site, ref)

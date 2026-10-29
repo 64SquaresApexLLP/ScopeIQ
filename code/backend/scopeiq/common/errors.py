@@ -34,6 +34,11 @@ class ValidationError(AppError):
     code, http_status, default_message = "SIQ-VAL-400", 400, "Invalid input"
 
 
+class MissingDataError(AppError):
+    """A site lacks data the pipeline cannot do without; the run stops and says what to supply."""
+    code, http_status, default_message = "SIQ-DAT-422", 422, "Required data is missing"
+
+
 class AuthenticationError(AppError):
     code, http_status, default_message = "SIQ-AUTH-401", 401, "Not signed in"
 
