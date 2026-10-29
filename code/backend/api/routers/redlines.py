@@ -24,10 +24,88 @@ def list_redlines(site_id: str | None = None, status: str | None = None, user: d
     proofs: dict[str, list] = {}
     for p in repo().select("CORE.REDLINE_PROOF", {"SITE_ID": site_id} if site_id else None, order_by="REDLINE_ID, RANK"):
         proofs.setdefault(p["REDLINE_ID"], []).append({**p, "URL": f"/files/{p['PATH']}"})
+
+    # Retrieve all workflow events for redlines to track who submitted and who gave responses
+    redline_ids = {x["REDLINE_ID"] for x in rows}
+    all_events = repo().select("WF.WORKFLOW_EVENT", {"ENTITY_TYPE": "REDLINE"}, order_by="EVENT_TS ASC")
+    events_by_id: dict[str, list] = {}
+    for e in all_events:
+        if e["ENTITY_ID"] in redline_ids:
+            events_by_id.setdefault(e["ENTITY_ID"], []).append(e)
+
     for x in rows:
         x["PDF_URL"] = f"/files/{x['PDF_PATH']}" if x.get("PDF_PATH") else None
         x["PROOF"] = proofs.get(x["REDLINE_ID"], [])            # the drone footage that shows what the redline is about
-        x["ACTIONS"] = [a["action"] for a in workflow().actions("REDLINE", x["STATUS"], user["role"])] if user.get("role") == "AE_ENGINEER" else []
+        x["ACTIONS"] = [a["action"] for a in workflow().actions("REDLINE", x["STATUS"], user["role"])] if user.get("role") in ("AE_ENGINEER", "ADMIN") else []
+
+        rl_events = events_by_id.get(x["REDLINE_ID"], [])
+
+        # Submitter attribution
+        submit_evt = next((e for e in rl_events if e["ACTION"] in ("SUBMIT", "SEND", "CREATE")), None)
+        if submit_evt:
+            x["SUBMITTED_BY"] = submit_evt["ACTOR_USER_ID"]
+            x["SUBMITTED_ROLE"] = submit_evt["ACTOR_ROLE"]
+            x["SUBMITTED_AT"] = submit_evt["EVENT_TS"]
+        else:
+            resp_evts = [e for e in rl_events if e["ACTION"] in ("REVIEW_DONE", "ACKNOWLEDGE", "COMPLETE", "INCORPORATE", "REJECT")]
+            x["SUBMITTED_BY"] = "scoper" if resp_evts else (x.get("UPDATED_BY") or "scoper")
+            x["SUBMITTED_ROLE"] = "SCOPER"
+            x["SUBMITTED_AT"] = x.get("CREATED_AT")
+
+        # Specific action tracking
+        rev_evt = next((e for e in reversed(rl_events) if e["ACTION"] in ("REVIEW_DONE", "ACKNOWLEDGE")), None)
+        if rev_evt:
+            x["REVIEWED_BY"] = rev_evt["ACTOR_USER_ID"]
+            x["REVIEWED_ROLE"] = rev_evt["ACTOR_ROLE"]
+            x["REVIEWED_AT"] = rev_evt["EVENT_TS"]
+            x["REVIEWED_COMMENT"] = rev_evt.get("COMMENT")
+        else:
+            x["REVIEWED_BY"] = None
+            x["REVIEWED_ROLE"] = None
+            x["REVIEWED_AT"] = None
+            x["REVIEWED_COMMENT"] = None
+
+        comp_evt = next((e for e in reversed(rl_events) if e["ACTION"] in ("COMPLETE", "INCORPORATE")), None)
+        if comp_evt:
+            x["COMPLETED_BY"] = comp_evt["ACTOR_USER_ID"]
+            x["COMPLETED_ROLE"] = comp_evt["ACTOR_ROLE"]
+            x["COMPLETED_AT"] = comp_evt["EVENT_TS"]
+            x["COMPLETED_COMMENT"] = comp_evt.get("COMMENT")
+        else:
+            x["COMPLETED_BY"] = None
+            x["COMPLETED_ROLE"] = None
+            x["COMPLETED_AT"] = None
+            x["COMPLETED_COMMENT"] = None
+
+        rej_evt = next((e for e in reversed(rl_events) if e["ACTION"] == "REJECT"), None)
+        if rej_evt:
+            x["REJECTED_BY"] = rej_evt["ACTOR_USER_ID"]
+            x["REJECTED_ROLE"] = rej_evt["ACTOR_ROLE"]
+            x["REJECTED_AT"] = rej_evt["EVENT_TS"]
+            x["REJECTED_REASON"] = rej_evt.get("REASON_CODE")
+            x["REJECTED_COMMENT"] = rej_evt.get("COMMENT")
+        else:
+            x["REJECTED_BY"] = None
+            x["REJECTED_ROLE"] = None
+            x["REJECTED_AT"] = None
+            x["REJECTED_REASON"] = None
+            x["REJECTED_COMMENT"] = None
+
+        # Latest response from AE_ENGINEER or ADMIN
+        response_evts = [e for e in rl_events if e["ACTION"] in ("REVIEW_DONE", "ACKNOWLEDGE", "COMPLETE", "INCORPORATE", "REJECT")]
+        if response_evts:
+            last = response_evts[-1]
+            x["LAST_RESPONSE"] = {
+                "ACTION": last["ACTION"],
+                "ACTOR_USER_ID": last["ACTOR_USER_ID"],
+                "ACTOR_ROLE": last["ACTOR_ROLE"],
+                "EVENT_TS": last["EVENT_TS"],
+                "COMMENT": last.get("COMMENT"),
+                "REASON_CODE": last.get("REASON_CODE"),
+            }
+        else:
+            x["LAST_RESPONSE"] = None
+
     return rows
 
 
@@ -53,7 +131,11 @@ def list_rfis(site_id: str | None = None, status: str | None = None, to_party: s
 
     rows = _scoped(repo().select("CORE.RFI", where or None, order_by="SITE_ID"), user)
     for x in rows:
-        x["ACTIONS"] = [a["action"] for a in workflow().actions("RFI", x["STATUS"], user["role"])]
+        acts = [a["action"] for a in workflow().actions("RFI", x["STATUS"], user["role"])]
+        # AE_ENGINEER only has action buttons on RFIs addressed to AE_ENGINEER:
+        if user["role"] == "AE_ENGINEER" and x.get("TO_PARTY") != "AE_ENGINEER":
+            acts = []
+        x["ACTIONS"] = acts
     return rows
 
 

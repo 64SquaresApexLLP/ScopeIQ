@@ -2,14 +2,24 @@ import React, { useState } from 'react';
 import { Image, Linking, Modal, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { api, ApiError, authedUrl } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { when } from '../../lib/format';
 import { Row as R } from '../../lib/types';
 import { useApi } from '../../lib/useApi';
 import { colors, space } from '../theme';
 import { Badge, Button, Card, Empty, ErrorView, IconBadge, KV, Loading, Muted, Row, s, Section, Title } from '../ui';
 import { WorkflowActions } from '../WorkflowActions';
 
+function formatRole(role?: string): string {
+  if (!role) return '';
+  if (role === 'ADMIN') return 'Admin';
+  if (role === 'AE_ENGINEER') return 'A&E Engineer';
+  if (role === 'SCOPER') return 'Scoper';
+  if (role === 'REVIEWER') return 'Reviewer';
+  return role.replace(/_/g, ' ');
+}
+
 export function RfiCard({ r, reload }: { r: R; reload: () => void }) {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const [answer, setAnswer] = useState(r.PROPOSED_ANSWER ?? '');
   const [err, setErr] = useState<ApiError | null>(null);
   const send = async () => {
@@ -20,12 +30,24 @@ export function RfiCard({ r, reload }: { r: R; reload: () => void }) {
       setErr(e as ApiError);
     }
   };
-  const toParty = r.TO_PARTY === 'AE_ENGINEER' ? 'To AE_ENGINEER' : 'To Admin';
+  const toParty = r.TO_PARTY === 'AE_ENGINEER' ? 'For A&E ENGINEER' : 'For Admin';
+  const displayStatus =
+    r.STATUS === 'SUBMITTED' ? 'REQUEST' :
+    r.STATUS === 'IN_REVIEW' ? 'IN REVIEW' :
+    r.STATUS === 'ANSWERED' ? 'ANSWERED' :
+    r.STATUS === 'CLOSED' ? 'CLOSED' :
+    r.STATUS;
+  const statusColor =
+    r.STATUS === 'SUBMITTED' ? colors.primary :
+    r.STATUS === 'IN_REVIEW' ? colors.warn :
+    r.STATUS === 'ANSWERED' || r.STATUS === 'CLOSED' ? colors.ok :
+    colors.muted;
+
   return (
     <Card>
       <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
         <Title>{toParty}</Title>
-        <Badge text={r.STATUS} />
+        <Badge text={displayStatus} color={statusColor} />
       </Row>
       <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>{r.SUBJECT}</Text>
       <Muted style={{ color: colors.text }}>{r.QUESTION}</Muted>
@@ -36,7 +58,7 @@ export function RfiCard({ r, reload }: { r: R; reload: () => void }) {
           <WorkflowActions actions={(r.ACTIONS ?? []).filter((a: string) => a !== 'ANSWER')} endpoint={`/rfis/${r.RFI_ID}/transition`} entity="RFI" onDone={reload} />
         </View>
       ) : null}
-      {can('ADMIN', 'ERICSSON', 'AE_ENGINEER') && (r.ACTIONS ?? []).includes('ANSWER') ? (
+      {(can('ADMIN', 'ERICSSON') || (user?.role === 'AE_ENGINEER' && r.TO_PARTY === 'AE_ENGINEER')) && r.STATUS === 'IN_REVIEW' ? (
         <View style={{ marginTop: space(2), gap: space(2) }}>
           <TextInput style={[s.input, { minHeight: 60 }]} multiline value={answer} onChangeText={setAnswer} placeholder="Answer" />
           <Button small title="Send answer" disabled={!answer.trim()} onPress={send} />
@@ -150,15 +172,85 @@ export function Redlines({ siteId }: { siteId: string }) {
 
           return (
             <Card key={x.REDLINE_ID}>
-              <Row style={{ justifyContent: 'space-between' }}>
-                <Title>{`${i + 1}. ${x.DOC_TYPE} ${x.DOC_REVISION ?? ''} sheet ${x.SHEET}`}</Title>
+              <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <Row style={{ gap: space(2), alignItems: 'center', flexWrap: 'wrap', flex: 1 }}>
+                  <Title>{`${i + 1}. ${x.DOC_TYPE} ${x.DOC_REVISION ?? ''} sheet ${x.SHEET}`}</Title>
+                  {x.LAST_RESPONSE ? (
+                    <Badge
+                      text={`Responded by ${formatRole(x.LAST_RESPONSE.ACTOR_ROLE)} (${x.LAST_RESPONSE.ACTOR_USER_ID})`}
+                      color={x.LAST_RESPONSE.ACTOR_ROLE === 'ADMIN' ? colors.primary : colors.accent}
+                    />
+                  ) : (
+                    <Badge text="For Admin & A&E" color={colors.muted} />
+                  )}
+                </Row>
                 <Badge text={st.replace('_', ' ')} color={statusCol} />
               </Row>
               <Muted style={{ color: colors.text }}>{x.MARKUP}</Muted>
               <KV k="Was" v={x.CHANGE_FROM} />
               <KV k="Now" v={x.CHANGE_TO} />
+              <KV
+                k="Submitted by"
+                v={`${x.SUBMITTED_BY || 'scoper'}${x.SUBMITTED_AT ? ` (${when(x.SUBMITTED_AT)})` : ''}`}
+              />
+              {x.REVIEWED_BY ? (
+                <KV
+                  k="Reviewed by"
+                  v={`${x.REVIEWED_BY} (${formatRole(x.REVIEWED_ROLE)})${x.REVIEWED_AT ? ` (${when(x.REVIEWED_AT)})` : ''}`}
+                />
+              ) : null}
+              {x.COMPLETED_BY ? (
+                <KV
+                  k="Completed by"
+                  v={`${x.COMPLETED_BY} (${formatRole(x.COMPLETED_ROLE)})${x.COMPLETED_AT ? ` (${when(x.COMPLETED_AT)})` : ''}`}
+                />
+              ) : null}
+              {x.REJECTED_BY ? (
+                <KV
+                  k="Rejected by"
+                  v={`${x.REJECTED_BY} (${formatRole(x.REJECTED_ROLE)})${x.REJECTED_AT ? ` (${when(x.REJECTED_AT)})` : ''}`}
+                />
+              ) : null}
+
+              {x.LAST_RESPONSE ? (
+                <View
+                  style={{
+                    marginTop: space(2),
+                    padding: space(2.5),
+                    backgroundColor: (x.LAST_RESPONSE.ACTOR_ROLE === 'ADMIN' ? colors.primary : colors.accent) + '12',
+                    borderRadius: 8,
+                    borderLeftWidth: 3,
+                    borderLeftColor: x.LAST_RESPONSE.ACTOR_ROLE === 'ADMIN' ? colors.primary : colors.accent,
+                    gap: 4,
+                  }}
+                >
+                  <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ fontWeight: '700', fontSize: 12.5, color: colors.text }}>
+                      Response from {formatRole(x.LAST_RESPONSE.ACTOR_ROLE)} ({x.LAST_RESPONSE.ACTOR_USER_ID})
+                    </Text>
+                    <Text style={{ fontSize: 11.5, color: colors.muted }}>
+                      {when(x.LAST_RESPONSE.EVENT_TS)}
+                    </Text>
+                  </Row>
+                  <Text style={{ fontSize: 12, color: colors.text }}>
+                    Action: <Text style={{ fontWeight: '700' }}>{x.LAST_RESPONSE.ACTION.replace('_', ' ')}</Text>
+                    {`  ➔  Status: `}<Text style={{ fontWeight: '700', color: statusCol }}>{st.replace('_', ' ')}</Text>
+                  </Text>
+                  {x.LAST_RESPONSE.REASON_CODE ? (
+                    <Text style={{ fontSize: 12, color: colors.danger, fontWeight: '600' }}>
+                      Reason: {x.LAST_RESPONSE.REASON_CODE}
+                    </Text>
+                  ) : null}
+                  {x.LAST_RESPONSE.COMMENT ? (
+                    <Text style={{ fontSize: 12, color: colors.text, fontStyle: 'italic', marginTop: 2 }}>
+                      "{x.LAST_RESPONSE.COMMENT}"
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
+
               <ProofStrip proof={x.PROOF ?? []} />
-              {user?.role === 'AE_ENGINEER' && (x.ACTIONS ?? []).length ? (
+              {['AE_ENGINEER', 'ADMIN'].includes(user?.role ?? '') && (x.ACTIONS ?? []).length ? (
                 <View style={{ marginTop: space(3) }}>
                   <WorkflowActions actions={x.ACTIONS} endpoint={`/redlines/${x.REDLINE_ID}/transition`} entity="REDLINE" onDone={red.reload} />
                 </View>
