@@ -27,11 +27,13 @@ def demo_users():
             for u in ref().rows("users") if u.get("ACTIVE", "Y") == "Y"]
 
 
-def _credential_user(username: str, password: str) -> dict:
+def _credential_user(username: str, password: str, role: str | None = None) -> dict:
     rows = repo().select("CORE.USER_LOGIN", {"USERNAME": username.strip().lower()})
     row = rows[0] if rows else None
     ok = verify_password(password, row["PASSWORD_HASH"] if row else DUMMY_HASH)
     if not row or not ok or not row.get("ACTIVE") or row["ROLE_CODE"] not in password_roles():
+        raise AuthenticationError("Incorrect username or password")
+    if role and row["ROLE_CODE"] != role.upper():        # a Scoper login cannot be used on the A&E Engineer card, and so on
         raise AuthenticationError("Incorrect username or password")
     return {"USER_ID": row["USERNAME"], "ROLE_CODE": row["ROLE_CODE"], "DISPLAY_NAME": row["DISPLAY_NAME"] or row["USERNAME"],
             "ORGANISATION": row.get("ORGANISATION") or "", "SERVICE_PROVIDER": ""}
@@ -48,7 +50,7 @@ def _demo_user(user_id: str | None) -> dict:
 
 @router.post("/login")
 def login(body: LoginIn):
-    user = _credential_user(body.username, body.password) if body.username else _demo_user(body.user_id)
+    user = _credential_user(body.username, body.password, body.role) if body.username else _demo_user(body.user_id)
     with bind(user_id=user["USER_ID"], role=user["ROLE_CODE"]):
         AuditTrail.record(entity_type="SESSION", entity_id=user["USER_ID"], action="LOGIN", source="api")
     persona = next((p for p in ref().rows("personas") if p["ROLE_CODE"] == user["ROLE_CODE"]), {})
