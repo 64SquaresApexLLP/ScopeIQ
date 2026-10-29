@@ -330,13 +330,14 @@ class PipelineService:
         out = self.output_dir / "sites" / f.site_id / "redlines"
         files: dict[str, str] = {}
         pages: dict[str, int] = {}
+        remove_proofs(out)
+        proofs = attach_proofs(f, discs, redlines, out, self._drone_stills(f))          # first: the drawing carries them next to each redline
         if decision.required:
             dxf, pdf = self._cd_source_paths(f)
-            files.update(write_redlined_cd(facts=f, discs=discs, redlines=redlines, dxf_path=dxf, pdf_path=pdf, out_dir=out, ref=self.ref, pages=pages))
+            files.update(write_redlined_cd(facts=f, discs=discs, redlines=redlines, dxf_path=dxf, pdf_path=pdf, out_dir=out, ref=self.ref, pages=pages,
+                                           proofs=proofs))
         else:
             remove_redlined_cd(out, f)                 # an earlier run's redlined drawing is out of date now
-        remove_proofs(out)
-        proofs = attach_proofs(f, discs, redlines, out, self._drone_stills(f))
         sheets = render_sheet_previews(files["redlined_cd_pdf"], redlines, pages, out / "proof") if "redlined_cd_pdf" in files else {}
         by_id = {x.redline_id: x for x in redlines}
         proofs += [Proof(rid, 0, "SHEET", str(img), f"Sheet {by_id[rid].sheet} with this redline marked",

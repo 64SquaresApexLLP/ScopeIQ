@@ -6,6 +6,7 @@ import { authedUrl } from '../../lib/api';
 import { PipelineRun } from '../../lib/types';
 import { colors, space } from '../theme';
 import { Badge, Button, Card, IconBadge, Muted, Row, Section, Title } from '../ui';
+import { Text } from 'react-native';
 
 export function RunResult({ run, siteId }: { run: PipelineRun; siteId: string }) {
   const s = run.SUMMARY ?? {};
@@ -36,5 +37,30 @@ export function RunResult({ run, siteId }: { run: PipelineRun; siteId: string })
         ) : null}
       </Card>
     </Section>
+  );
+}
+
+/** The notes a run recorded (data caveats such as "CD read by OCR"): the run still succeeded, but a person should know about them. */
+export function RunNotes({ run }: { run: PipelineRun }) {
+  const notes = (run.WARNINGS ?? []).map((w) => String(w));
+  if (!notes.length) return null;
+  return (
+    <Card style={{ marginTop: space(2), borderColor: colors.warn, borderWidth: 1.5, backgroundColor: '#FFF8EC' }}>
+      <Row style={{ alignItems: 'center', gap: space(2) }}>
+        <IconBadge name="alert-triangle" color={colors.warn} size={32} />
+        <View style={{ flex: 1 }}>
+          <Title style={{ fontSize: 15 }}>{`Notes from this run (${notes.length})`}</Title>
+          <Muted>Every stage finished. These are things to check, not failures.</Muted>
+        </View>
+      </Row>
+      <View style={{ marginTop: space(2), gap: space(1) }}>
+        {notes.map((n, i) => (
+          <Row key={i} style={{ alignItems: 'flex-start', gap: space(2) }}>
+            <Text style={{ color: colors.warn, fontWeight: '700' }}>{'•'}</Text>
+            <Muted style={{ color: colors.text, flex: 1 }}>{n}</Muted>
+          </Row>
+        ))}
+      </View>
+    </Card>
   );
 }
