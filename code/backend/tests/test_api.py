@@ -19,7 +19,7 @@ def api_results(ref):
     set_repository(r)
     svc = PipelineService(r, ref)
     with bind(user_id="system", role="SYSTEM"):
-        yield {sid: svc.run_site(sid) for sid in svc.site_ids()}
+        yield {sid: svc.run_site(sid) for sid in svc.site_ids() if any((svc.sites_dir / sid / "drone" / "video").glob("*"))}   # a site without its orbit video stops at ingest
     set_repository(previous)
 
 

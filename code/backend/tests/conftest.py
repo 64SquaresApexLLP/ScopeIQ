@@ -75,4 +75,4 @@ def pipeline_results(repo, ref):
     from scopeiq.services.pipeline import PipelineService
     svc = PipelineService(repo, ref)
     with bind(user_id="system", role="SYSTEM"):
-        return {sid: svc.run_site(sid) for sid in svc.site_ids()}
+        return {sid: svc.run_site(sid) for sid in svc.site_ids() if any((svc.sites_dir / sid / "drone" / "video").glob("*"))}   # a site without its orbit video stops at ingest
