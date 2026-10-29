@@ -45,9 +45,12 @@ function RfiListItem({ r, reload }: { r: R; reload: () => void }) {
     r.STATUS === 'ANSWERED' || r.STATUS === 'CLOSED' ? colors.ok :
     colors.muted;
 
-  const canAnswer =
-    r.STATUS === 'IN_REVIEW' &&
-    (can('ADMIN', 'ERICSSON') || (user?.role === 'AE_ENGINEER' && r.TO_PARTY === 'AE_ENGINEER'));
+  const isTargetParty =
+    r.TO_PARTY === 'AE_ENGINEER'
+      ? user?.role === 'AE_ENGINEER'
+      : can('ADMIN', 'ERICSSON');
+
+  const canAnswer = r.STATUS === 'IN_REVIEW' && isTargetParty;
 
   return (
     <Card style={{ padding: space(4), gap: space(2) }}>
@@ -82,7 +85,7 @@ function RfiListItem({ r, reload }: { r: R; reload: () => void }) {
       {r.PROPOSED_ANSWER ? <KV k="Proposed answer" v={r.PROPOSED_ANSWER} /> : null}
       {r.ANSWER ? <KV k="Answer" v={r.ANSWER} /> : null}
 
-      {/* Answer box for A&E Engineer / Ericsson / Admin */}
+      {/* Answer box for the designated target party */}
       {canAnswer ? (
         <View style={{ marginTop: space(2), padding: space(3), backgroundColor: colors.bg, borderRadius: 8, gap: space(2) }}>
           <Text style={{ fontWeight: '700', fontSize: 13, color: colors.text }}>Respond to RFI</Text>
@@ -97,6 +100,12 @@ function RfiListItem({ r, reload }: { r: R; reload: () => void }) {
             <Button small title="Send answer" disabled={!answer.trim() || busy} onPress={sendAnswer} />
           </Row>
           {err ? <ErrorView error={err} /> : null}
+        </View>
+      ) : r.STATUS === 'IN_REVIEW' ? (
+        <View style={{ marginTop: space(2), padding: space(2.5), backgroundColor: colors.bg, borderRadius: 8 }}>
+          <Muted style={{ fontStyle: 'italic' }}>
+            Awaiting response from {r.TO_PARTY === 'AE_ENGINEER' ? 'A&E Engineer' : 'Admin'}...
+          </Muted>
         </View>
       ) : null}
 
@@ -267,7 +276,8 @@ function RedlineListItem({ x, reload }: { x: R; reload: () => void }) {
   );
 }
 
-type RfiFilter = 'ALL' | 'IN_REVIEW' | 'REQUEST' | 'ANSWERED' | 'SENT_TO_AE';
+type RfiScope = 'ALL' | 'ADMIN' | 'SENT_TO_AE';
+type RfiFilter = 'ALL' | 'IN_REVIEW' | 'REQUEST' | 'ANSWERED';
 type RedFilter = 'ALL' | 'IN_REVIEW' | 'WORK_QUEUE' | 'COMPLETED' | 'REJECTED';
 
 export default function RfisScreen() {
@@ -278,6 +288,7 @@ export default function RfisScreen() {
   const redlines = useApi<R[]>(allowed ? '/redlines' : null);
 
   const [section, setSection] = useState<'RFIS' | 'REDLINES'>('RFIS');
+  const [rfiScope, setRfiScope] = useState<RfiScope>('ALL');
   const [rfiFilter, setRfiFilter] = useState<RfiFilter>('ALL');
   const [redFilter, setRedFilter] = useState<RedFilter>('ALL');
   const [query, setQuery] = useState('');
@@ -298,21 +309,45 @@ export default function RfisScreen() {
   const rfiList = useMemo(() => (rfis.data ?? []).filter((x) => x.STATUS !== 'DRAFT'), [rfis.data]);
   const redList = redlines.data ?? [];
 
-  const rfiCounts = useMemo(() => {
-    const request = rfiList.filter((x) => x.STATUS === 'SUBMITTED').length;
-    const inReview = rfiList.filter((x) => x.STATUS === 'IN_REVIEW').length;
-    const answered = rfiList.filter((x) => x.STATUS === 'ANSWERED' || x.STATUS === 'CLOSED').length;
-    const sentToAe = rfiList.filter((x) => x.TO_PARTY === 'AE_ENGINEER').length;
-    const all = inReview + request + answered + (!isAe ? sentToAe : 0);
+  // Recipient scope counts (All RFIs vs For Admin vs Sent to A&E)
+  const scopeCounts = useMemo(() => {
+    const total = rfiList.length;
+    const adminCount = rfiList.filter((x) => x.TO_PARTY !== 'AE_ENGINEER').length;
+    const aeCount = rfiList.filter((x) => x.TO_PARTY === 'AE_ENGINEER').length;
     return {
-      DISTINCT: rfiList.length,
-      ALL: all,
+      ALL: total,
+      ADMIN: adminCount,
+      SENT_TO_AE: aeCount,
+    };
+  }, [rfiList]);
+
+  // Scoped list of RFIs based on Admin's selected workstream (or locked to A&E for A&E Engineer)
+  const scopedRfis = useMemo(() => {
+    if (isAe) {
+      return rfiList.filter((x) => x.TO_PARTY === 'AE_ENGINEER');
+    }
+    if (rfiScope === 'ADMIN') {
+      return rfiList.filter((x) => x.TO_PARTY !== 'AE_ENGINEER');
+    }
+    if (rfiScope === 'SENT_TO_AE') {
+      return rfiList.filter((x) => x.TO_PARTY === 'AE_ENGINEER');
+    }
+    return rfiList;
+  }, [rfiList, rfiScope, isAe]);
+
+  // Status counts strictly for the currently scoped RFIs:
+  // All = In Review + Request + Answered (always mathematically exact)
+  const rfiCounts = useMemo(() => {
+    const request = scopedRfis.filter((x) => x.STATUS === 'SUBMITTED').length;
+    const inReview = scopedRfis.filter((x) => x.STATUS === 'IN_REVIEW').length;
+    const answered = scopedRfis.filter((x) => x.STATUS === 'ANSWERED' || x.STATUS === 'CLOSED').length;
+    return {
+      ALL: scopedRfis.length,
       IN_REVIEW: inReview,
       REQUEST: request,
       ANSWERED: answered,
-      SENT_TO_AE: sentToAe,
     };
-  }, [rfiList, isAe]);
+  }, [scopedRfis]);
 
   const redCounts = useMemo(() => ({
     ALL: redList.length,
@@ -323,15 +358,13 @@ export default function RfisScreen() {
   }), [redList]);
 
   const filteredRfis = useMemo(() => {
-    let list = rfiList;
+    let list = scopedRfis;
     if (rfiFilter === 'REQUEST') {
       list = list.filter((x) => x.STATUS === 'SUBMITTED');
     } else if (rfiFilter === 'IN_REVIEW') {
       list = list.filter((x) => x.STATUS === 'IN_REVIEW');
     } else if (rfiFilter === 'ANSWERED') {
       list = list.filter((x) => x.STATUS === 'ANSWERED' || x.STATUS === 'CLOSED');
-    } else if (rfiFilter === 'SENT_TO_AE') {
-      list = list.filter((x) => x.TO_PARTY === 'AE_ENGINEER');
     }
     const q = query.trim().toLowerCase();
     if (q) {
@@ -344,7 +377,7 @@ export default function RfisScreen() {
       );
     }
     return list;
-  }, [rfiList, rfiFilter, query]);
+  }, [scopedRfis, rfiFilter, query]);
 
   const filteredRedlines = useMemo(() => {
     let list = redList;
@@ -395,10 +428,56 @@ export default function RfisScreen() {
         value={section}
         onChange={setSection}
         options={[
-          { key: 'RFIS', label: `RFIs (${rfiCounts.ALL})` },
+          { key: 'RFIS', label: `RFIs (${isAe ? scopeCounts.SENT_TO_AE : scopeCounts.ALL})` },
           { key: 'REDLINES', label: `Redlines (${redCounts.ALL})` },
         ]}
       />
+
+      {/* Admin Workstream Switcher for RFIs */}
+      {section === 'RFIS' && !isAe ? (
+        <View style={{ padding: space(3), backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, gap: space(2) }}>
+          <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontWeight: '700', fontSize: 13, color: colors.text }}>RFI Workstream</Text>
+            <Muted style={{ fontSize: 12 }}>Filter by recipient</Muted>
+          </Row>
+          <Chips<RfiScope>
+            value={rfiScope}
+            onChange={(scope) => {
+              setRfiScope(scope);
+              setRfiFilter('ALL');
+            }}
+            options={[
+              { key: 'ALL', label: `All RFIs (${scopeCounts.ALL})` },
+              { key: 'ADMIN', label: `For Admin (${scopeCounts.ADMIN})` },
+              { key: 'SENT_TO_AE', label: `Sent to A&E (${scopeCounts.SENT_TO_AE})` },
+            ]}
+          />
+        </View>
+      ) : null}
+
+      {/* Highlight banner when Sent to A&E scope is active */}
+      {section === 'RFIS' && !isAe && rfiScope === 'SENT_TO_AE' ? (
+        <View
+          style={{
+            padding: space(2.5),
+            backgroundColor: colors.accent + '14',
+            borderRadius: 8,
+            borderLeftWidth: 3,
+            borderLeftColor: colors.accent,
+            gap: 2,
+          }}
+        >
+          <Row style={{ alignItems: 'center', gap: space(2) }}>
+            <Text style={{ fontWeight: '700', fontSize: 13, color: colors.text }}>
+              Sent to A&E Engineering
+            </Text>
+            <Badge text={`${scopeCounts.SENT_TO_AE} RFIs`} color={colors.accent} />
+          </Row>
+          <Muted style={{ fontSize: 12 }}>
+            These RFIs are assigned to A&E Engineers for drawing elevation / technical confirmation.
+          </Muted>
+        </View>
+      ) : null}
 
       {/* Sub filters and search */}
       <Row style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: space(2) }}>
@@ -411,7 +490,6 @@ export default function RfisScreen() {
               { key: 'IN_REVIEW', label: `In Review (${rfiCounts.IN_REVIEW})` },
               { key: 'REQUEST', label: `Request (${rfiCounts.REQUEST})` },
               { key: 'ANSWERED', label: `Answered (${rfiCounts.ANSWERED})` },
-              ...(!isAe ? [{ key: 'SENT_TO_AE' as const, label: `Sent to A&E (${rfiCounts.SENT_TO_AE})` }] : []),
             ]}
           />
         ) : (
