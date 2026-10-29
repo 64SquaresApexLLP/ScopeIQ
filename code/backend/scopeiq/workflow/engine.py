@@ -53,7 +53,7 @@ class WorkflowEngine:
             if t["FROM_STATE"] == "*" and t["TO_STATE"] == state:
                 continue
             roles = t["ALLOWED_ROLES"].split(";")
-            if role and role not in roles and (role != "ADMIN" or entity == "REDLINE"):
+            if role and role not in roles and role != "ADMIN":
                 continue
             out.append({"action": t["ACTION"], "to_state": t["TO_STATE"], "requires_reason": t["REQUIRES_REASON"] == "Y",
                         "requires_comment": t["REQUIRES_COMMENT"] == "Y", "description": t["DESCRIPTION"], "roles": roles})
@@ -81,7 +81,7 @@ class WorkflowEngine:
         t = self._find(entity, state, act)
         ctx = current()
         roles = t["ALLOWED_ROLES"].split(";")
-        if ctx.role not in roles and (ctx.role != "ADMIN" or entity == "REDLINE"):
+        if ctx.role not in roles and ctx.role != "ADMIN":
             raise PermissionDenied(f"Role {ctx.role} cannot {action} a {entity} in {state}", details={"allowed_roles": roles})
         if t["REQUIRES_REASON"] == "Y" and not reason_code:
             raise ValidationError(f"{action} needs a reason code", details={"action": action})
@@ -135,6 +135,8 @@ class WorkflowEngine:
             site = row.get("SITE_ID") or ""
             if act in ("SUBMIT", "SEND"):
                 msg = f"New RFI from {site}: {subj}" if subj else f"New RFI submitted for site {site}"
+            elif act == "START_REVIEW":
+                msg = f"RFI under review for {site}: {subj}" if subj else f"RFI {entity_id} review started"
             elif act == "ANSWER":
                 msg = f"RFI answered for {site}: {subj}" if subj else f"RFI {entity_id} has been answered"
             elif act == "CLOSE":

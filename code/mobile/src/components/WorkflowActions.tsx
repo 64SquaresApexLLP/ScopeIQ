@@ -85,6 +85,7 @@ export function WorkflowActions({ actions, endpoint, entity, onDone, details }: 
   const getActionTitle = (act: string) => {
     const u = act.toUpperCase();
     if (entity === 'RFI' && u === 'SUBMIT') return 'Send';
+    if (entity === 'RFI' && u === 'START_REVIEW') return 'Start Review';
     if (entity === 'REDLINE' && u === 'REVIEW_DONE') return 'Review Done';
     if (entity === 'REDLINE' && (u === 'COMPLETE' || u === 'INCORPORATE')) return 'Complete';
     if (entity === 'REDLINE' && u === 'REJECT') return 'Reject';
@@ -94,11 +95,19 @@ export function WorkflowActions({ actions, endpoint, entity, onDone, details }: 
   if (!defs.length) return <Muted>No actions available for your role in this state.</Muted>;
   return (
     <View>
+      {entity === 'REDLINE' ? (
+        <TextInput
+          style={[s.input, { minHeight: 38, paddingVertical: 6, fontSize: 13, marginBottom: space(2), backgroundColor: colors.bg, borderRadius: 6 }]}
+          placeholder="Add response note / comment (optional)..."
+          value={comment}
+          onChangeText={setComment}
+        />
+      ) : null}
       <Row>
         {defs.map((a) => (
           <Button key={a.action} small kind={/DISMISS|REJECT|RETURN|REQUEST_CHANGES/.test(a.action) ? 'secondary' : 'primary'}
             title={getActionTitle(a.action)} disabled={busy}
-            onPress={() => (a.requires_reason || a.requires_comment ? setPending(a) : submit(a, null, ''))} />
+            onPress={() => (a.requires_reason || a.requires_comment ? setPending(a) : submit(a, null, comment))} />
         ))}
       </Row>
       {error && !pending ? <View style={{ marginTop: space(2) }}><ErrorView error={error} /></View> : null}
