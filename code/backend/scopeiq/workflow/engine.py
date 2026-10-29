@@ -53,7 +53,7 @@ class WorkflowEngine:
             if t["FROM_STATE"] == "*" and t["TO_STATE"] == state:
                 continue
             roles = t["ALLOWED_ROLES"].split(";")
-            if role and role not in roles and role != "ADMIN":
+            if role and role not in roles and (role != "ADMIN" or entity == "REDLINE"):
                 continue
             out.append({"action": t["ACTION"], "to_state": t["TO_STATE"], "requires_reason": t["REQUIRES_REASON"] == "Y",
                         "requires_comment": t["REQUIRES_COMMENT"] == "Y", "description": t["DESCRIPTION"], "roles": roles})
@@ -81,7 +81,7 @@ class WorkflowEngine:
         t = self._find(entity, state, act)
         ctx = current()
         roles = t["ALLOWED_ROLES"].split(";")
-        if ctx.role not in roles and ctx.role != "ADMIN":
+        if ctx.role not in roles and (ctx.role != "ADMIN" or entity == "REDLINE"):
             raise PermissionDenied(f"Role {ctx.role} cannot {action} a {entity} in {state}", details={"allowed_roles": roles})
         if t["REQUIRES_REASON"] == "Y" and not reason_code:
             raise ValidationError(f"{action} needs a reason code", details={"action": action})

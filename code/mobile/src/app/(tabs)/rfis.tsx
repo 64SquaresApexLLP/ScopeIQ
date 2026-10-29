@@ -8,10 +8,12 @@ import { Badge, Button, Card, Chips, Empty, ErrorView, Hero, IconBadge, KV, Load
 import { WorkflowActions } from '../../components/WorkflowActions';
 import { api, ApiError, authedUrl } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { when } from '../../lib/format';
 import { Row as R } from '../../lib/types';
 import { useApi } from '../../lib/useApi';
 
 function RfiListItem({ r, reload }: { r: R; reload: () => void }) {
+  const { user, can } = useAuth();
   const [answer, setAnswer] = useState(r.PROPOSED_ANSWER ?? '');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<ApiError | null>(null);
@@ -30,12 +32,18 @@ function RfiListItem({ r, reload }: { r: R; reload: () => void }) {
     }
   };
 
+  const displayStatus =
+    r.STATUS === 'SUBMITTED' ? 'IN REVIEW' :
+    r.STATUS === 'ANSWERED' ? 'ANSWERED' :
+    r.STATUS === 'CLOSED' ? 'CLOSED' :
+    r.STATUS;
+
   const statusColor =
     r.STATUS === 'SUBMITTED' ? colors.warn :
     r.STATUS === 'ANSWERED' || r.STATUS === 'CLOSED' ? colors.ok :
     colors.muted;
 
-  const canAnswer = r.STATUS === 'SUBMITTED' || (r.ACTIONS ?? []).includes('ANSWER');
+  const canAnswer = can('ADMIN', 'AE_ENGINEER', 'ERICSSON') && (r.STATUS === 'SUBMITTED' || (r.ACTIONS ?? []).includes('ANSWER'));
 
   return (
     <Card style={{ padding: space(4), gap: space(2) }}>
@@ -53,17 +61,24 @@ function RfiListItem({ r, reload }: { r: R; reload: () => void }) {
           >
             <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>{r.SITE_ID}</Text>
           </Pressable>
+          <Badge
+            text={r.TO_PARTY === 'AE_ENGINEER' ? 'To AE_ENGINEER' : 'To Admin'}
+            color={r.TO_PARTY === 'AE_ENGINEER' ? colors.accent : colors.primary}
+          />
         </Row>
-        <Badge text={r.STATUS} color={statusColor} />
+        <Badge text={displayStatus} color={statusColor} />
       </Row>
 
       <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>{r.SUBJECT}</Text>
       <Muted style={{ color: colors.text }}>{r.QUESTION}</Muted>
 
+      {r.UPDATED_BY ? (
+        <KV k="Submitted by" v={`${r.UPDATED_BY}${r.UPDATED_AT ? ` (${when(r.UPDATED_AT)})` : ''}`} />
+      ) : null}
       {r.PROPOSED_ANSWER ? <KV k="Proposed answer" v={r.PROPOSED_ANSWER} /> : null}
       {r.ANSWER ? <KV k="Answer" v={r.ANSWER} /> : null}
 
-      {/* Answer box for A&E Engineer / Admin */}
+      {/* Answer box for A&E Engineer / Ericsson / Admin */}
       {canAnswer ? (
         <View style={{ marginTop: space(2), padding: space(3), backgroundColor: colors.bg, borderRadius: 8, gap: space(2) }}>
           <Text style={{ fontWeight: '700', fontSize: 13, color: colors.text }}>Respond to RFI</Text>
@@ -82,9 +97,8 @@ function RfiListItem({ r, reload }: { r: R; reload: () => void }) {
       ) : null}
 
       <View style={{ marginTop: space(1) }}>
-        {/* Recipients (A&E / Admin) answer via the box above and close after answering. Filter out SUBMIT (for Scopers). */}
         <WorkflowActions
-          actions={(r.ACTIONS ?? []).filter((a: string) => a !== 'ANSWER' && a !== 'SUBMIT')}
+          actions={(r.ACTIONS ?? []).filter((a: string) => a !== 'ANSWER')}
           endpoint={`/rfis/${r.RFI_ID}/transition`}
           entity="RFI"
           onDone={reload}
@@ -95,10 +109,18 @@ function RfiListItem({ r, reload }: { r: R; reload: () => void }) {
 }
 
 function RedlineListItem({ x, reload }: { x: R; reload: () => void }) {
+  const { user } = useAuth();
+  const displayStatus =
+    ['IN_REVIEW', 'APPROVED', 'SENT_TO_AE', 'DRAFT'].includes(x.STATUS) ? 'IN_REVIEW' :
+    ['WORK_QUEUE', 'ACKNOWLEDGED'].includes(x.STATUS) ? 'WORK_QUEUE' :
+    ['COMPLETED', 'INCORPORATED', 'CLOSED'].includes(x.STATUS) ? 'COMPLETED' :
+    x.STATUS;
+
   const statusCol =
-    x.STATUS === 'APPROVED' || x.STATUS === 'SENT_TO_AE' ? colors.warn :
-    x.STATUS === 'INCORPORATED' || x.STATUS === 'CLOSED' ? colors.ok :
-    x.STATUS === 'REJECTED' ? colors.danger : colors.muted;
+    displayStatus === 'IN_REVIEW' ? colors.warn :
+    displayStatus === 'WORK_QUEUE' ? colors.primary :
+    displayStatus === 'COMPLETED' ? colors.ok :
+    displayStatus === 'REJECTED' ? colors.danger : colors.muted;
 
   return (
     <Card style={{ padding: space(4), gap: space(2) }}>
@@ -118,45 +140,64 @@ function RedlineListItem({ x, reload }: { x: R; reload: () => void }) {
           </Pressable>
           <Title>{`${x.DOC_TYPE} ${x.DOC_REVISION ?? ''} sheet ${x.SHEET}`}</Title>
         </Row>
-        <Badge text={x.STATUS} color={statusCol} />
+        <Badge text={displayStatus.replace('_', ' ')} color={statusCol} />
       </Row>
 
       <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13.5 }}>{x.MARKUP}</Text>
       <KV k="Was" v={x.CHANGE_FROM} />
       <KV k="Now" v={x.CHANGE_TO} />
+      {x.UPDATED_BY ? (
+        <KV k="Submitted by" v={`${x.UPDATED_BY}${x.UPDATED_AT ? ` (${when(x.UPDATED_AT)})` : ''}`} />
+      ) : null}
 
-      {x.PDF_URL ? (
-        <Row style={{ marginTop: space(1) }}>
+      <Row style={{ marginTop: space(1), gap: space(2), flexWrap: 'wrap' }}>
+        {x.PDF_URL ? (
           <Button
             small
             kind="secondary"
             title="Open red-marked CD (PDF)"
             onPress={() => Linking.openURL(authedUrl(x.PDF_URL))}
           />
-        </Row>
-      ) : null}
+        ) : null}
+        {displayStatus === 'WORK_QUEUE' && user?.role === 'AE_ENGINEER' ? (
+          <Button
+            small
+            kind="secondary"
+            title="View in Work queue"
+            onPress={() => router.push('/(tabs)/queue')}
+          />
+        ) : null}
+      </Row>
 
-      <View style={{ marginTop: space(1) }}>
-        <WorkflowActions
-          actions={x.ACTIONS ?? []}
-          endpoint={`/redlines/${x.REDLINE_ID}/transition`}
-          entity="REDLINE"
-          onDone={reload}
-        />
-      </View>
+      {user?.role === 'AE_ENGINEER' && (x.ACTIONS ?? []).length ? (
+        <View style={{ marginTop: space(1) }}>
+          <WorkflowActions
+            actions={x.ACTIONS ?? []}
+            endpoint={`/redlines/${x.REDLINE_ID}/transition`}
+            entity="REDLINE"
+            onDone={reload}
+          />
+        </View>
+      ) : null}
     </Card>
   );
 }
 
+type RfiFilter = 'ALL' | 'IN_REVIEW' | 'ANSWERED';
+type RfiRecipientFilter = 'ALL' | 'AE_ENGINEER' | 'ADMIN';
+type RedFilter = 'ALL' | 'IN_REVIEW' | 'WORK_QUEUE' | 'COMPLETED' | 'REJECTED';
+
 export default function RfisScreen() {
-  const { can } = useAuth();
-  const allowed = can('ADMIN', 'AE_ENGINEER');
+  const { user, can } = useAuth();
+  const isAe = user?.role === 'AE_ENGINEER';
+  const allowed = can('ADMIN', 'AE_ENGINEER', 'SCOPER', 'REVIEWER', 'ERICSSON');
   const rfis = useApi<R[]>(allowed ? '/rfis' : null);
   const redlines = useApi<R[]>(allowed ? '/redlines' : null);
 
   const [section, setSection] = useState<'RFIS' | 'REDLINES'>('RFIS');
-  const [rfiFilter, setRfiFilter] = useState<'ALL' | 'SUBMITTED' | 'DRAFT' | 'ANSWERED' | 'CLOSED'>('ALL');
-  const [redFilter, setRedFilter] = useState<'ALL' | 'APPROVED' | 'SENT_TO_AE' | 'ACKNOWLEDGED' | 'INCORPORATED' | 'REJECTED'>('ALL');
+  const [rfiFilter, setRfiFilter] = useState<RfiFilter>('ALL');
+  const [rfiRecipient, setRfiRecipient] = useState<RfiRecipientFilter>('ALL');
+  const [redFilter, setRedFilter] = useState<RedFilter>('ALL');
   const [query, setQuery] = useState('');
 
   if (!allowed) {
@@ -164,35 +205,46 @@ export default function RfisScreen() {
       <View style={[s.screen, { alignItems: 'center', justifyContent: 'center', padding: space(8) }]}>
         <IconBadge name="lock" color={colors.muted} size={56} />
         <Text style={{ fontWeight: '800', fontSize: 18, color: colors.text, marginTop: space(3) }}>Restricted access</Text>
-        <Muted>Only administrators and A&E Engineers can access the Redlines & RFIs tab.</Muted>
+        <Muted>Only authorized scoping, engineering, and admin team members can access the Redlines & RFIs tab.</Muted>
+        <View style={{ marginTop: space(4) }}>
+          <Button title="Go to Dashboard" onPress={() => router.replace('/(tabs)')} />
+        </View>
       </View>
     );
   }
 
-  const rfiList = rfis.data ?? [];
+  const rfiList = useMemo(() => (rfis.data ?? []).filter((x) => x.STATUS !== 'DRAFT'), [rfis.data]);
   const redList = redlines.data ?? [];
 
   const rfiCounts = useMemo(() => ({
     ALL: rfiList.length,
-    SUBMITTED: rfiList.filter((x) => x.STATUS === 'SUBMITTED').length,
-    DRAFT: rfiList.filter((x) => x.STATUS === 'DRAFT').length,
-    ANSWERED: rfiList.filter((x) => x.STATUS === 'ANSWERED').length,
-    CLOSED: rfiList.filter((x) => x.STATUS === 'CLOSED').length,
+    IN_REVIEW: rfiList.filter((x) => x.STATUS === 'SUBMITTED' || x.STATUS === 'IN_REVIEW').length,
+    ANSWERED: rfiList.filter((x) => x.STATUS === 'ANSWERED' || x.STATUS === 'CLOSED').length,
+  }), [rfiList]);
+
+  const rfiRecipientCounts = useMemo(() => ({
+    ALL: rfiList.length,
+    AE_ENGINEER: rfiList.filter((x) => x.TO_PARTY === 'AE_ENGINEER').length,
+    ADMIN: rfiList.filter((x) => x.TO_PARTY === 'ADMIN').length,
   }), [rfiList]);
 
   const redCounts = useMemo(() => ({
     ALL: redList.length,
-    APPROVED: redList.filter((x) => x.STATUS === 'APPROVED').length,
-    SENT_TO_AE: redList.filter((x) => x.STATUS === 'SENT_TO_AE').length,
-    ACKNOWLEDGED: redList.filter((x) => x.STATUS === 'ACKNOWLEDGED').length,
-    INCORPORATED: redList.filter((x) => x.STATUS === 'INCORPORATED').length,
+    IN_REVIEW: redList.filter((x) => ['IN_REVIEW', 'APPROVED', 'SENT_TO_AE', 'DRAFT'].includes(x.STATUS)).length,
+    WORK_QUEUE: redList.filter((x) => ['WORK_QUEUE', 'ACKNOWLEDGED'].includes(x.STATUS)).length,
+    COMPLETED: redList.filter((x) => ['COMPLETED', 'INCORPORATED', 'CLOSED'].includes(x.STATUS)).length,
     REJECTED: redList.filter((x) => x.STATUS === 'REJECTED').length,
   }), [redList]);
 
   const filteredRfis = useMemo(() => {
     let list = rfiList;
-    if (rfiFilter !== 'ALL') {
-      list = list.filter((x) => x.STATUS === rfiFilter);
+    if (rfiFilter === 'IN_REVIEW') {
+      list = list.filter((x) => x.STATUS === 'SUBMITTED' || x.STATUS === 'IN_REVIEW');
+    } else if (rfiFilter === 'ANSWERED') {
+      list = list.filter((x) => x.STATUS === 'ANSWERED' || x.STATUS === 'CLOSED');
+    }
+    if (rfiRecipient !== 'ALL') {
+      list = list.filter((x) => x.TO_PARTY === rfiRecipient);
     }
     const q = query.trim().toLowerCase();
     if (q) {
@@ -205,12 +257,18 @@ export default function RfisScreen() {
       );
     }
     return list;
-  }, [rfiList, rfiFilter, query]);
+  }, [rfiList, rfiFilter, rfiRecipient, query]);
 
   const filteredRedlines = useMemo(() => {
     let list = redList;
-    if (redFilter !== 'ALL') {
-      list = list.filter((x) => x.STATUS === redFilter);
+    if (redFilter === 'IN_REVIEW') {
+      list = list.filter((x) => ['IN_REVIEW', 'APPROVED', 'SENT_TO_AE', 'DRAFT'].includes(x.STATUS));
+    } else if (redFilter === 'WORK_QUEUE') {
+      list = list.filter((x) => ['WORK_QUEUE', 'ACKNOWLEDGED'].includes(x.STATUS));
+    } else if (redFilter === 'COMPLETED') {
+      list = list.filter((x) => ['COMPLETED', 'INCORPORATED', 'CLOSED'].includes(x.STATUS));
+    } else if (redFilter === 'REJECTED') {
+      list = list.filter((x) => x.STATUS === 'REJECTED');
     }
     const q = query.trim().toLowerCase();
     if (q) {
@@ -258,27 +316,37 @@ export default function RfisScreen() {
       {/* Sub filters and search */}
       <Row style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: space(2) }}>
         {section === 'RFIS' ? (
-          <Chips
-            value={rfiFilter}
-            onChange={setRfiFilter}
-            options={[
-              { key: 'ALL', label: `All (${rfiCounts.ALL})` },
-              { key: 'SUBMITTED', label: `Submitted (${rfiCounts.SUBMITTED})` },
-              { key: 'DRAFT', label: `Draft (${rfiCounts.DRAFT})` },
-              { key: 'ANSWERED', label: `Answered (${rfiCounts.ANSWERED})` },
-              { key: 'CLOSED', label: `Closed (${rfiCounts.CLOSED})` },
-            ]}
-          />
+          <Row style={{ gap: space(2), flexWrap: 'wrap', alignItems: 'center' }}>
+            <Chips<RfiFilter>
+              value={rfiFilter}
+              onChange={setRfiFilter}
+              options={[
+                { key: 'ALL', label: `All (${rfiCounts.ALL})` },
+                { key: 'IN_REVIEW', label: `Request / In Review (${rfiCounts.IN_REVIEW})` },
+                { key: 'ANSWERED', label: `Answered (${rfiCounts.ANSWERED})` },
+              ]}
+            />
+            {!isAe ? (
+              <Chips<RfiRecipientFilter>
+                value={rfiRecipient}
+                onChange={setRfiRecipient}
+                options={[
+                  { key: 'ALL', label: `All Recipients (${rfiRecipientCounts.ALL})` },
+                  { key: 'AE_ENGINEER', label: `Sent to A&E (${rfiRecipientCounts.AE_ENGINEER})` },
+                  { key: 'ADMIN', label: `To Admin (${rfiRecipientCounts.ADMIN})` },
+                ]}
+              />
+            ) : null}
+          </Row>
         ) : (
-          <Chips
+          <Chips<RedFilter>
             value={redFilter}
             onChange={setRedFilter}
             options={[
               { key: 'ALL', label: `All (${redCounts.ALL})` },
-              { key: 'SENT_TO_AE', label: `Sent to A&E (${redCounts.SENT_TO_AE})` },
-              { key: 'APPROVED', label: `Approved (${redCounts.APPROVED})` },
-              { key: 'ACKNOWLEDGED', label: `Acknowledged (${redCounts.ACKNOWLEDGED})` },
-              { key: 'INCORPORATED', label: `Incorporated (${redCounts.INCORPORATED})` },
+              { key: 'IN_REVIEW', label: `In Review (${redCounts.IN_REVIEW})` },
+              { key: 'WORK_QUEUE', label: `Work Queue (${redCounts.WORK_QUEUE})` },
+              { key: 'COMPLETED', label: `Completed (${redCounts.COMPLETED})` },
               { key: 'REJECTED', label: `Rejected (${redCounts.REJECTED})` },
             ]}
           />
@@ -297,7 +365,7 @@ export default function RfisScreen() {
       {section === 'RFIS' ? (
         <>
           {!loading && !filteredRfis.length ? (
-            <Empty text={query ? 'No RFIs match your search.' : `No ${rfiFilter === 'ALL' ? '' : rfiFilter} RFIs found.`} />
+            <Empty text={query ? 'No RFIs match your search.' : `No ${rfiFilter === 'ALL' ? '' : rfiFilter.replace('_', ' ').toLowerCase() + ' '}RFIs found.`} />
           ) : null}
           {filteredRfis.map((r) => (
             <RfiListItem key={r.RFI_ID} r={r} reload={rfis.reload} />
@@ -306,7 +374,7 @@ export default function RfisScreen() {
       ) : (
         <>
           {!loading && !filteredRedlines.length ? (
-            <Empty text={query ? 'No redlines match your search.' : `No ${redFilter === 'ALL' ? '' : redFilter} redlines found.`} />
+            <Empty text={query ? 'No redlines match your search.' : `No ${redFilter === 'ALL' ? '' : redFilter.replace('_', ' ').toLowerCase() + ' '}redlines found.`} />
           ) : null}
           {filteredRedlines.map((x) => (
             <RedlineListItem key={x.REDLINE_ID} x={x} reload={redlines.reload} />

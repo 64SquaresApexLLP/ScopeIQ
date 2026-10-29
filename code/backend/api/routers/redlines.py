@@ -27,7 +27,7 @@ def list_redlines(site_id: str | None = None, status: str | None = None, user: d
     for x in rows:
         x["PDF_URL"] = f"/files/{x['PDF_PATH']}" if x.get("PDF_PATH") else None
         x["PROOF"] = proofs.get(x["REDLINE_ID"], [])            # the drone footage that shows what the redline is about
-        x["ACTIONS"] = [a["action"] for a in workflow().actions("REDLINE", x["STATUS"], user["role"])]
+        x["ACTIONS"] = [a["action"] for a in workflow().actions("REDLINE", x["STATUS"], user["role"])] if user.get("role") == "AE_ENGINEER" else []
     return rows
 
 
@@ -35,27 +35,24 @@ def list_redlines(site_id: str | None = None, status: str | None = None, user: d
 def redline_transition(redline_id: str, body: TransitionIn, user: dict = Depends(current_user)):
     row = repo().get("CORE.REDLINE", REDLINE_ID=redline_id)
     check_site_scope(user, row["SITE_ID"])
-    incorporate = body.action.upper() == "INCORPORATE" and row["DOC_TYPE"] == "CD"
-    if incorporate and not pipeline().latest_revision(row["SITE_ID"]):
-        raise ValidationError("Implement the approved changes first, then incorporate - there is no revised drawing yet")
+    act = body.action.upper()
+    incorporate = act in ("INCORPORATE", "COMPLETE") and row["DOC_TYPE"] == "CD"
     out = workflow().transition("REDLINE", redline_id, body.action, reason_code=body.reason_code, comment=body.comment)
-    if incorporate:        # the revised drawing becomes the site's CD revision; the next run reads it and the findings resolve
+    if incorporate and pipeline().latest_revision(row["SITE_ID"]):
         out["issued"] = pipeline().register_revised_cd(row["SITE_ID"], user["sub"])
     return out
 
 
 @router.get("/rfis")
-def list_rfis(site_id: str | None = None, status: str | None = None, user: dict = Depends(current_user)):
-    where = {k: v for k, v in {"SITE_ID": site_id, "STATUS": status}.items() if v}
+def list_rfis(site_id: str | None = None, status: str | None = None, to_party: str | None = None, user: dict = Depends(current_user)):
+    where = {k: v for k, v in {"SITE_ID": site_id, "STATUS": status, "TO_PARTY": to_party}.items() if v}
 
-    # Filter by TO_PARTY so each party only sees the RFIs addressed to them:
-    #   ADMIN / ERICSSON  → RFIs addressed to Ericsson
-    #   AE_ENGINEER       → RFIs addressed to A&E
-    #   SCOPER / REVIEWER → all RFIs for the sites they scope (they submitted them and track answers)
+    # Filter by TO_PARTY:
+    #   AE_ENGINEER       → only RFIs addressed to A&E
+    #   ADMIN             → all RFIs (both Admin and A&E) so admin oversees all questions
+    #   SCOPER / REVIEWER → all RFIs for the sites they scope
     role = user.get("role", "")
-    if role in ("ADMIN", "ERICSSON"):
-        where["TO_PARTY"] = "ERICSSON"
-    elif role == "AE_ENGINEER":
+    if role == "AE_ENGINEER" and "TO_PARTY" not in where:
         where["TO_PARTY"] = "AE_ENGINEER"
 
     rows = _scoped(repo().select("CORE.RFI", where or None, order_by="SITE_ID"), user)
@@ -73,5 +70,5 @@ def rfi_transition(rfi_id: str, body: TransitionIn, user: dict = Depends(current
 
 
 @router.post("/rfis/{rfi_id}/answer")
-def answer_rfi(rfi_id: str, body: RfiAnswerIn, user: dict = Depends(require("ERICSSON", "AE_ENGINEER"))):
+def answer_rfi(rfi_id: str, body: RfiAnswerIn, user: dict = Depends(require("ADMIN", "ERICSSON", "AE_ENGINEER"))):
     return workflow().transition("RFI", rfi_id, "ANSWER", comment=body.answer, extra_updates={"ANSWER": body.answer, "UPDATED_AT": now_iso()})

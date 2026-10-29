@@ -271,8 +271,12 @@ def status(user: dict = Depends(require("ADMIN"))):
             "max_upload_mb": int(get_settings().get("sharepoint.max_upload_mb", 400))}
 
 
+# AE_ENGINEER_ALLOWED_TYPES: document types A&E Engineers are permitted to upload
+AE_ENGINEER_ALLOWED_TYPES = {"CD", "MA_SA"}
+
+
 @router.get("/sharepoint/sites")
-def list_sites(user: dict = Depends(require("ADMIN"))):
+def list_sites(user: dict = Depends(require("ADMIN", "AE_ENGINEER"))):
     """Every site that has a SharePoint folder, with its file count. Admin only."""
     store, r = get_store(), repo()
     scope = site_scope(user)
@@ -368,7 +372,7 @@ def update_site(site_id: str, body: SiteUpdate, user: dict = Depends(require("AD
 
 
 @router.get("/sharepoint/sites/{site_id}/files")
-def site_files(site_id: str, user: dict = Depends(require("ADMIN"))):
+def site_files(site_id: str, user: dict = Depends(require("ADMIN", "AE_ENGINEER"))):
     sid = validate_site_id(site_id)
     store = get_store()
     if not store.site_exists(sid):
@@ -386,12 +390,21 @@ from scopeiq.services.document_compare import inspect_file_against_site
 
 @router.post("/sharepoint/sites/{site_id}/check-content")
 async def check_content(site_id: str, file: UploadFile = File(...), doc_type: str | None = Form(default=None),
-                        user: dict = Depends(require("ADMIN"))):
+                        user: dict = Depends(require("ADMIN", "AE_ENGINEER"))):
     """Pre-upload inspection for SharePoint: checks if file data is NEW, DUPLICATE, or UPDATED with additions."""
     sid = validate_site_id(site_id)
     store = get_store()
     if not store.site_exists(sid):
         raise NotFound(f"Site {sid} has no folder in SharePoint")
+    if user.get("role") == "AE_ENGINEER":
+        from scopeiq.common.errors import PermissionDenied
+        detected = detect_doc_type(file.filename or "")
+        eff_type = doc_type if doc_type and doc_type != "AUTO" else detected
+        if not eff_type or eff_type not in AE_ENGINEER_ALLOWED_TYPES or (detected and detected not in AE_ENGINEER_ALLOWED_TYPES):
+            raise PermissionDenied(
+                f"A&E Engineers can only upload CD and SA_MA documents. File '{file.filename}' is {f'a {detected}' if detected else 'not a CD or SA_MA'} document.",
+                details={"allowed": sorted(AE_ENGINEER_ALLOWED_TYPES)},
+            )
     data = await file.read()
     if not data:
         raise ValidationError("File is empty")
@@ -402,7 +415,7 @@ async def check_content(site_id: str, file: UploadFile = File(...), doc_type: st
 @router.post("/sharepoint/sites/{site_id}/upload")
 async def upload(site_id: str, file: UploadFile = File(...), doc_type: str | None = Form(default=None),
                  replace_file: str | None = Form(default=None),
-                 user: dict = Depends(require("ADMIN"))):
+                 user: dict = Depends(require("ADMIN", "AE_ENGINEER"))):
     """Upload one file into the selected site's folder. The site comes from the path, so a file can only go to that one site."""
     sid = validate_site_id(site_id)
     store = get_store()
@@ -410,6 +423,26 @@ async def upload(site_id: str, file: UploadFile = File(...), doc_type: str | Non
         raise NotFound(f"Site {sid} has no folder in SharePoint")
     if repo().select("CORE.SITE", {"SITE_ID": sid}):
         check_site_scope(user, sid)
+    # A&E Engineers may only upload CD and MA_SA (SA_MA) documents.
+    # If doc_type is not provided or set to AUTO, detect it from the filename.
+    # Disallowed document types (e.g. RFDS, BOM, Drone) or unclassifiable files are blocked.
+    if user.get("role") == "AE_ENGINEER":
+        from scopeiq.common.errors import PermissionDenied
+        detected = detect_doc_type(file.filename or "")
+        eff_type = doc_type if doc_type and doc_type != "AUTO" else detected
+        if not eff_type or eff_type not in AE_ENGINEER_ALLOWED_TYPES:
+            raise PermissionDenied(
+                f"A&E Engineers can only upload CD and SA_MA documents. "
+                f"File '{file.filename}' is {f'a {detected}' if detected else 'not a CD or SA_MA'} document.",
+                details={"allowed": sorted(AE_ENGINEER_ALLOWED_TYPES)},
+            )
+        if detected and detected not in AE_ENGINEER_ALLOWED_TYPES:
+            raise PermissionDenied(
+                f"A&E Engineers can only upload CD and SA_MA documents. "
+                f"File '{file.filename}' is a {detected} document.",
+                details={"allowed": sorted(AE_ENGINEER_ALLOWED_TYPES)},
+            )
+        doc_type = eff_type
     if doc_type and doc_type not in TYPE_FOLDERS:
         raise ValidationError(f"Unknown document type {doc_type}", details={"allowed": list(TYPE_FOLDERS)})
     data = await file.read()
@@ -422,12 +455,18 @@ async def upload(site_id: str, file: UploadFile = File(...), doc_type: str | Non
     out = {"site_id": sid, **saved}
     if inspection.status == "UPDATED":
         out["is_updated"] = True
+        out["is_duplicate"] = False
+        out["already_exists"] = False
+        out["duplicate_of"] = None
         out["updated_from"] = inspection.existing_file
         out["diff"] = inspection.to_dict()["diff"]
         out["message"] = f"Changes detected: Contains updates compared to '{inspection.existing_file}'."
     elif inspection.status == "DUPLICATE":
         out["is_duplicate"] = True
         out["already_exists"] = True
+        out["is_updated"] = False
+        out["updated_from"] = None
+        out["diff"] = None
         out["duplicate_of"] = inspection.existing_file
         out["message"] = f"Already exists: Identical content matches '{inspection.existing_file}'."
     return out

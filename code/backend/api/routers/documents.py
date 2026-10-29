@@ -60,6 +60,16 @@ async def check_content(site_id: str, file: UploadFile = File(...), doc_type: st
     """Pre-upload content inspection: checks whether the file has new data, duplicate data, or updated data with new additions."""
     repo().get("CORE.SITE", SITE_ID=site_id)
     name = Path(file.filename or "").name
+    if user.get("role") == "AE_ENGINEER":
+        from scopeiq.common.errors import PermissionDenied
+        from scopeiq.integrations.sharepoint import detect_doc_type
+        detected = detect_doc_type(name)
+        eff_type = doc_type if doc_type and doc_type != "AUTO" else detected
+        if not eff_type or eff_type not in ("CD", "MA_SA") or (detected and detected not in ("CD", "MA_SA")):
+            raise PermissionDenied(
+                f"A&E Engineers can only upload CD and SA_MA documents. File '{name}' is {f'a {detected}' if detected else 'not a CD or SA_MA'} document.",
+                details={"allowed": ["CD", "MA_SA"]}
+            )
     data = await file.read()
     if not data or len(data) > MAX_BYTES:
         raise ValidationError("File is empty or larger than 400 MB")
@@ -76,13 +86,27 @@ async def upload(site_id: str, doc_type: str = Form(...), file: UploadFile = Fil
                  action: str | None = Form(default=None),
                  user: dict = Depends(require("SCOPER", "AE_ENGINEER", "DRONE_VENDOR", "CX_SP", "ERICSSON"))):
     repo().get("CORE.SITE", SITE_ID=site_id)
+    if user.get("role") == "AE_ENGINEER":
+        from scopeiq.common.errors import PermissionDenied
+        if doc_type not in ("CD", "MA_SA"):
+            raise PermissionDenied(
+                f"A&E Engineers can only upload CD and SA_MA documents (received: '{doc_type}').",
+                details={"allowed": ["CD", "MA_SA"]}
+            )
     if doc_type not in UPLOAD_FOLDERS:
         raise ValidationError(f"Unknown document type {doc_type}", details={"allowed": list(UPLOAD_FOLDERS)})
     name = Path(file.filename or "").name
     if not name:
         raise ValidationError("File name missing")
     folder = UPLOAD_FOLDERS[doc_type]
-    if classify(f"{folder}/{name}") != doc_type:
+    detected = classify(f"{folder}/{name}")
+    if user.get("role") == "AE_ENGINEER" and (not detected or detected not in ("CD", "MA_SA")):
+        from scopeiq.common.errors import PermissionDenied
+        raise PermissionDenied(
+            f"A&E Engineers can only upload CD and SA_MA documents. File '{name}' is {f'a {detected}' if detected else 'not a CD or SA_MA'} document.",
+            details={"allowed": ["CD", "MA_SA"]}
+        )
+    if detected != doc_type:
         raise ValidationError(f"'{name}' does not look like a {doc_type} file - use the site naming convention "
                               f"(e.g. {site_id}_CD_REV2.pdf, {site_id}_RFDS_R4.xlsx)", details={"folder": folder})
     data = await file.read()

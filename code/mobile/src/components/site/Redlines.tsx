@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Image, Linking, Modal, Platform, Pressable, TextInput, View } from 'react-native';
+import { Image, Linking, Modal, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { api, ApiError, authedUrl } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { Row as R } from '../../lib/types';
@@ -20,10 +20,14 @@ export function RfiCard({ r, reload }: { r: R; reload: () => void }) {
       setErr(e as ApiError);
     }
   };
+  const toParty = r.TO_PARTY === 'AE_ENGINEER' ? 'To AE_ENGINEER' : 'To Admin';
   return (
     <Card>
-      <Row style={{ justifyContent: 'space-between' }}><Title>{`To ${r.TO_PARTY}`}</Title><Badge text={r.STATUS} /></Row>
-      <Muted style={{ color: colors.text, fontWeight: '600' }}>{r.SUBJECT}</Muted>
+      <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+        <Title>{toParty}</Title>
+        <Badge text={r.STATUS} />
+      </Row>
+      <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>{r.SUBJECT}</Text>
       <Muted style={{ color: colors.text }}>{r.QUESTION}</Muted>
       {r.PROPOSED_ANSWER ? <KV k="Proposed answer" v={r.PROPOSED_ANSWER} /> : null}
       {r.ANSWER ? <KV k="Answer" v={r.ANSWER} /> : null}
@@ -32,7 +36,7 @@ export function RfiCard({ r, reload }: { r: R; reload: () => void }) {
           <WorkflowActions actions={(r.ACTIONS ?? []).filter((a: string) => a !== 'ANSWER')} endpoint={`/rfis/${r.RFI_ID}/transition`} entity="RFI" onDone={reload} />
         </View>
       ) : null}
-      {can('ERICSSON', 'AE_ENGINEER') && (r.ACTIONS ?? []).includes('ANSWER') ? (
+      {can('ADMIN', 'ERICSSON', 'AE_ENGINEER') && (r.ACTIONS ?? []).includes('ANSWER') ? (
         <View style={{ marginTop: space(2), gap: space(2) }}>
           <TextInput style={[s.input, { minHeight: 60 }]} multiline value={answer} onChangeText={setAnswer} placeholder="Answer" />
           <Button small title="Send answer" disabled={!answer.trim()} onPress={send} />
@@ -121,6 +125,7 @@ function PdfPreview({ path }: { path: string }) {
 }
 
 export function Redlines({ siteId }: { siteId: string }) {
+  const { user } = useAuth();
   const red = useApi<R[]>(`/redlines?site_id=${siteId}`);
   const rfis = useApi<R[]>(`/rfis?site_id=${siteId}`);
   if (red.error) return <ErrorView error={red.error} onRetry={red.reload} />;
@@ -131,20 +136,36 @@ export function Redlines({ siteId }: { siteId: string }) {
       {pdf ? <PdfPreview path={pdf} /> : null}
       <Section title={`Redlines (${red.data.length})`}>
         {!red.data.length ? <Empty text="No redlines for this site." /> : null}
-        {red.data.map((x, i) => (
-          <Card key={x.REDLINE_ID}>
-            <Row style={{ justifyContent: 'space-between' }}><Title>{`${i + 1}. ${x.DOC_TYPE} ${x.DOC_REVISION ?? ''} sheet ${x.SHEET}`}</Title><Badge text={x.STATUS} /></Row>
-            <Muted style={{ color: colors.text }}>{x.MARKUP}</Muted>
-            <KV k="Was" v={x.CHANGE_FROM} />
-            <KV k="Now" v={x.CHANGE_TO} />
-            <ProofStrip proof={x.PROOF ?? []} />
-            {(x.ACTIONS ?? []).length ? (
-              <View style={{ marginTop: space(3) }}>
-                <WorkflowActions actions={x.ACTIONS} endpoint={`/redlines/${x.REDLINE_ID}/transition`} entity="REDLINE" onDone={red.reload} />
-              </View>
-            ) : null}
-          </Card>
-        ))}
+        {red.data.map((x, i) => {
+          const st =
+            ['IN_REVIEW', 'APPROVED', 'SENT_TO_AE', 'DRAFT'].includes(x.STATUS) ? 'IN_REVIEW' :
+            ['WORK_QUEUE', 'ACKNOWLEDGED'].includes(x.STATUS) ? 'WORK_QUEUE' :
+            ['COMPLETED', 'INCORPORATED', 'CLOSED'].includes(x.STATUS) ? 'COMPLETED' :
+            x.STATUS;
+          const statusCol =
+            st === 'IN_REVIEW' ? colors.warn :
+            st === 'WORK_QUEUE' ? colors.primary :
+            st === 'COMPLETED' ? colors.ok :
+            st === 'REJECTED' ? colors.danger : colors.muted;
+
+          return (
+            <Card key={x.REDLINE_ID}>
+              <Row style={{ justifyContent: 'space-between' }}>
+                <Title>{`${i + 1}. ${x.DOC_TYPE} ${x.DOC_REVISION ?? ''} sheet ${x.SHEET}`}</Title>
+                <Badge text={st.replace('_', ' ')} color={statusCol} />
+              </Row>
+              <Muted style={{ color: colors.text }}>{x.MARKUP}</Muted>
+              <KV k="Was" v={x.CHANGE_FROM} />
+              <KV k="Now" v={x.CHANGE_TO} />
+              <ProofStrip proof={x.PROOF ?? []} />
+              {user?.role === 'AE_ENGINEER' && (x.ACTIONS ?? []).length ? (
+                <View style={{ marginTop: space(3) }}>
+                  <WorkflowActions actions={x.ACTIONS} endpoint={`/redlines/${x.REDLINE_ID}/transition`} entity="REDLINE" onDone={red.reload} />
+                </View>
+              ) : null}
+            </Card>
+          );
+        })}
       </Section>
       <Section title={`RFIs (${rfis.data.length})`}>
         {!rfis.data.length ? <Empty text="No RFIs for this site." /> : null}

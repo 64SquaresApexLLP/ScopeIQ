@@ -45,6 +45,7 @@ export default function TabsLayout() {
 
   return (
     <Tabs
+      initialRouteName={isAe ? 'rfis' : 'index'}
       screenOptions={{
         headerStyle: { backgroundColor: colors.primary, height: 64, shadowOpacity: 0, borderBottomWidth: 0 } as any,
         headerTintColor: '#fff',
@@ -63,6 +64,30 @@ export default function TabsLayout() {
       } as any}
     >
       <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Dashboard',
+          tabBarLabel: wide ? 'Dashboard' : 'Home',
+          tabBarIcon: icon('grid'),
+          href: isAe ? null : undefined,
+        }}
+      />
+      <Tabs.Screen
+        name="sites"
+        options={{
+          title: 'Sites',
+          tabBarIcon: icon('map-pin'),
+        }}
+      />
+      <Tabs.Screen
+        name="queue"
+        options={{
+          title: user?.role === 'CX_SP' ? 'Handshake' : 'Work queue',
+          tabBarLabel: wide ? undefined : 'Queue',
+          tabBarIcon: icon('list'),
+        }}
+      />
+      <Tabs.Screen
         name="rfis"
         options={{
           title: 'Redlines & RFIs',
@@ -79,38 +104,12 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Dashboard',
-          tabBarLabel: wide ? 'Dashboard' : 'Home',
-          tabBarIcon: icon('grid'),
-          href: isAe ? null : undefined,
-        }}
-      />
-      <Tabs.Screen
-        name="sites"
-        options={{
-          title: 'Sites',
-          tabBarIcon: icon('map-pin'),
-          href: isAe ? null : undefined,
-        }}
-      />
-      <Tabs.Screen
-        name="queue"
-        options={{
-          title: user?.role === 'CX_SP' ? 'Handshake' : 'Work queue',
-          tabBarLabel: wide ? undefined : 'Queue',
-          tabBarIcon: icon('list'),
-          href: isAe ? null : undefined,
-        }}
-      />
-      <Tabs.Screen
         name="sharepoint"
         options={{
           title: 'SharePoint',
           tabBarLabel: wide ? 'SharePoint' : 'Files',
           tabBarIcon: icon('upload-cloud'),
-          href: user?.role === 'ADMIN' ? undefined : null,
+          href: user?.role === 'ADMIN' || isAe ? undefined : null,
         }}
       />
       <Tabs.Screen

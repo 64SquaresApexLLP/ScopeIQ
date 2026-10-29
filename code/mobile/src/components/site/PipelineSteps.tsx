@@ -727,7 +727,7 @@ function RedlinesAndRfis({ siteId, x, reload }: { siteId: string; x: { redlines:
         {!x.rfis.length ? <Muted>No questions to raise.</Muted> : null}
         {x.rfis.map((r) => (
           <View key={r.RFI_ID} style={{ paddingVertical: 4 }}>
-            <Row style={{ justifyContent: 'space-between' }}><Muted style={{ color: colors.text }}>{`To ${r.TO_PARTY}`}</Muted><Badge text={r.STATUS} /></Row>
+            <Row style={{ justifyContent: 'space-between' }}><Muted style={{ color: colors.text }}>{`To ${r.TO_PARTY === 'AE_ENGINEER' ? 'AE_ENGINEER' : 'Admin'}`}</Muted><Badge text={r.STATUS} /></Row>
             <Muted>{r.SUBJECT}</Muted>
           </View>
         ))}

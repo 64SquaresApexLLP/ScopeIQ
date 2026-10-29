@@ -83,7 +83,11 @@ export function WorkflowActions({ actions, endpoint, entity, onDone, details }: 
   };
 
   const getActionTitle = (act: string) => {
-    if (entity === 'RFI' && act.toUpperCase() === 'SUBMIT') return 'Send';
+    const u = act.toUpperCase();
+    if (entity === 'RFI' && u === 'SUBMIT') return 'Send';
+    if (entity === 'REDLINE' && u === 'REVIEW_DONE') return 'Review Done';
+    if (entity === 'REDLINE' && (u === 'COMPLETE' || u === 'INCORPORATE')) return 'Complete';
+    if (entity === 'REDLINE' && u === 'REJECT') return 'Reject';
     return act.replace(/_/g, ' ');
   };
 

@@ -108,73 +108,10 @@
     "target_sheet": "A-2",
     "bom_impact": "None unless the trunk step changes",
     "evidence": [
-      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXIR1340\\TXIR1340_f000.jpg",
-      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXIR1340\\TXIR1340_f012.jpg",
-      "G:\\64Squares Work\\ScopeIQ-POC\\ScopeIQ-POC\\code\\output\\evidence\\TXIR1340\\TXIR1340_f021.jpg"
+      "C:\\Users\\Babita\\Desktop\\ScopeIQ\\code\\output\\evidence\\TXIR1340\\TXIR1340_f012.jpg",
+      "C:\\Users\\Babita\\Desktop\\ScopeIQ\\code\\output\\evidence\\TXIR1340\\TXIR1340_f016.jpg",
+      "C:\\Users\\Babita\\Desktop\\ScopeIQ\\code\\output\\evidence\\TXIR1340\\TXIR1340_f042.jpg"
     ],
-    "status": "OPEN",
-    "confidence": 1.0
-  },
-  {
-    "disc_id": "DSC-4E22C0B2071D",
-    "site_id": "TXIR1340",
-    "rule_id": "BOM-04",
-    "family": "REV0_BOM",
-    "severity": "HIGH",
-    "outcome": "BOM_CHANGE",
-    "title": "Non-approved AF-LC-15 used instead of FJ-LCLC-OD-20",
-    "description": "REV 0 differs from the kitting rules applied to the CD as drawn: Alpha AF-LC-15 (R-AIR-03): REV 0 1 vs rules 1; Beta AF-LC-15 (R-AIR-03): REV 0 1 vs rules 1; Gamma AF-LC-15 (R-AIR-03): REV 0 1 vs rules 1. Corrected on REV 1 (RC-REV0-ERR).",
-    "sector": null,
-    "position": null,
-    "expected": [
-      {
-        "sector": "A",
-        "part": "FJ20",
-        "qty": 1.0,
-        "rule": "R-AIR-03"
-      },
-      {
-        "sector": "B",
-        "part": "FJ20",
-        "qty": 1.0,
-        "rule": "R-AIR-03"
-      },
-      {
-        "sector": "C",
-        "part": "FJ20",
-        "qty": 1.0,
-        "rule": "R-AIR-03"
-      }
-    ],
-    "found": [
-      {
-        "sector": "A",
-        "part": "FJ15NA",
-        "qty": 1.0,
-        "rule": "R-AIR-03"
-      },
-      {
-        "sector": "B",
-        "part": "FJ15NA",
-        "qty": 1.0,
-        "rule": "R-AIR-03"
-      },
-      {
-        "sector": "C",
-        "part": "FJ15NA",
-        "qty": 1.0,
-        "rule": "R-AIR-03"
-      }
-    ],
-    "governing": "KIT_RULES",
-    "sources": [
-      "BOM REV 0",
-      "Kit rules on CD as drawn"
-    ],
-    "target_doc": "BOM_REV0",
-    "target_sheet": "",
-    "bom_impact": "Swap 3 x FJ15NA for FJ20",
-    "evidence": [],
     "status": "OPEN",
     "confidence": 1.0
   }
