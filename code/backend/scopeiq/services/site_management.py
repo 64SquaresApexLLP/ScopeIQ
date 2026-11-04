@@ -115,68 +115,28 @@ def delete_site_cascade(repo: Repository, site_id: str, delete_files: bool = Tru
         except Exception:
             pass
 
-    # 5. Delete physical files from disk
+    # 5. Delete the site's files from the folders the app is configured to use (never a path built from where the code happens to sit)
     removed_paths: list[str] = []
+    failed_paths: list[str] = []
     if delete_files:
-        try:
-            st = get_settings()
-            backend_code_dir = Path(__file__).resolve().parents[2]
-            workspace_dirs = [
-                backend_code_dir,
-                Path("/Users/adarshsharma/Documents/Projects/ScopeIQ2/ScopeIQ/code"),
-            ]
-
-            for base in workspace_dirs:
-                if not base.exists():
-                    continue
-
-                # Output sites folder
-                p_site = base / "output" / "sites" / sid
-                if p_site.is_dir():
-                    shutil.rmtree(p_site, ignore_errors=True)
-                    removed_paths.append(str(p_site))
-
-                # Output evidence folder
-                p_ev = base / "output" / "evidence" / sid
-                if p_ev.is_dir():
-                    shutil.rmtree(p_ev, ignore_errors=True)
-                    removed_paths.append(str(p_ev))
-
-                # Output uploads folder
-                p_up = base / "output" / "uploads" / sid
-                if p_up.is_dir():
-                    shutil.rmtree(p_up, ignore_errors=True)
-                    removed_paths.append(str(p_up))
-
-                # SharePoint local store folder
-                p_sp = base / "output" / "sharepoint" / "Ericsson-Scoping" / "Sites" / sid
-                if p_sp.is_dir():
-                    shutil.rmtree(p_sp, ignore_errors=True)
-                    removed_paths.append(str(p_sp))
-
-            # Data/Input-Data/Sites/{site_id} — seed/input documents for the pipeline
-            # We walk up from the backend code dir to the repo root (3 levels up from code/backend)
-            try:
-                backend_code_dir = Path(__file__).resolve().parents[2]
-                repo_root = backend_code_dir.parent.parent  # code/backend → code → repo root
-                p_input = repo_root / "Data" / "Input-Data" / "Sites" / sid
-                if p_input.is_dir():
-                    shutil.rmtree(p_input, ignore_errors=True)
-                    removed_paths.append(str(p_input))
-                    log.info("Deleted input-data folder: %s", p_input)
-            except Exception as exc:
-                log.debug("Could not delete Data/Input-Data/Sites/%s: %s", sid, exc)
-
-            # Store deletion via store interface
-            try:
-                store = get_store()
-                if hasattr(store, "delete_site_folder"):
-                    store.delete_site_folder(sid)
-            except Exception as e:
-                log.debug("Store delete_site_folder notice: %s", e)
-
-        except Exception as exc:
-            log.warn("Error cleaning file paths for %s: %s", sid, exc)
+        st = get_settings()
+        output = Path(st.path("paths.output_dir"))
+        folders = [output / "sites" / sid,                    # redlined drawings and proof pictures
+                   output / "evidence" / sid,                 # video frames
+                   Path(st.path("paths.upload_dir")) / sid,   # revised drawings issued by the app
+                   Path(st.path("paths.sites_dir")) / sid,    # the site's input folder
+                   Path(st.path("sharepoint.local_root")) / str(st.get("sharepoint.library_root", "Ericsson-Scoping/Sites")) / sid]   # local document library
+        for folder in folders:
+            if not folder.exists():
+                continue
+            shutil.rmtree(folder, ignore_errors=True)
+            (failed_paths if folder.exists() else removed_paths).append(str(folder))     # say so when a file was locked and the folder is still there
+        try:                                                  # a document library that is not a local folder (SharePoint) deletes its own copy
+            get_store().delete_site_folder(sid)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("library folder for %s was not deleted: %s", sid, exc)
+        if failed_paths:
+            log.warning("could not remove %s for site %s", failed_paths, sid)
 
     # 6. Audit Trail record
     try:
@@ -196,5 +156,6 @@ def delete_site_cascade(repo: Repository, site_id: str, delete_files: bool = Tru
         "site_id": sid,
         "deleted_tables": deleted_counts,
         "removed_paths": removed_paths,
+        "failed_paths": failed_paths,
         "total_records_deleted": sum(deleted_counts.values()),
     }
