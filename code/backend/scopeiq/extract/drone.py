@@ -223,7 +223,7 @@ def _circ_mean(angles: list[float]) -> float:
 def _dims_error(obj: FieldObject, it) -> float:
     if not obj.dims_in or not it.height_m:
         return 9e9
-    h, w, d = (x * IN for x in obj.dims_in)
+    h, w, d = (float(x) * IN for x in obj.dims_in)
     return abs(h - it.height_m) / it.height_m + abs(w - it.width_m) / it.width_m + 0.5 * abs(d - it.depth_m) / max(it.depth_m, 0.05)
 
 
@@ -234,10 +234,11 @@ def _match_model(obj: FieldObject, catalog: Catalog, kinds: tuple[str, ...], pre
     """Identify a model from the vendor's guess or from dimensions. Returns (key, confidence, look-alikes).
     Models whose dimensions are indistinguishable (within 0.05 error) are look-alikes; among them a model already
     present on the site is preferred and confidence is halved so a person confirms it."""
+    conf = float(obj.confidence) if obj.confidence is not None else 0.0
     if obj.model_guess:
         cat, score = catalog.resolve(obj.model_guess, kinds=kinds)
         if cat and score >= 0.9:
-            return cat.key, round(min(obj.confidence, 0.99) * score, 3), []
+            return cat.key, round(min(conf, 0.99) * float(score), 3), []
     if not obj.dims_in:
         return None, 0.0, []
     scored = sorted((_dims_error(obj, catalog.get(k)), k) for kind in kinds for k in catalog.keys_of_kind(kind))
@@ -247,7 +248,7 @@ def _match_model(obj: FieldObject, catalog: Catalog, kinds: tuple[str, ...], pre
     alike = [k for e, k in scored if e <= best_err + 0.05]
     pick = next((k for k in alike if prefer and k in prefer), alike[0])
     score = max(0.0, 1 - _dims_error(obj, catalog.get(pick)) / 1.5) * (0.5 if len(alike) > 1 else 1.0)
-    return pick, round(min(obj.confidence, 0.99) * score, 3), [k for k in alike if k != pick]
+    return pick, round(min(conf, 0.99) * float(score), 3), [k for k in alike if k != pick]
 
 
 OBJECT_SUBCATEGORY = {"Mount pipe": "Mount Pipe", "Roof sled": "Roof Sled"}     # objects the catalog names by type, not by size

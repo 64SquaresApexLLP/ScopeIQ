@@ -3,7 +3,7 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
 import { Image, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
-import { ActionPill, CompareStrip, FAMILY, fixOf, Panel, RuleCode, sevOf, WhereChip } from '../../components/site/FindingView';
+import { ActionPill, CompareStrip, eventLabel, FAMILY, fixOf, Panel, RuleCode, sevOf, WhereChip } from '../../components/site/FindingView';
 import { colors, space } from '../../components/theme';
 import { Badge, Button, Card, ErrorView, Icon, KV, Loading, Muted, Row, s, Section, Title } from '../../components/ui';
 import { WorkflowActions } from '../../components/WorkflowActions';
@@ -34,16 +34,33 @@ export default function Discrepancy() {
   if (!d.data) return <Loading />;
   const x = d.data;
   const sev = sevOf(x);
-  const found = Array.isArray(x.FOUND?.v) && x.FOUND.v.length && x.FOUND.v[0] && typeof x.FOUND.v[0] === 'object' && 'field' in x.FOUND.v[0] ? (x.FOUND.v as R[]) : null;
+  const found = Array.isArray(x.FOUND?.v) && x.FOUND.v.length > 0 && typeof x.FOUND.v[0] === 'object' && x.FOUND.v[0] !== null && 'field' in x.FOUND.v[0] ? (x.FOUND.v as R[]) : null;
+  const isRedlineRemoved = x.AE_STATUS === 'REDLINE_REMOVED' || x.STATUS === 'CLOSED' || (x.STATUS === 'RESOLVED' && !x.REDLINE_PENDING_REMOVAL);
+  const isAeRevised = !isRedlineRemoved && (x.AE_STATUS === 'IMPROVED_REV_RECEIVED' || x.REASON_CODE === 'RC-AE-REVISED' || x.REDLINE_PENDING_REMOVAL);
+  const isSentToAe = !isRedlineRemoved && !isAeRevised && (x.AE_STATUS === 'SENT_TO_AE' || x.STATUS === 'REDLINED');
+  const revLabel = x.AE_REVISION_LABEL || 'REV 2';
+
   return (
     <ScrollView style={s.screen} contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={d.loading} onRefresh={d.reload} />}>
       <Stack.Screen options={{ title: `${x.SITE_ID} ${x.RULE_ID}` }} />
-      <View style={{ flexDirection: 'row', backgroundColor: colors.card, borderRadius: 18, marginBottom: space(3), borderWidth: 1, borderColor: colors.border, overflow: 'hidden' }}>
-        <View style={{ width: 6, backgroundColor: sev.color }} />
+      <View style={{ flexDirection: 'row', backgroundColor: colors.card, borderRadius: 18, marginBottom: space(3), borderWidth: 1, borderColor: isRedlineRemoved ? '#86efac' : isAeRevised ? '#10b981' : isSentToAe ? '#3b82f6' : colors.border, overflow: 'hidden' }}>
+        <View style={{ width: 6, backgroundColor: isRedlineRemoved ? '#10b981' : isAeRevised ? '#10b981' : sev.color }} />
         <View style={{ flex: 1, padding: space(5), gap: space(3) }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space(2) }}>
-            <Badge text={`${sev.label} severity`} color={sev.color} />
-            <Badge text={x.STATUS} />
+            {isRedlineRemoved ? (
+              <Badge text="RESOLVED" color={colors.ok} />
+            ) : (
+              <Badge text={`${sev.label} severity`} color={sev.color} />
+            )}
+            {isRedlineRemoved ? (
+              <Badge text={`${revLabel} UPDATED`} color={colors.ok} />
+            ) : isAeRevised ? (
+              <Badge text={`${revLabel} RECEIVED`} color={colors.ok} />
+            ) : isSentToAe ? (
+              <Badge text="SENT TO A&E" color={colors.primary} />
+            ) : (
+              <Badge text={x.STATUS} />
+            )}
             <Text style={{ fontSize: 12, color: colors.muted }}>{FAMILY[x.FAMILY] ?? x.FAMILY}</Text>
             <RuleCode code={x.RULE_ID} />
           </View>
@@ -51,6 +68,49 @@ export default function Discrepancy() {
           <WhereChip x={x} />
         </View>
       </View>
+
+      {isRedlineRemoved ? (
+        <View style={{ backgroundColor: '#f0fdf4', borderColor: '#86efac', borderWidth: 1, borderRadius: 14, padding: space(4), marginBottom: space(3), gap: space(2) }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space(2) }}>
+            <Icon name="check-circle" size={18} color="#16a34a" />
+            <Text style={{ fontSize: 15, fontWeight: '800', color: '#15803d' }}>Resolved in {revLabel} • Redline updated & removed</Text>
+          </View>
+          <Text style={{ fontSize: 13, color: '#166534', lineHeight: 20 }}>
+            A&E updated the CD drawing ({revLabel}) matching measured values. The redline markup has been verified and removed.
+          </Text>
+        </View>
+      ) : null}
+
+      {isAeRevised ? (
+        <View style={{ backgroundColor: '#ecfdf5', borderColor: '#10b981', borderWidth: 1, borderRadius: 14, padding: space(4), marginBottom: space(3), gap: space(2) }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: space(2) }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space(2) }}>
+              <Icon name="check-circle" size={18} color="#059669" />
+              <Text style={{ fontSize: 15, fontWeight: '800', color: '#065f46' }}>Improved version ({revLabel}) received from A&E</Text>
+            </View>
+            {can('SCOPER', 'REVIEWER', 'ADMIN') ? (
+              <Button small title="Remove redline & Close" onPress={() => post(`/discrepancies/${id}/remove-redline`, {})} />
+            ) : null}
+          </View>
+          <Text style={{ fontSize: 13, color: '#047857', lineHeight: 20 }}>
+            A&E updated the CD drawing ({revLabel}) matching measured values. This discrepancy will remain visible in the Discrepancies list until you verify and remove the redline.
+          </Text>
+        </View>
+      ) : null}
+
+      {isSentToAe && !isAeRevised ? (
+        <View style={{ backgroundColor: '#eff6ff', borderColor: '#3b82f6', borderWidth: 1, borderRadius: 14, padding: space(4), marginBottom: space(3), gap: space(2) }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: space(2) }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space(2) }}>
+              <Icon name="send" size={16} color="#2563eb" />
+              <Text style={{ fontSize: 14, fontWeight: '700', color: '#1e40af' }}>Sent to A&E • In review for revised CD</Text>
+            </View>
+            {can('AE_ENGINEER', 'ADMIN') ? (
+              <Button small title="Send improved REV 2" onPress={() => post(`/discrepancies/${id}/submit-ae-revision`, { revision: 'REV 2', comment: 'Improved CD revision incorporating drone measurements' })} />
+            ) : null}
+          </View>
+        </View>
+      ) : null}
       <Panel icon="search" title="What we found">
         <CompareStrip x={x} large />
         {x.DESCRIPTION ? <Text style={{ fontSize: 14, lineHeight: 22, color: colors.text, marginTop: space(3) }}>{x.DESCRIPTION}</Text> : null}
@@ -94,8 +154,10 @@ export default function Discrepancy() {
       <Section title="Actions">
         <Card>
           <WorkflowActions actions={x.ACTIONS} endpoint={`/discrepancies/${id}/transition`} entity="DISCREPANCY" onDone={d.reload} />
-          {can('SCOPER', 'REVIEWER') && x.ASSIGNED_TO !== user?.user_id ? (
-            <View style={{ marginTop: space(2) }}><Button small kind="secondary" title="Assign to me" onPress={() => post(`/discrepancies/${id}/assign`, { user_id: user?.user_id })} /></View>
+          {!isSentToAe && !isAeRevised && x.STATUS !== 'CLOSED' && can('SCOPER', 'REVIEWER', 'ADMIN') ? (
+            <View style={{ marginTop: space(2) }}>
+              <Button small title="Send to A&E for drawing revision" onPress={() => post(`/discrepancies/${id}/send-to-ae`, {})} />
+            </View>
           ) : null}
           {err ? <ErrorView error={err} /> : null}
         </Card>
@@ -116,7 +178,19 @@ export default function Discrepancy() {
         <View style={{ marginTop: space(2) }}><Button small title="Add comment" disabled={!text.trim()} onPress={async () => { await post(`/discrepancies/${id}/comments`, { text }); setText(''); }} /></View>
       </Section>
       <Section title="History">
-        <Card>{x.HISTORY.length ? x.HISTORY.map((h) => <KV key={h.EVENT_ID} k={when(h.EVENT_TS)} v={`${h.FROM_STATE} -> ${h.TO_STATE} by ${h.ACTOR_USER_ID}${h.REASON_CODE ? ` (${h.REASON_CODE})` : ''}${h.COMMENT ? `: ${h.COMMENT}` : ''}`} />) : <Muted>No actions yet</Muted>}</Card>
+        <Card>
+          {x.HISTORY && x.HISTORY.length ? (
+            x.HISTORY.map((h, i) => (
+              <KV
+                key={h.EVENT_ID || i}
+                k={when(h.EVENT_TS)}
+                v={`${eventLabel(h, revLabel)}${h.COMMENT ? ` • "${h.COMMENT}"` : ''}`}
+              />
+            ))
+          ) : (
+            <Muted>No actions yet</Muted>
+          )}
+        </Card>
       </Section>
     </ScrollView>
   );

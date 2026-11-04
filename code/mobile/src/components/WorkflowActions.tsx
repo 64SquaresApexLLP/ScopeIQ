@@ -1,7 +1,7 @@
 // Workflow action bar used by every entity (site, discrepancy, redline, RFI, BOM revision, EH&S alert).
 // Actions come from the server for the signed-in role; reason codes and comments are asked for when the
 // transition requires them, and every transition is audited server-side.
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { api, ApiError } from '../lib/api';
 import { getLogger } from '../lib/logger';
@@ -54,7 +54,18 @@ export function WorkflowActions({ actions, endpoint, entity, onDone, details }: 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
 
-  const defs: WorkflowAction[] = actions.map((a) =>
+  // If both COMPLETE and INCORPORATE are present for REDLINE, keep only INCORPORATE to avoid duplicate "Complete" buttons
+  const deduplicatedActions = useMemo(() => {
+    if (entity === 'REDLINE') {
+      const names = actions.map((a) => (typeof a === 'string' ? a : a.action));
+      if (names.includes('INCORPORATE') && names.includes('COMPLETE')) {
+        return actions.filter((a) => (typeof a === 'string' ? a : a.action) !== 'COMPLETE');
+      }
+    }
+    return actions;
+  }, [actions, entity]);
+
+  const defs: WorkflowAction[] = deduplicatedActions.map((a) =>
     typeof a === 'string'
       ? details?.find((d) => d.action === a) ?? { action: a, to_state: '', requires_reason: false, requires_comment: false, description: '', roles: [] }
       : a,
