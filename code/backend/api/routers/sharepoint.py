@@ -422,6 +422,42 @@ def site_files(site_id: str, user: dict = Depends(require("ADMIN", "AE_ENGINEER"
     return {"site_id": sid, "location": f"{store.location} / {sid}", "files": files}
 
 
+@router.delete("/sharepoint/sites/{site_id}/files")
+def delete_file(
+    site_id: str,
+    folder: str,
+    file_name: str,
+    user: dict = Depends(require("ADMIN", "AE_ENGINEER")),
+):
+    """Delete a specific file from a site's SharePoint folder."""
+    sid = validate_site_id(site_id)
+    store = get_store()
+    if not store.site_exists(sid):
+        raise NotFound(f"Site {sid} has no folder in SharePoint")
+    if repo().select("CORE.SITE", {"SITE_ID": sid}):
+        check_site_scope(user, sid)
+
+    deleted = store.delete_file(sid, folder, file_name)
+    if not deleted:
+        raise NotFound(f"File '{file_name}' not found in folder '{folder}' for site {sid}")
+
+    try:
+        r = repo()
+        r.delete_where("CORE.DOCUMENT", {"SITE_ID": sid, "FILE_NAME": file_name})
+    except Exception:
+        pass
+
+    AuditTrail.record(
+        entity_type="SHAREPOINT_FILE",
+        entity_id=f"{sid}/{folder}/{file_name}",
+        action="DELETE_FILE",
+        site_id=sid,
+        source="sharepoint",
+        comment=f"Deleted file {file_name} from {folder} by {user.get('user_id')}",
+    )
+    return {"site_id": sid, "folder": folder, "file_name": file_name, "deleted": True}
+
+
 from scopeiq.services.document_compare import inspect_file_against_site
 
 
