@@ -1,10 +1,12 @@
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { FlatList, RefreshControl, Text, TextInput, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, Text, TextInput, View } from 'react-native';
 import { colors, space } from '../../components/theme';
 import { Badge, Card, Empty, ErrorView, Icon, Muted, Row, s, Title } from '../../components/ui';
+import { api } from '../../lib/api';
+import { useAuth } from '../../lib/auth';
 import { Row as R } from '../../lib/types';
-import { useApi } from '../../lib/useApi';
+import { mutateApi, useApi } from '../../lib/useApi';
 
 // Colour per document category so each pill is distinct
 const DOC_TYPE_COLORS: Record<string, string> = {
@@ -21,8 +23,22 @@ const DOC_TYPE_COLORS: Record<string, string> = {
 const docColor = (t: string) => DOC_TYPE_COLORS[t] ?? colors.info;
 
 export default function Sites() {
+  const { can } = useAuth();
   const sites = useApi<R[]>('/sites');
   const [q, setQ] = useState('');
+
+  const deleteSite = async (sid: string) => {
+    if (typeof window !== 'undefined' && !window.confirm(`Permanently delete site ${sid} and all its documents, run history, discrepancies, and files?`)) return;
+    try {
+      await api.del(`/sites/${encodeURIComponent(sid)}`);
+      sites.reload();
+      mutateApi('/sites');
+      mutateApi('/sharepoint/sites');
+      mutateApi('/sites/dashboard');
+    } catch (e: any) {
+      alert(`Could not delete site ${sid}: ${e?.message || e}`);
+    }
+  };
 
   // Automatically refresh when navigating back to Sites tab (e.g. after admin creates a site)
   const firstFocus = useRef(true);
@@ -84,9 +100,28 @@ export default function Sites() {
               }
             >
               {/* Header row — Site ID + workflow state */}
-              <Row style={{ justifyContent: 'space-between' }}>
+              <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
                 <Title>{item.SITE_ID}</Title>
-                <Badge text={item.WORKFLOW_STATE} color={colors.primary} />
+                <Row style={{ gap: space(2), alignItems: 'center' }}>
+                  <Badge text={item.WORKFLOW_STATE} color={colors.primary} />
+                  {can('ADMIN') ? (
+                    <Pressable
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        deleteSite(item.SITE_ID);
+                      }}
+                      style={({ pressed }) => ({
+                        padding: 6,
+                        borderRadius: 6,
+                        backgroundColor: '#FEE2E2',
+                        opacity: pressed ? 0.7 : 1,
+                      })}
+                      accessibilityLabel={`Delete site ${item.SITE_ID}`}
+                    >
+                      <Icon name="trash-2" size={14} color={colors.danger} />
+                    </Pressable>
+                  ) : null}
+                </Row>
               </Row>
 
               {/* Location */}

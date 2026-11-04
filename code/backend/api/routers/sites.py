@@ -3,9 +3,10 @@ from collections import Counter
 
 from fastapi import APIRouter, Depends
 
-from api.deps import current_user, repo, site_scope, workflow
-from scopeiq.common.errors import PermissionDenied
+from api.deps import current_user, repo, require, site_scope, workflow
+from scopeiq.common.errors import NotFound, PermissionDenied
 from scopeiq.integrations.sharepoint import get_store
+from scopeiq.services.site_management import delete_site_cascade
 
 router = APIRouter(prefix="/sites", tags=["sites"])
 
@@ -176,3 +177,15 @@ def extracted_fields(site_id: str, needs_review: bool | None = None, user: dict 
     if needs_review is not None:
         where["NEEDS_REVIEW"] = bool(needs_review)
     return r.select("CORE.EXTRACTED_FIELD", where)
+
+
+@router.delete("/{site_id}")
+def delete_site(site_id: str, user: dict = Depends(require("ADMIN"))):
+    """Admin: delete a site and all associated database records, documents, run history, and files."""
+    sid = site_id.strip().upper()
+    r = repo()
+    existing = r.select("CORE.SITE", {"SITE_ID": sid})
+    if not existing:
+        raise NotFound(f"Site {sid} not found")
+    res = delete_site_cascade(r, sid, delete_files=True, deleted_by=user.get("sub", "admin"))
+    return {"status": "ok", "site_id": sid, **res}
