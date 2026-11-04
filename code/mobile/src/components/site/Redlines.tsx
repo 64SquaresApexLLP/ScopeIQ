@@ -167,7 +167,7 @@ export function Redlines({ siteId }: { siteId: string }) {
     <View>
       {pdf ? <PdfPreview path={pdf} /> : null}
       <Section title={`Redlines (${red.data.length})`}>
-        {!red.data.length ? <Empty text="No redlines for this site." /> : null}
+        {!red.data.length ? <Empty text="No redlines yet. They appear here after the pipeline has run successfully for this site and found a mismatch to mark up." /> : null}
         {red.data.map((x, i) => {
           const st =
             ['IN_REVIEW', 'APPROVED', 'SENT_TO_AE', 'DRAFT'].includes(x.STATUS) ? 'IN_REVIEW' :
@@ -270,7 +270,7 @@ export function Redlines({ siteId }: { siteId: string }) {
         })}
       </Section>
       <Section title={`RFIs (${rfis.data.length})`}>
-        {!rfis.data.length ? <Empty text="No RFIs for this site." /> : null}
+        {!rfis.data.length ? <Empty text="No RFIs yet. They appear here after the pipeline has run successfully for this site." /> : null}
         {rfis.data.map((r) => <RfiCard key={r.RFI_ID} r={r} reload={rfis.reload} />)}
       </Section>
     </View>

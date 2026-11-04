@@ -79,10 +79,19 @@ jobs:
               Remove-Item "code\output\scopeiq_local.db" -Force -ErrorAction SilentlyContinue
           }
 
+          # Results of pipeline runs (redlined drawings, proof pictures, evidence frames) belong to the server, like its database.
+          # They are kept across deploys, so a deploy never brings back an older copy of a drawing or removes a current one.
+          Write-Host "Keeping generated outputs..."
+          $keep = "C:\ScopeIQ\_keep_outputs"
+          if (Test-Path $keep) { Remove-Item $keep -Recurse -Force }
+          New-Item -ItemType Directory -Path $keep | Out-Null
+          foreach ($d in "sites", "evidence") {
+              if (Test-Path "code\output\$d") { Copy-Item "code\output\$d" "$keep\$d" -Recurse -Force }
+          }
+
           Write-Host "Discarding working tree modifications..."
           git restore --staged . 2>$null
           git restore . 2>$null
-          git clean -fd "code/output/sites/" 2>$null
           Write-Host "Working tree cleaned."
 
       # -------------------------------------------------------------------------
@@ -103,6 +112,16 @@ jobs:
               Write-Error "git reset to FETCH_HEAD failed with exit code $LASTEXITCODE"
               exit 1
           }
+
+          Write-Host "Restoring generated outputs..."
+          $keep = "C:\ScopeIQ\_keep_outputs"
+          foreach ($d in "sites", "evidence") {
+              if (Test-Path "$keep\$d") {
+                  New-Item -ItemType Directory -Force -Path "code\output\$d" | Out-Null
+                  Copy-Item "$keep\$d\*" "code\output\$d" -Recurse -Force
+              }
+          }
+          if (Test-Path $keep) { Remove-Item $keep -Recurse -Force }
 
           Write-Host "Restoring operational SQLite database from backup..."
           if (Test-Path "C:\ScopeIQ\scopeiq_local.db.bak") {

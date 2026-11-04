@@ -64,7 +64,11 @@ engine:
   video_frames_per_site: 48
   proof_max_angle_deg: 45      # a video frame is proof for a place only if the camera faces it within this many degrees
   proof_per_redline: 2
-  require_drone_video: true    # no orbit video -> the run stops with 'Missing data' (the redline proof comes from it)
+  # Scope of this release: the CD drawing is compared with the drone survey, and nothing else. RFDS, MA/SA and the REV 0 BOM are still
+  # registered at ingest but are not read or compared; add them here (and RFDS_VS_CD, REVISION, ... to compared_families) to widen it.
+  extract_documents: [CD, DRONE]
+  compared_families: [CD_VS_FIELD]
+  required_documents: [CD, DRONE_VIDEO, "DRONE_VENDOR|DRONE_POINTCLOUD"]   # stage 1 stops the run if one is missing; A|B = at least one of the two
   orbit_start_bearing_deg: 90  # used only when the survey metadata does not state where the orbit starts / which way it turns
   orbit_direction: counter-clockwise
   ocr_dpi: 600
