@@ -34,7 +34,7 @@ export default function Discrepancy() {
   if (!d.data) return <Loading />;
   const x = d.data;
   const sev = sevOf(x);
-  const found = Array.isArray(x.FOUND?.v) && x.FOUND.v.length && 'field' in x.FOUND.v[0] ? (x.FOUND.v as R[]) : null;
+  const found = Array.isArray(x.FOUND?.v) && x.FOUND.v.length && x.FOUND.v[0] && typeof x.FOUND.v[0] === 'object' && 'field' in x.FOUND.v[0] ? (x.FOUND.v as R[]) : null;
   return (
     <ScrollView style={s.screen} contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={d.loading} onRefresh={d.reload} />}>
       <Stack.Screen options={{ title: `${x.SITE_ID} ${x.RULE_ID}` }} />
