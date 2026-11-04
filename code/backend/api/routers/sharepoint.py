@@ -15,6 +15,7 @@ from scopeiq.common.errors import Conflict, NotFound, ValidationError
 from scopeiq.config import get_settings
 from scopeiq.db.repository import now_iso
 from scopeiq.integrations.sharepoint import TYPE_FOLDERS, detect_doc_type, get_store, validate_site_id
+from scopeiq.services.site_management import delete_site_cascade
 
 router = APIRouter(tags=["sharepoint"])
 
@@ -277,7 +278,7 @@ AE_ENGINEER_ALLOWED_TYPES = {"CD", "MA_SA"}
 
 @router.get("/sharepoint/sites")
 def list_sites(user: dict = Depends(require("ADMIN", "AE_ENGINEER"))):
-    """Every site that has a SharePoint folder, with its file count. Admin only."""
+    """Every site that has a SharePoint folder and exists in the database. Admin only."""
     store, r = get_store(), repo()
     scope = site_scope(user)
     rows = {s["SITE_ID"]: s for s in r.select("CORE.SITE", scope or None, order_by="SITE_ID")}
@@ -288,13 +289,13 @@ def list_sites(user: dict = Depends(require("ADMIN", "AE_ENGINEER"))):
                 store.create_site_folder(sid)
     out = []
     for sid in store.list_site_ids():
-        if scope and sid not in rows:
+        if sid not in rows:
             continue
         files = store.list_files(sid)
         s = rows.get(sid, {})
         out.append({"site_id": sid, "site_name": s.get("SITE_NAME") or "", "city": s.get("CITY") or "", "state": s.get("STATE") or "",
                     "stream": s.get("STREAM") or "", "files": len(files), "bytes": sum(f["size"] for f in files),
-                    "in_database": sid in rows})
+                    "in_database": True})
     return {"location": store.location, "provider": store.name, "sites": out}
 
 
@@ -371,6 +372,42 @@ def update_site(site_id: str, body: SiteUpdate, user: dict = Depends(require("AD
     return {"site": r.get("CORE.SITE", SITE_ID=sid)}
 
 
+_SITE_CASCADE_TABLES = [
+    "CORE.REDLINE_PROOF", "CORE.REDLINE", "CORE.RFI", "CORE.BOM_CHANGE", "CORE.BOM_LINE", "CORE.BOM_REVISION",
+    "CORE.DISCREPANCY", "CORE.EHS_ALERT", "CORE.EQUIPMENT_DELTA", "CORE.DRIVER_LINE", "CORE.SITE_REQUIREMENT",
+    "CORE.ESTIMATE", "CORE.EVIDENCE_FRAME", "CORE.FIELD_OBJECT", "CORE.REV0_LINE", "CORE.ANALYSIS_RESULT",
+    "CORE.TRUNK_MEASURE", "CORE.SECTOR_INFO", "CORE.CONFIG_LINE", "CORE.EXTRACTED_COMPARISON_RECORD",
+    "CORE.EXTRACTED_FIELD", "CORE.PIPELINE_RUN", "CORE.UPLOAD", "CORE.DOCUMENT", "CORE.MILESTONE", "CORE.SITE",
+    "WF.COMMENT", "WF.NOTIFICATION", "WF.WORKFLOW_EVENT",
+]
+
+
+@router.delete("/admin/sites/{site_id}")
+def delete_site(site_id: str, user: dict = Depends(require("ADMIN"))):
+    """Admin: delete a site and all its associated records, run history, documents, and files."""
+    sid = validate_site_id(site_id)
+    r = repo()
+    existing = r.select("CORE.SITE", {"SITE_ID": sid})
+    if not existing:
+        raise NotFound(f"Site {sid} not found")
+    res = delete_site_cascade(r, sid, delete_files=True, deleted_by=user.get("sub", "admin"))
+    return {"site_id": sid, **res}
+
+
+@router.delete("/admin/sites")
+def delete_all_sites(user: dict = Depends(require("ADMIN"))):
+    """Admin: delete all sites and their associated pipeline data, run history, documents, and files."""
+    r = repo()
+    sites = [s["SITE_ID"] for s in r.select("CORE.SITE")]
+    store = get_store()
+    all_sids = sorted(set(sites) | set(store.list_site_ids()))
+    results = {}
+    for sid in all_sids:
+        results[sid] = delete_site_cascade(r, sid, delete_files=True, deleted_by=user.get("sub", "admin"))
+    AuditTrail.record(entity_type="SITE", entity_id="ALL", action="DELETE_ALL", after={"sites": list(results.keys())}, source="api")
+    return {"status": "ok", "deleted_sites": results}
+
+
 @router.get("/sharepoint/sites/{site_id}/files")
 def site_files(site_id: str, user: dict = Depends(require("ADMIN", "AE_ENGINEER"))):
     sid = validate_site_id(site_id)
@@ -383,6 +420,42 @@ def site_files(site_id: str, user: dict = Depends(require("ADMIN", "AE_ENGINEER"
     for f in files:
         f["doc_type"] = detect_doc_type(f["name"])
     return {"site_id": sid, "location": f"{store.location} / {sid}", "files": files}
+
+
+@router.delete("/sharepoint/sites/{site_id}/files")
+def delete_file(
+    site_id: str,
+    folder: str,
+    file_name: str,
+    user: dict = Depends(require("ADMIN", "AE_ENGINEER")),
+):
+    """Delete a specific file from a site's SharePoint folder."""
+    sid = validate_site_id(site_id)
+    store = get_store()
+    if not store.site_exists(sid):
+        raise NotFound(f"Site {sid} has no folder in SharePoint")
+    if repo().select("CORE.SITE", {"SITE_ID": sid}):
+        check_site_scope(user, sid)
+
+    deleted = store.delete_file(sid, folder, file_name)
+    if not deleted:
+        raise NotFound(f"File '{file_name}' not found in folder '{folder}' for site {sid}")
+
+    try:
+        r = repo()
+        r.delete_where("CORE.DOCUMENT", {"SITE_ID": sid, "FILE_NAME": file_name})
+    except Exception:
+        pass
+
+    AuditTrail.record(
+        entity_type="SHAREPOINT_FILE",
+        entity_id=f"{sid}/{folder}/{file_name}",
+        action="DELETE_FILE",
+        site_id=sid,
+        source="sharepoint",
+        comment=f"Deleted file {file_name} from {folder} by {user.get('user_id')}",
+    )
+    return {"site_id": sid, "folder": folder, "file_name": file_name, "deleted": True}
 
 
 from scopeiq.services.document_compare import inspect_file_against_site

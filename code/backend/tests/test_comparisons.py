@@ -36,11 +36,12 @@ def test_every_check_names_both_sides_and_files(pipeline_results):
 
 
 def test_every_discrepancy_appears_as_a_mismatch_and_back(pipeline_results, repo):
+    assert any(repo.select("CORE.DISCREPANCY", {"SITE_ID": sid, "RUN_ID": res["run_id"]}) for sid, res in pipeline_results.items())   # not all sites are clean
     for sid, res in pipeline_results.items():
         run_id = res["run_id"]
         saved = {d["DISC_ID"]: d["RULE_ID"] for d in repo.select("CORE.DISCREPANCY", {"SITE_ID": sid, "RUN_ID": run_id})}
         linked = {d for c in _checks(res) for d in c["disc_ids"]}
-        assert saved and set(saved) == linked, f"{sid}: findings {sorted(set(saved) ^ linked)} are not in the comparison log"
+        assert set(saved) == linked, f"{sid}: findings {sorted(set(saved) ^ linked)} are not in the comparison log"   # a clean site has none of either
         for c in _checks(res):
             if c["status"] == "MISMATCH":
                 assert c["disc_ids"], f"{sid} {c['check_id']}: a mismatch that was not logged as a discrepancy"

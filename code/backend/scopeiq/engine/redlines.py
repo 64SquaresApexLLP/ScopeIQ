@@ -177,13 +177,13 @@ def _rfi_text(d: Discrepancy, f: SiteFacts) -> tuple[str, str]:
         return (f"RFDS {f.rfds_revision} sets {SECTOR_NAMES.get(d.sector)} to {d.expected:g} deg; the CD (and field) show {d.found:g} deg. "
                 "Please confirm the re-orientation is intended."), f"Confirm {d.expected:g} deg per RFDS; CD to be redlined and re-orientation added to SoW."
     if r == "FLD-01":
-        return (f"The drone survey found {d.found} at {SECTOR_NAMES.get(d.sector)} position {d.position}, which is not on the RFDS or the CD. "
+        return (f"The drone survey found {d.found} at {SECTOR_NAMES.get(d.sector)} position {d.position}, which is not on the CD. "
                 "Please confirm it should be removed (or reused)."), "Remove; removal line added to the BOM."
     if r == "FLD-04":
         return (f"{SECTOR_NAMES.get(d.sector)} antennas measure {d.found:.0f} deg in the field vs {d.expected:g} deg designed. "
                 "Please confirm re-orientation to the design azimuth."), "Re-orient to design azimuth during construction."
     if r == "FLD-03":
-        return (f"Existing antennas measure {_nums(d.found)} ft rad center vs {_nums(d.expected)} ft on the CD/RFDS. Please confirm and revise the elevation."), \
+        return (f"Existing antennas measure {_nums(d.found)} ft rad center vs {_nums(d.expected)} ft on the CD. Please confirm and revise the elevation."), \
             "Revise CD A-2 to measured rad centers."
     return d.description, d.bom_impact or ""
 

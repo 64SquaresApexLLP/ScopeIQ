@@ -3,9 +3,10 @@ from collections import Counter
 
 from fastapi import APIRouter, Depends
 
-from api.deps import current_user, repo, site_scope, workflow
-from scopeiq.common.errors import PermissionDenied
+from api.deps import current_user, finished_sites, repo, require, site_scope, workflow
+from scopeiq.common.errors import NotFound, PermissionDenied
 from scopeiq.integrations.sharepoint import get_store
+from scopeiq.services.site_management import delete_site_cascade
 
 router = APIRouter(prefix="/sites", tags=["sites"])
 
@@ -72,15 +73,15 @@ def list_sites(user: dict = Depends(current_user)):
 def dashboard(user: dict = Depends(current_user)):
     r = repo()
     sites = r.select("CORE.SITE", site_scope(user) or None)
-    ids = {s["SITE_ID"] for s in sites}
+    ids, ready = {s["SITE_ID"] for s in sites}, finished_sites()
     d = [x for x in r.query("SELECT SITE_ID, STATUS, SEVERITY, OUTCOME, RULE_ID FROM CORE.DISCREPANCY") if x["SITE_ID"] in ids]
     est = [x for x in r.query("SELECT SITE_ID, CYCLE_DAYS, TOTAL_USD FROM CORE.ESTIMATE") if x["SITE_ID"] in ids]
     inbox = r.query("SELECT COUNT(*) AS N FROM WF.NOTIFICATION WHERE ROLE_CODE = %s AND READ_AT IS NULL", [user["role"]])[0]["N"]
     return {"sites": len(sites), "by_state": Counter(s["WORKFLOW_STATE"] for s in sites), "by_stream": Counter(s["STREAM"] for s in sites),
             "discrepancies": {"total": len(d), "by_status": Counter(x["STATUS"] for x in d), "by_outcome": Counter(x["OUTCOME"] for x in d),
                               "by_severity": Counter(x["SEVERITY"] for x in d)},
-            "redlines": Counter(x["STATUS"] for x in r.query("SELECT STATUS, SITE_ID FROM CORE.REDLINE") if x["SITE_ID"] in ids),
-            "rfis": Counter(x["STATUS"] for x in r.query("SELECT STATUS, SITE_ID FROM CORE.RFI") if x["SITE_ID"] in ids),
+            "redlines": Counter(x["STATUS"] for x in r.query("SELECT STATUS, SITE_ID FROM CORE.REDLINE") if x["SITE_ID"] in ids & ready),
+            "rfis": Counter(x["STATUS"] for x in r.query("SELECT STATUS, SITE_ID FROM CORE.RFI") if x["SITE_ID"] in ids & ready),
             "ehs_open": sum(1 for x in r.query("SELECT STATUS, SITE_ID FROM CORE.EHS_ALERT") if x["SITE_ID"] in ids and x["STATUS"] == "OPEN"),
             "estimate_total_usd": round(sum(x["TOTAL_USD"] or 0 for x in est), 2), "inbox_unread": inbox}
 
@@ -176,3 +177,15 @@ def extracted_fields(site_id: str, needs_review: bool | None = None, user: dict 
     if needs_review is not None:
         where["NEEDS_REVIEW"] = bool(needs_review)
     return r.select("CORE.EXTRACTED_FIELD", where)
+
+
+@router.delete("/{site_id}")
+def delete_site(site_id: str, user: dict = Depends(require("ADMIN"))):
+    """Admin: delete a site and all associated database records, documents, run history, and files."""
+    sid = site_id.strip().upper()
+    r = repo()
+    existing = r.select("CORE.SITE", {"SITE_ID": sid})
+    if not existing:
+        raise NotFound(f"Site {sid} not found")
+    res = delete_site_cascade(r, sid, delete_files=True, deleted_by=user.get("sub", "admin"))
+    return {"status": "ok", "site_id": sid, **res}

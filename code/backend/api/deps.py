@@ -103,6 +103,16 @@ def require(*roles: str) -> Callable:
     return dep
 
 
+def finished_sites() -> set[str]:
+    """Sites whose newest pipeline run succeeded. Redlines and RFIs are results of that run, so nothing is shown for a site that has not been run,
+    is running, or whose last run failed (a failed run did not finish comparing, so it has no valid result)."""
+    newest: dict[str, tuple[str, str]] = {}
+    for x in repo().query("SELECT SITE_ID, STATUS, STARTED_AT FROM CORE.PIPELINE_RUN"):
+        if x["SITE_ID"] not in newest or str(x["STARTED_AT"]) > newest[x["SITE_ID"]][0]:
+            newest[x["SITE_ID"]] = (str(x["STARTED_AT"]), x["STATUS"])
+    return {sid for sid, (_, status) in newest.items() if status in ("SUCCEEDED", "SUCCEEDED_WITH_WARNINGS")}
+
+
 def site_scope(user: dict) -> dict:
     """Data scope per persona: a CX SP sees only its own sites."""
     if user["role"] == "CX_SP":

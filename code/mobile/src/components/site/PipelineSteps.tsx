@@ -367,7 +367,6 @@ const CD_KIND: Record<string, string> = { passive: 'Antenna', air: 'Active anten
 const CD_STATUS: Record<string, string> = { Existing: 'Existing', New: 'New', Remove: 'Remove' };
 const CD_PLURAL: Record<string, string> = { passive: 'Antennas', air: 'Active antennas (AAU)', radio: 'Radios', pipe: 'Mount pipes', sled: 'Roof sleds' };
 const CD_ORDER = ['passive', 'air', 'radio', 'pipe', 'sled'];
-const CD_PREVIEW_ROWS = 8;
 const cdRank = (k: string) => { const i = CD_ORDER.indexOf(k); return i < 0 ? 99 : i; };
 
 function CdDataCard({ cd, isRunning }: { cd: any; isRunning?: boolean }) {
@@ -375,9 +374,7 @@ function CdDataCard({ cd, isRunning }: { cd: any; isRunning?: boolean }) {
   const items: R[] = [...(cd.items ?? [])].sort((a, b) => cdRank(a.KIND) - cdRank(b.KIND) || String(a.SECTOR).localeCompare(String(b.SECTOR)) || (a.POSITION ?? 0) - (b.POSITION ?? 0));
   const counts: Record<string, number> = {};
   for (const it of items) { const k = CD_PLURAL[it.KIND] ?? 'Other'; counts[k] = (counts[k] ?? 0) + 1; }
-  const main = items.filter((it) => it.KIND !== 'pipe' && it.KIND !== 'sled');
-  const [expanded, setExpanded] = useState(false);
-  const shown = expanded ? main : main.slice(0, CD_PREVIEW_ROWS);
+  const shown = items;                                           // every extracted value is listed: nothing is folded away
   const how = String(cd.method ?? '').startsWith('DXF') ? 'Read from the CAD file' : 'Read from the drawing sheets';
 
   return (
@@ -461,13 +458,6 @@ function CdDataCard({ cd, isRunning }: { cd: any; isRunning?: boolean }) {
                 </View>
               </View>
             ))}
-            {main.length > CD_PREVIEW_ROWS ? (
-              <Pressable onPress={() => setExpanded((v) => !v)} accessibilityRole="button" style={{ marginTop: space(1), paddingVertical: 6 }}>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.primary }}>
-                  {expanded ? 'Show less' : `+ ${main.length - CD_PREVIEW_ROWS} more antennas and radios — tap to show`}
-                </Text>
-              </Pressable>
-            ) : null}
             {cd.trunk?.SPECIFIED_FT ? <Muted style={{ fontSize: 12, marginTop: space(1) }}>{`Cable run on the drawings: ${cd.trunk.SPECIFIED_FT} ft`}</Muted> : null}
           </>
         ) : isRunning ? (
@@ -530,10 +520,13 @@ const CHECK_STATUS: Record<string, { text: string; color: string }> = {
 };
 
 function SideLabel({ side }: { side: R }) {
+  const files: string[] = side.files ?? [];
   return (
-    <View style={{ flex: 1, minWidth: 180 }}>
-      <Muted style={{ fontWeight: '700', color: colors.text, fontSize: 12 }}>{`${side.label} — ${side.object}`}</Muted>
-      <Muted style={{ fontSize: 11 }}>{side.files?.length ? side.files.join(', ') : '—'}</Muted>
+    <View style={{ flex: 1, minWidth: 200, gap: 2 }}>
+      <Muted style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' }}>{side.label}</Muted>
+      {files.length ? files.map((f) => <Text key={f} selectable style={{ fontSize: 13, fontWeight: '700', color: colors.primary }}>{`📄 ${f}`}</Text>)
+        : <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>Configured rule setting</Text>}
+      <Muted style={{ fontSize: 12 }}>{side.object}</Muted>
     </View>
   );
 }
@@ -565,6 +558,14 @@ function CheckCard({ c }: { c: R }) {
             <Pressable onPress={() => setOpen((v) => !v)} accessibilityRole="button" style={{ paddingVertical: 6 }}>
               <Text style={{ fontSize: 12, fontWeight: '700', color: colors.primary }}>{open ? 'Hide comparisons' : `Show ${rows.length} comparison${rows.length === 1 ? '' : 's'}`}</Text>
             </Pressable>
+          ) : null}
+          {open && rows.length ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingVertical: 4, paddingHorizontal: 6, borderTopWidth: 1, borderTopColor: colors.border }}>
+              <Muted style={{ width: 170, fontSize: 11, fontWeight: '700' }}>Compared item</Muted>
+              <Muted style={{ flex: 1, minWidth: 120, fontSize: 11, fontWeight: '700' }}>{`In ${c.left?.label ?? 'left'}${c.left?.files?.[0] ? ` (${c.left.files[0]})` : ''}`}</Muted>
+              <Muted style={{ flex: 1, minWidth: 120, fontSize: 11, fontWeight: '700' }}>{`In ${c.right?.label ?? 'right'}${c.right?.files?.[0] ? ` (${c.right.files[0]})` : ''}`}</Muted>
+              <View style={{ width: 70 }} />
+            </View>
           ) : null}
           {open ? rows.map((r, i) => {
             const bad = r.result === 'MISMATCH';

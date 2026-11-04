@@ -5,6 +5,7 @@ from collections import defaultdict
 
 import pytest
 
+from scopeiq.config import get_settings
 from scopeiq.services.pipeline import stage_on
 
 pytestmark = pytest.mark.needs_data
@@ -30,11 +31,15 @@ def _discs(repo, site):
     return repo.select("CORE.DISCREPANCY", {"SITE_ID": site})
 
 
-def test_all_seeded_issues_found(pipeline_results, repo, truth):
+def test_all_seeded_issues_found(pipeline_results, repo, truth, ref):
     seeded = [i for s in truth.build_sites() for i in s["issues"]]
     assert len(seeded) == 22
     if not stage_on("GENERATE"):                        # the REV 0 / BOM issues are found by the BOM stage, which is off for now
         seeded = [i for i in seeded if not EXPECTED[i["issue_id"]][0].startswith("BOM-")]
+    scope = get_settings().get("engine.compared_families", None)      # this release compares the CD with the drone survey only
+    if scope is not None:
+        seeded = [i for i in seeded if ref.consistency_rule(EXPECTED[i["issue_id"]][0])["FAMILY"] in scope]
+        assert seeded
     missing = []
     for iss in seeded:
         rule, sector, text = EXPECTED[iss["issue_id"]]
@@ -43,6 +48,14 @@ def test_all_seeded_issues_found(pipeline_results, repo, truth):
         if not hits:
             missing.append(iss["issue_id"])
     assert not missing, f"seeded issues not detected: {missing}"
+
+
+def test_only_the_compared_families_raise_findings(pipeline_results, repo, ref):
+    scope = get_settings().get("engine.compared_families", None)
+    if scope is None:
+        pytest.skip("no comparison scope is set")
+    found = {(d["SITE_ID"], d["RULE_ID"]) for site in pipeline_results for d in _discs(repo, site) if ref.consistency_rule(d["RULE_ID"])["FAMILY"] not in scope}
+    assert not found, f"findings outside the comparison scope {scope}: {sorted(found)}"
 
 
 def test_no_unexpected_findings(pipeline_results, repo):

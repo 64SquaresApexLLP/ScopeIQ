@@ -91,6 +91,12 @@ class SharePointStore(ABC):
     @abstractmethod
     def save_file(self, site_id: str, folder: str, file_name: str, data: bytes, replace_file: str | None = None) -> dict: ...
 
+    def delete_site_folder(self, site_id: str) -> bool:
+        return False
+
+    def delete_file(self, site_id: str, folder: str, file_name: str) -> bool:
+        return False
+
     # shared behaviour -----------------------------------------------------------------------------------------------
     def upload(self, site_id: str, file_name: str, data: bytes, doc_type: str | None = None,
                replace_file: str | None = None) -> dict:
@@ -181,6 +187,38 @@ class LocalSharePoint(SharePointStore):
         except Exception:
             pass
         return {"site_id": validate_site_id(site_id), "path": f"{self.library_root}/{site_id}", "folders": SITE_FOLDERS}
+
+    def delete_site_folder(self, site_id: str) -> bool:
+        import shutil
+        d = self._site_dir(site_id)
+        if d.is_dir():
+            shutil.rmtree(d, ignore_errors=True)
+            return True
+        return False
+
+    def delete_file(self, site_id: str, folder: str, file_name: str) -> bool:
+        clean_name = safe_file_name(file_name)
+        d = self._site_dir(site_id)
+        target = (d / folder / clean_name).resolve()
+        deleted = False
+
+        if d.resolve() in target.parents and target.is_file():
+            try:
+                target.unlink()
+                deleted = True
+            except Exception:
+                pass
+
+        try:
+            sites_dir = get_settings().path("paths.sites_dir")
+            pipe_target = (sites_dir / site_id / folder / clean_name).resolve()
+            if pipe_target.is_file():
+                pipe_target.unlink()
+                deleted = True
+        except Exception:
+            pass
+
+        return deleted
 
     def list_site_ids(self) -> list[str]:
         return sorted(p.name for p in self.base.iterdir() if p.is_dir() and SITE_ID_RE.match(p.name))
@@ -364,6 +402,16 @@ class GraphSharePoint(SharePointStore):
                     raise SharePointError("Upload to SharePoint failed", details={"status": r.status_code, "body": r.text[:300]})
         return {"name": file_name, "folder": folder, "size": len(data), "modified": _now(), "replaced": existed, "path": path}
 
+    def delete_file(self, site_id: str, folder: str, file_name: str) -> bool:
+        clean_name = safe_file_name(file_name)
+        try:
+            path = f"{self.library_root}/{validate_site_id(site_id)}/{folder}/{clean_name}"
+            item_id = self._item(path)
+            self._call("DELETE", f"/drives/{self._drive_id()}/items/{item_id}", ok=(204, 200, 404))
+            return True
+        except Exception:
+            return False
+
 
 # =============================================================================================================== factory
 _store: SharePointStore | None = None
@@ -378,7 +426,8 @@ def get_store() -> SharePointStore:
         if provider == "graph":
             _store = GraphSharePoint(st.section("sharepoint").get("graph", {}), lib)
         else:
-            _store = LocalSharePoint(st.path("sharepoint.local_root"), lib, auto_seed=True)
+            auto_seed = bool(st.get("sharepoint.auto_seed", False))
+            _store = LocalSharePoint(st.path("sharepoint.local_root"), lib, auto_seed=auto_seed)
     return _store
 
 
