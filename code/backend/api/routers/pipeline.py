@@ -325,6 +325,17 @@ def step_detail(run_id: str, key: str, user: dict = Depends(current_user)):
         est = r.select("CORE.ESTIMATE", by_run)
         return {"estimate": est[0] if est else None, "drivers": r.select("CORE.DRIVER_LINE", by_run),
                 "requirements": (r.select("CORE.SITE_REQUIREMENT", by_run) or [None])[0]}
+    if key == "DESIGN":
+        d = (run.get("SUMMARY") or {}).get("design") or {}
+        items = r.select("CORE.DESIGN_ITEM", by_run, order_by="SECTOR, POSITION, ACTION")
+        return {"items": items, "total": len(items), "documents": d.get("documents", []), "skipped": bool(d.get("skipped")), "reason": d.get("reason", "")}
+    if key == "BOM":
+        d = (run.get("SUMMARY") or {}).get("design") or {}
+        bom = d.get("bom") or {}
+        lines = r.select("CORE.BOM_OUTPUT_LINE", by_run, order_by="SECTOR, RULE_ID, CATALOG_KEY")
+        return {"lines": lines, "total": len(lines), "summary": {k: v for k, v in bom.items() if k not in ("issue_list", "rulebook", "trunk")},
+                "issues": bom.get("issue_list", []), "rulebook": bom.get("rulebook"), "trunk": bom.get("trunk"), "file": bom.get("file"),
+                "skipped": bool(d.get("skipped")), "reason": d.get("reason", "")}
     if key == "REDLINES":
         summary = run.get("SUMMARY") or {}
         return {"redlines": r.select("CORE.REDLINE", {"SITE_ID": sid}, order_by="SHEET"), "rfis": r.select("CORE.RFI", {"SITE_ID": sid}),

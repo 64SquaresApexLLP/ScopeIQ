@@ -27,13 +27,15 @@ AS_DRAWN, FINAL = "AS_DRAWN", "FINAL"
 class Device:
     sector: str
     position: int | None
-    key: str
+    key: str | None           # None: the model on the document is not in the material catalog
     kind: str
     status: str               # New | Existing | Remove
     rad_center_ft: float | None
     basis: str                # RFDS | CD | FIELD
     ref: SourceRef | None = None
     from_position: int | None = None
+    model_text: str = ""      # the model as written on the document
+    bands: str = ""
 
 
 @dataclass
@@ -54,6 +56,9 @@ class SiteModel:
     horizontal_ft: float | None = None
     horizontal_basis: str = ""
     notes: list[str] = field(default_factory=list)
+    market: str = ""
+    refs: dict = field(default_factory=dict)              # where each fact was read: ("pipe", sector, position), ("sled", sector), ("frame", sector), "trunk", "ma"
+    unmatched_basebands: list[str] = field(default_factory=list)   # baseband models on the RFDS that are not in the catalog
 
     def new(self, *kinds: str) -> list[Device]:
         return [d for d in self.devices if d.status == "New" and (not kinds or d.kind in kinds)]
@@ -62,26 +67,41 @@ class SiteModel:
         return [d for d in self.devices if d.status == "Remove"]
 
 
-def _baseband_keys(facts: SiteFacts, ref: ReferenceData) -> list[str]:
+def _baseband_keys(facts: SiteFacts, ref: ReferenceData, unmatched: list[str] | None = None) -> list[str]:
     out = []
     for b in facts.basebands:
         if str(b.get("action", "New")).lower().startswith("new"):
             cat, _ = ref.catalog.resolve(b.get("model", ""), kinds=("baseband",))
             if cat:
                 out += [cat.key] * int(b.get("qty", 1) or 1)
+            elif unmatched is not None:
+                unmatched.append(str(b.get("model", "")))
     return out
 
 
 @log_call()
 def build_model(facts: SiteFacts, ref: ReferenceData, mode: str, discrepancies=None) -> SiteModel:
     st = get_settings()
-    m = SiteModel(mode, facts.site_id, facts.is_rooftop, facts.rfds_revision or "")
+    m = SiteModel(mode, facts.site_id, facts.is_rooftop, facts.rfds_revision or "",
+                  market=str(facts.site.get("market") or facts.site.get("rfds_market") or ""))
     cd_dev = [i for i in facts.cd_items if i.is_device and i.catalog_key]
     cd_pipes = {(i.sector, i.position) for i in facts.cd_items if i.kind == "pipe" and i.status == "Existing"}
     cd_sleds = {k: v.sled.get("CD") for k, v in facts.sectors.items() if "CD" in v.sled}
     m.new_frames = {k for k, v in facts.sectors.items() if v.new_frame}
-    m.basebands = _baseband_keys(facts, ref)
+    m.basebands = _baseband_keys(facts, ref, m.unmatched_basebands)
     cdt, ft = facts.trunks.get("CD"), facts.trunks.get("FIELD")
+    for i in facts.cd_items:                              # where the CD shows each mount element, for the BOM's source and drawing columns
+        if i.kind == "pipe" and i.ref:
+            m.refs[("pipe", i.sector, i.position)] = i.ref
+        elif i.kind == "sled" and i.ref:
+            m.refs[("sled", i.sector)] = i.ref
+        elif i.is_device and i.ref:
+            m.refs.setdefault(("frame", i.sector), i.ref)
+    for i in facts.field_items:
+        if i.kind == "pipe" and i.ref:
+            m.refs[("fieldpipe", i.sector, i.position)] = i.ref
+    if facts.ma and facts.ma.ref:
+        m.refs["ma"] = facts.ma.ref
 
     if mode == AS_DRAWN:
         for i in cd_dev:
@@ -104,7 +124,7 @@ def build_model(facts: SiteFacts, ref: ReferenceData, mode: str, discrepancies=N
         if i.is_device and i.catalog_key:
             existing_by_key.setdefault((i.sector, i.catalog_key), []).append(i.position)
     for i in facts.rfds_final:
-        if not i.is_device or not i.catalog_key:
+        if not (i.is_device or i.kind == "unknown"):
             continue
         status = "New" if i.status == "New" else "Remove" if i.status == "Remove" else "Existing"
         frm = None
@@ -112,21 +132,21 @@ def build_model(facts: SiteFacts, ref: ReferenceData, mode: str, discrepancies=N
             prev = existing_by_key.get((i.sector, i.catalog_key), [])
             if prev and i.position not in prev:
                 frm = prev[0]
-        m.devices.append(Device(i.sector, i.position, i.catalog_key, i.kind, status, i.rad_center_ft, "RFDS", i.ref, frm))
+        m.devices.append(Device(i.sector, i.position, i.catalog_key, i.kind, status, i.rad_center_ft, "RFDS", i.ref, frm, i.model_text, i.bands))
     # implicit removals: on RFDS existing but not on final (v2 / PDF layouts list removals implicitly)
     final_keys = {(d.sector, d.position, d.key) for d in m.devices}
     final_count: dict[tuple, int] = {}
     for d in m.devices:
-        final_count[(d.sector, d.key)] = final_count.get((d.sector, d.key), 0) + (d.status != "Remove")
+        final_count[(d.sector, d.key or d.model_text)] = final_count.get((d.sector, d.key or d.model_text), 0) + (d.status != "Remove")
     for i in facts.rfds_existing:
-        if not i.is_device or not i.catalog_key:
+        if not (i.is_device or i.kind == "unknown"):
             continue
-        k = (i.sector, i.catalog_key)
+        k = (i.sector, i.catalog_key or i.model_text)
         if final_count.get(k, 0) > 0:
             final_count[k] -= 1
             continue
         if (i.sector, i.position, i.catalog_key) not in {(d.sector, d.position, d.key) for d in m.devices if d.status == "Remove"}:
-            m.devices.append(Device(i.sector, i.position, i.catalog_key, i.kind, "Remove", i.rad_center_ft, "RFDS", i.ref))
+            m.devices.append(Device(i.sector, i.position, i.catalog_key, i.kind, "Remove", i.rad_center_ft, "RFDS", i.ref, None, i.model_text, i.bands))
     # unrecorded field equipment (FLD-01): not in the final design -> removal line
     for dsc in discrepancies or []:
         if dsc.rule_id == "FLD-01" and dsc.found:
@@ -161,11 +181,12 @@ def build_model(facts: SiteFacts, ref: ReferenceData, mode: str, discrepancies=N
         m.horizontal_ft, m.horizontal_basis = cdt.horizontal_ft, "CD"
     elif ft and ft.horizontal_ft is not None:
         m.horizontal_ft, m.horizontal_basis = round(ft.horizontal_ft), "FIELD"
+    m.refs["trunk"] = (ft.ref if m.horizontal_basis == "FIELD" and ft and ft.ref else (cdt.ref if cdt else None))
     if m.rooftop:
         m.vertical_ft = cdt.vertical_ft if cdt else None          # riser run from the CD
     else:
         rcs = [d.rad_center_ft for d in m.new("radio", "air") if d.rad_center_ft is not None]
-        m.vertical_ft = (max(rcs) + 5) if rcs else None
+        m.vertical_ft = (max(rcs) + 5) if rcs else None            # the BOM engine takes the margin from the rulebook (bom/engine.py)
     return m
 
 
