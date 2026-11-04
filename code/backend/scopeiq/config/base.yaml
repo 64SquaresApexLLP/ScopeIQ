@@ -68,6 +68,7 @@ engine:
   # registered at ingest but are not read or compared; add them here (and RFDS_VS_CD, REVISION, ... to compared_families) to widen it.
   extract_documents: [CD, DRONE]
   compared_families: [CD_VS_FIELD]
+  required_design_documents: [RFDS]   # stage 5 stops the run if one is missing (the MA/SA report is optional: without it mount reinforcement is not evaluated)
   required_documents: [CD, DRONE_VIDEO, "DRONE_VENDOR|DRONE_POINTCLOUD"]   # stage 1 stops the run if one is missing; A|B = at least one of the two
   orbit_start_bearing_deg: 90  # used only when the survey metadata does not state where the orbit starts / which way it turns
   orbit_direction: counter-clockwise

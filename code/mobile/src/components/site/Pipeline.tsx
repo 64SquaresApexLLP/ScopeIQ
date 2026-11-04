@@ -68,6 +68,7 @@ export function Pipeline({ siteId, onFinished }: { siteId: string; onFinished?: 
   const runningStep = steps?.find((s) => s.status === 'RUNNING');
   const runningIndex = steps ? steps.findIndex((s) => s.status === 'RUNNING') : -1;
   const completedCount = steps?.filter((s) => s.status === 'DONE').length ?? 0;
+  const skippedCount = steps?.filter((s) => s.status === 'SKIPPED').length ?? 0;
   const totalSteps = steps?.length ?? 9;
   const progressPct = totalSteps > 0 ? Math.round((completedCount / totalSteps) * 100) : 0;
 
@@ -220,12 +221,14 @@ export function Pipeline({ siteId, onFinished }: { siteId: string; onFinished?: 
                   ? `Stage ${runningIndex + 1} of ${totalSteps}: ${runningStep.label} (Running...)`
                   : isFailed
                   ? `Execution Stopped at Stage ${(steps.findIndex((s) => s.status === 'FAILED') + 1) || 1} of ${totalSteps}`
+                  : skippedCount
+                  ? `Pipeline stopped after Stage ${completedCount}: resolve the redlines and RFIs first, then run it again`
                   : `Pipeline Completed (${completedCount}/${totalSteps} Stages Successful)`}
               </Text>
             </Row>
             <Badge
-              text={running ? `${progressPct}%` : isFailed ? 'STOPPED' : '100%'}
-              color={running ? colors.info : isFailed ? colors.danger : colors.ok}
+              text={running ? `${progressPct}%` : isFailed || skippedCount ? 'STOPPED' : '100%'}
+              color={running ? colors.info : isFailed ? colors.danger : skippedCount ? colors.warn : colors.ok}
             />
           </Row>
 
@@ -235,7 +238,7 @@ export function Pipeline({ siteId, onFinished }: { siteId: string; onFinished?: 
               style={{
                 height: '100%',
                 width: `${running ? Math.max(progressPct, ((runningIndex + 0.5) / totalSteps) * 100) : isFailed ? Math.max(progressPct, 15) : 100}%`,
-                backgroundColor: isFailed ? colors.danger : running ? colors.info : colors.ok,
+                backgroundColor: isFailed ? colors.danger : running ? colors.info : skippedCount ? colors.warn : colors.ok,
                 borderRadius: 4,
               }}
             />
@@ -247,7 +250,8 @@ export function Pipeline({ siteId, onFinished }: { siteId: string; onFinished?: 
               const isDone = st.status === 'DONE';
               const isRunning = st.status === 'RUNNING';
               const isStepFailed = st.status === 'FAILED';
-              const isAborted = isFailed && !isDone && !isStepFailed;
+              const isSkipped = st.status === 'SKIPPED';
+              const isAborted = isFailed && !isDone && !isStepFailed && !isSkipped;
 
               return (
                 <View
@@ -282,7 +286,7 @@ export function Pipeline({ siteId, onFinished }: { siteId: string; onFinished?: 
                       color: isDone ? '#137333' : isRunning ? colors.info : isStepFailed ? colors.danger : isAborted ? colors.muted : colors.text,
                     }}
                   >
-                    {isDone ? `✓ ${idx + 1}. ${st.label}` : isRunning ? `⏳ ${idx + 1}. ${st.label}` : isStepFailed ? `✕ ${idx + 1}. ${st.label}` : isAborted ? `⊘ ${idx + 1}. ${st.label}` : `○ ${idx + 1}. ${st.label}`}
+                    {isDone ? `✓ ${idx + 1}. ${st.label}` : isRunning ? `⏳ ${idx + 1}. ${st.label}` : isStepFailed ? `✕ ${idx + 1}. ${st.label}` : isAborted || isSkipped ? `⊘ ${idx + 1}. ${st.label}` : `○ ${idx + 1}. ${st.label}`}
                   </Text>
                 </View>
               );
