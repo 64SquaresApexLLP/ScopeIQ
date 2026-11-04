@@ -40,7 +40,7 @@ const value = (v: unknown) => {
 
 /** Two boxes: what was expected, what was found. Hidden when a finding has neither (e.g. a list of values to review). */
 export function CompareStrip({ x, large }: { x: R; large?: boolean }) {
-  const found = Array.isArray(x.FOUND?.v) && x.FOUND.v.length && typeof x.FOUND.v[0] === 'object' && 'field' in x.FOUND.v[0];
+  const found = Array.isArray(x.FOUND?.v) && x.FOUND.v.length && x.FOUND.v[0] && typeof x.FOUND.v[0] === 'object' && 'field' in x.FOUND.v[0];
   if (found) return null;
   const box = (title: string, v: unknown, color: string) => (
     <View style={{ flex: 1, minWidth: 140, backgroundColor: color + '0F', borderRadius: 12, padding: space(large ? 3.5 : 2.5), borderWidth: 1, borderColor: color + '33' }}>
