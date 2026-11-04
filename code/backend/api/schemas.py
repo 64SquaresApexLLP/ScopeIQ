@@ -33,6 +33,11 @@ class CommentIn(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
 
 
+class AeRevisionIn(BaseModel):
+    revision: str = Field(default="REV 2", max_length=50)
+    comment: str | None = Field(default=None, max_length=1000)
+
+
 class AssignIn(BaseModel):
     user_id: str
 

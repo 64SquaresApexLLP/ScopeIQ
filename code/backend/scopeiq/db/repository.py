@@ -130,6 +130,9 @@ class Repository:
                 ku = k.upper()
                 if ku != k:
                     r[ku] = r.pop(k)
+            for k, val in list(r.items()):
+                if isinstance(val, Decimal):
+                    r[k] = float(val)
             for k in vcols:
                 if isinstance(r.get(k), str):
                     try:
