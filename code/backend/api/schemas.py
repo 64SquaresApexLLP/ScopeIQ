@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 class LoginIn(BaseModel):
     user_id: str | None = Field(default=None, description="Demo account (roles that do not sign in with a password yet)")
     username: str | None = Field(default=None, description="Username created by the admin (roles in auth.password_roles)")
+    role: str | None = Field(default=None, description="Role card chosen on the login screen; the login must have this role")
     password: str = Field(min_length=1, max_length=200)
 
 

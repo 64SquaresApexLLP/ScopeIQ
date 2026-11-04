@@ -12,6 +12,7 @@ from scopeiq.common.logging import get_logger
 from scopeiq.common.passwords import hash_password
 from scopeiq.config import get_settings
 from scopeiq.db.repository import now_iso
+from scopeiq.services.admin_account import ADMIN_ROLE
 from scopeiq.reference.loader import TABLES
 from scopeiq.services.seed import load_reference_tables
 
@@ -89,6 +90,8 @@ def list_logins(user: dict = Depends(require("ADMIN"))):
 def create_login(body: LoginCreateIn, user: dict = Depends(require("ADMIN"))):
     """Admin: create a username + password for a role that signs in with a password (auth.password_roles, e.g. SCOPER)."""
     role, username = body.role.upper(), body.username.strip().lower()
+    if role == ADMIN_ROLE:
+        raise ValidationError("There is only one admin login; it is created with scripts/create_admin.py")
     if role not in set(get_settings().get("auth.password_roles", []) or []):
         raise ValidationError(f"Role {role} does not sign in with a password", details={"allowed": get_settings().get("auth.password_roles", [])})
     _check_password(body.password)
@@ -109,8 +112,11 @@ def create_login(body: LoginCreateIn, user: dict = Depends(require("ADMIN"))):
 def update_login(username: str, body: LoginUpdateIn, user: dict = Depends(require("ADMIN"))):
     """Admin: disable / enable a login, or set a new password."""
     r, username = repo(), username.strip().lower()
-    if not r.select("CORE.USER_LOGIN", {"USERNAME": username}):
+    rows = r.select("CORE.USER_LOGIN", {"USERNAME": username})
+    if not rows:
         raise NotFound(f"Username {username} not found")
+    if rows[0]["ROLE_CODE"] == ADMIN_ROLE:          # the one admin is managed with scripts/create_admin.py, so it cannot lock itself out
+        raise ValidationError("The admin login is managed with scripts/create_admin.py and cannot be changed here")
     values: dict = {"UPDATED_AT": now_iso(), "UPDATED_BY": user["sub"]}
     if body.active is not None:
         values["ACTIVE"] = body.active

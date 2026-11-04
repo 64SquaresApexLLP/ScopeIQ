@@ -46,13 +46,21 @@ def client(env):
 
 
 TEST_PASSWORD = "test-password-1"
+ADMIN_TEST_PASSWORD = "admin-test-password-1"
 PASSWORD_USERS = {"scoper": "SCOPER", "ae": "AE_ENGINEER"}      # demo user id prefix -> role that signs in with a password
 
 
 def login(client, user_id):
-    """Demo accounts sign in directly; SCOPER and AE_ENGINEER sign in with a username + password, which the admin creates first."""
+    """Demo accounts sign in directly. The admin signs in with the one admin login (created here the way
+    scripts/create_admin.py does); SCOPER and AE_ENGINEER sign in with a username + password the admin creates first."""
     role = next((r for prefix, r in PASSWORD_USERS.items() if user_id.startswith(prefix)), None)
-    if role:
+    if user_id == "admin":
+        from scopeiq.db.repository import get_repository
+        from scopeiq.services.admin_account import create_admin, get_admin
+        if not get_admin(get_repository()):
+            create_admin(get_repository(), ADMIN_TEST_PASSWORD)
+        r = client.post("/auth/login", json={"username": "admin", "password": ADMIN_TEST_PASSWORD})
+    elif role:
         admin = login(client, "admin")
         client.post("/admin/logins", json={"username": user_id, "display_name": user_id, "password": TEST_PASSWORD, "role": role}, headers=admin)
         r = client.post("/auth/login", json={"username": user_id, "password": TEST_PASSWORD})

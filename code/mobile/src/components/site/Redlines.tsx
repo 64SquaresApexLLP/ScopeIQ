@@ -22,6 +22,10 @@ export function RfiCard({ r, reload }: { r: R; reload: () => void }) {
   const { can, user } = useAuth();
   const [answer, setAnswer] = useState(r.PROPOSED_ANSWER ?? '');
   const [err, setErr] = useState<ApiError | null>(null);
+  const isTargetParty =
+    r.TO_PARTY === 'AE_ENGINEER'
+      ? user?.role === 'AE_ENGINEER'
+      : can('ADMIN', 'ERICSSON');
   const send = async () => {
     try {
       await api.post(`/rfis/${r.RFI_ID}/answer`, { answer });
@@ -58,11 +62,17 @@ export function RfiCard({ r, reload }: { r: R; reload: () => void }) {
           <WorkflowActions actions={(r.ACTIONS ?? []).filter((a: string) => a !== 'ANSWER')} endpoint={`/rfis/${r.RFI_ID}/transition`} entity="RFI" onDone={reload} />
         </View>
       ) : null}
-      {(can('ADMIN', 'ERICSSON') || (user?.role === 'AE_ENGINEER' && r.TO_PARTY === 'AE_ENGINEER')) && r.STATUS === 'IN_REVIEW' ? (
+      {isTargetParty && r.STATUS === 'IN_REVIEW' ? (
         <View style={{ marginTop: space(2), gap: space(2) }}>
           <TextInput style={[s.input, { minHeight: 60 }]} multiline value={answer} onChangeText={setAnswer} placeholder="Answer" />
           <Button small title="Send answer" disabled={!answer.trim()} onPress={send} />
           {err ? <ErrorView error={err} /> : null}
+        </View>
+      ) : r.STATUS === 'IN_REVIEW' ? (
+        <View style={{ marginTop: space(2), padding: space(2), backgroundColor: colors.bg, borderRadius: 8 }}>
+          <Muted style={{ fontStyle: 'italic' }}>
+            Awaiting response from {r.TO_PARTY === 'AE_ENGINEER' ? 'A&E Engineer' : 'Admin'}...
+          </Muted>
         </View>
       ) : null}
     </Card>

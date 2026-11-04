@@ -30,7 +30,7 @@ from scopeiq.db.schema import REF_TABLE_FILES, TABLES, Table, get_table, tables
 
 log = get_logger("db.repository")      # 'scopeiq.db.*' loggers are never written back to APP_LOG (no recursion)
 
-_FQN = re.compile(r"\b(RAW|REF|CORE|WF|AUDIT)\.([A-Z][A-Z0-9_]*)\b")
+_FQN = re.compile(r"\b(RAW|REF|CORE|WF|AUDIT)\.([A-Z0-9_]+)\b")
 
 
 def now_iso() -> str:
@@ -294,7 +294,8 @@ class SnowflakeRepository(Repository):
                 "account": self.cfg.get("account"), "user": self.cfg.get("user"), "password": self.cfg.get("password") or None,
                 "authenticator": self.cfg.get("authenticator") or None, "private_key_file": self.cfg.get("private_key_path") or None,
                 "role": self.cfg.get("role"), "warehouse": self.cfg.get("warehouse"), "database": self.database,
-                "application": "ScopeIQ", "session_parameters": {"QUERY_TAG": f"scopeiq-{get_settings().env}"}}.items() if v}
+                "application": "ScopeIQ", "autocommit": True,
+                "session_parameters": {"QUERY_TAG": f"scopeiq-{get_settings().env}", "AUTOCOMMIT": True}}.items() if v}
             token = Path("/snowflake/session/token")
             if args.get("authenticator") == "oauth" and token.exists():   # inside Snowpark Container Services
                 args.update(token=token.read_text(), host=os.environ.get("SNOWFLAKE_HOST"), account=os.environ.get("SNOWFLAKE_ACCOUNT"))
@@ -367,6 +368,15 @@ class SnowflakeRepository(Repository):
             self.execute(f"MERGE INTO {t.fqn} t USING (SELECT {src_cols} FROM VALUES {self._plain_values(t, len(chunk))}) s ON {on} "
                          f"WHEN MATCHED THEN UPDATE SET {upd} WHEN NOT MATCHED THEN INSERT {ins}", params)
         return len(rows)
+
+    def update(self, fqn: str, values: dict, where: dict) -> int:
+        t = get_table(fqn)
+        def _expr(col_name: str) -> str:
+            col = next((c for c in t.columns if c.name == col_name), None)
+            return f"{col_name} = PARSE_JSON(%s)" if col and col.type == "V" else f"{col_name} = %s"
+        sets = ", ".join(_expr(k) for k in values)
+        conds = " AND ".join(f"{k} = %s" for k in where)
+        return self.execute(f"UPDATE {t.fqn} SET {sets} WHERE {conds}", [self._enc(t, k, v) for k, v in values.items()] + list(where.values()))
 
     def close(self) -> None:
         if self._conn is not None:

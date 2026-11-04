@@ -10,7 +10,7 @@ const KEY = 'scopeiq.session';
 const log = getLogger('auth');
 
 // Either a demo account ({ userId }) or a username + password created by the admin.
-export type LoginCreds = { userId: string } | { username: string; password: string };
+export type LoginCreds = { userId: string } | { username: string; password: string; role: string };
 
 interface AuthState {
   user: User | null;
@@ -58,7 +58,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [logout]);
 
   const login = useCallback(async (creds: LoginCreds) => {
-    const body = 'username' in creds ? { username: creds.username.trim(), password: creds.password } : { user_id: creds.userId, password: 'demo' };
+    const body = 'username' in creds ? { username: creds.username.trim(), password: creds.password, role: creds.role } : { user_id: creds.userId, password: 'demo' };
     const res = await api.post<{ token: string; user: User }>('/auth/login', body);
     setToken(res.token);
     setUser(res.user);

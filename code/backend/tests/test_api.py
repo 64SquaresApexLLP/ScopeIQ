@@ -41,13 +41,21 @@ def no_issued_drawings_left_behind():
 
 
 TEST_PASSWORD = "test-password-1"
+ADMIN_TEST_PASSWORD = "admin-test-password-1"
 PASSWORD_USERS = {"scoper": "SCOPER", "ae": "AE_ENGINEER"}      # demo user id prefix -> role that signs in with a password
 
 
 def login(client, user_id):
-    """Demo accounts sign in directly; SCOPER and AE_ENGINEER sign in with a username + password, which the admin creates first."""
+    """Demo accounts sign in directly. The admin signs in with the one admin login (created here the way
+    scripts/create_admin.py does); SCOPER and AE_ENGINEER sign in with a username + password the admin creates first."""
     role = next((r for prefix, r in PASSWORD_USERS.items() if user_id.startswith(prefix)), None)
-    if role:
+    if user_id == "admin":
+        from scopeiq.db.repository import get_repository
+        from scopeiq.services.admin_account import create_admin, get_admin
+        if not get_admin(get_repository()):
+            create_admin(get_repository(), ADMIN_TEST_PASSWORD)
+        r = client.post("/auth/login", json={"username": "admin", "password": ADMIN_TEST_PASSWORD})
+    elif role:
         admin = login(client, "admin")
         client.post("/admin/logins", json={"username": user_id, "display_name": user_id, "password": TEST_PASSWORD, "role": role}, headers=admin)
         r = client.post("/auth/login", json={"username": user_id, "password": TEST_PASSWORD})
@@ -63,7 +71,29 @@ def test_health_and_auth(client):
     assert client.get("/sites").json()["error"]["code"] == "SIQ-AUTH-401"
     users = client.get("/auth/users").json()
     assert {u["role"] for u in users} >= {"SCOPER", "REVIEWER", "CX_SP", "ERICSSON", "ADMIN"}
-    assert {u["role"] for u in users if u["password_required"]} == {"SCOPER", "AE_ENGINEER"}
+    assert {u["role"] for u in users if u["password_required"]} == {"SCOPER", "AE_ENGINEER", "ADMIN"}
+
+
+def test_one_admin_signs_in_with_password(client):
+    from scopeiq.common.errors import Conflict
+    from scopeiq.db.repository import get_repository
+    from scopeiq.services.admin_account import create_admin
+    admin = login(client, "admin")
+    # the demo shortcut no longer works for the admin, and a wrong password is refused
+    assert client.post("/auth/login", json={"user_id": "admin", "password": "demo"}).status_code == 401
+    assert client.post("/auth/login", json={"username": "admin", "password": "wrong-password"}).status_code == 401
+    # only one admin: a second one cannot be created from the app or the script, and the admin cannot be disabled
+    assert client.post("/admin/logins", json={"username": "boss", "display_name": "Boss", "password": "s3cret-pass-1", "role": "ADMIN"},
+                       headers=admin).status_code == 400
+    with pytest.raises(Conflict):
+        create_admin(get_repository(), "another-long-password")
+    assert client.patch("/admin/logins/admin", json={"active": False}, headers=admin).status_code == 400
+    assert sum(1 for x in client.get("/admin/logins", headers=admin).json() if x["ROLE_CODE"] == "ADMIN") == 1
+    # --reset sets a new password on the same admin
+    create_admin(get_repository(), "new-admin-password", reset=True)
+    assert client.post("/auth/login", json={"username": "admin", "password": ADMIN_TEST_PASSWORD}).status_code == 401
+    assert client.post("/auth/login", json={"username": "admin", "password": "new-admin-password"}).status_code == 200
+    create_admin(get_repository(), ADMIN_TEST_PASSWORD, reset=True)      # put the test password back for the other tests
 
 
 def test_scoper_signs_in_with_admin_created_password(client):
@@ -105,6 +135,11 @@ def test_ae_engineer_signs_in_with_admin_created_password(client):
     assert client.post("/auth/login", json={"username": "meridian.ae", "password": "wrong-pass"}).status_code == 401
     # roles that do not sign in with a password cannot be given one
     assert client.post("/admin/logins", json={**new, "username": "eric", "role": "ERICSSON"}, headers=admin).status_code == 400
+    # a login only works on its own role card: the A&E login is refused on the Scoper card and the other way round
+    assert client.post("/auth/login", json={"username": "meridian.ae", "password": "ae-pass-123", "role": "AE_ENGINEER"}).status_code == 200
+    assert client.post("/auth/login", json={"username": "meridian.ae", "password": "ae-pass-123", "role": "SCOPER"}).status_code == 401
+    client.post("/admin/logins", json={"username": "card.scoper", "display_name": "Card Scoper", "password": "scoper-pass-1"}, headers=admin)
+    assert client.post("/auth/login", json={"username": "card.scoper", "password": "scoper-pass-1", "role": "AE_ENGINEER"}).status_code == 401
 
 
 @pytest.mark.later_stages

@@ -59,7 +59,7 @@ export default function Login() {
     setBusy(chosen.user_id);
     setError(null);
     try {
-      await login({ username, password });
+      await login({ username, password, role: chosen.role });
       router.replace(chosen.role === 'AE_ENGINEER' ? '/(tabs)/rfis' : '/(tabs)');
     } catch (e) {
       setError(e as ApiError);

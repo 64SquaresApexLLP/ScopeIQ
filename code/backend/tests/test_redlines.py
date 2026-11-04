@@ -236,7 +236,10 @@ def _site_copy(tmp_path):
 
     from scopeiq.config import get_settings
 
-    src = next(p for p in sorted(get_settings().path("paths.sites_dir").iterdir()) if (p / "drone" / "video").is_dir() and any((p / "drone" / "video").iterdir()))
+    root = get_settings().path("paths.sites_dir")
+    src = next((p for p in sorted(root.iterdir()) if (p / "drone" / "video").is_dir() and any((p / "drone" / "video").iterdir())), None) if root.exists() else None
+    if src is None:
+        pytest.skip("no sample site with a drone video to copy")
     site = tmp_path / "TXZZ9999"
     shutil.copytree(src, site)
     return site
@@ -248,7 +251,7 @@ def test_stage_1_stops_when_the_site_folder_has_no_documents(tmp_path, ref):
 
     site = tmp_path / "TXZZ9999"
     site.mkdir()
-    with pytest.raises(MissingDataError, match="no documents were found"):
+    with pytest.raises(MissingDataError, match="No documents found for site"):
         build_site_facts(site, ref)
 
 

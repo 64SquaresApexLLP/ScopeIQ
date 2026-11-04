@@ -189,9 +189,14 @@ def _require_documents(facts: SiteFacts, st) -> None:
     missing = [" or ".join(LABELS.get(t, t) for t in str(g).split("|")) for g in st.get("engine.required_documents", []) or []
                if not have & set(str(g).split("|"))]
     if missing:
-        what = "no documents were found" if not facts.documents else "required documents are missing: " + "; ".join(missing)
-        raise MissingDataError(f"Missing documents for {facts.site_id}: {what}. Upload them to the site's SharePoint folder and run the pipeline again.",
-                               details={"site_id": facts.site_id, "missing": missing})
+        needed = ", ".join(" or ".join(LABELS.get(t, t) for t in str(g).split("|")) for g in st.get("engine.required_documents", []) or [])
+        if not facts.documents:
+            msg = (f"No documents found for site {facts.site_id}. Please upload the required documents ({needed}) to the site's SharePoint folder, "
+                   "then run the pipeline again.")
+        else:
+            msg = (f"Required documents missing for site {facts.site_id}: {'; '.join(missing)}. "
+                   "Please upload them to the site's SharePoint folder, then run the pipeline again.")
+        raise MissingDataError(msg, details={"site_id": facts.site_id, "missing": missing})
 
 
 def _why(facts: SiteFacts, step: str, result) -> str:
