@@ -185,10 +185,20 @@ def step_detail(run_id: str, key: str, user: dict = Depends(current_user)):
         _catalog = reference().catalog
         for _obj in field_objs:
             _dims = _obj.get("DIMS_IN")
+            if _dims and isinstance(_dims, (list, tuple)):
+                _dims = [float(d) for d in _dims]
+            _conf = float(_obj["CONFIDENCE"]) if _obj.get("CONFIDENCE") is not None else 0.0
             _match = identify_object(FieldObject(
-                _obj.get("OBJECT_ID"), _obj.get("OBJECT_TYPE"), _obj.get("SECTOR"), _obj.get("BEARING_DEG"), _obj.get("FACING_AZ_DEG"),
-                _obj.get("CENTER_HEIGHT_FT"), tuple(_dims) if _dims else None, _obj.get("MODEL_GUESS") or "", _obj.get("CONFIDENCE") or 0.0,
-                _obj.get("ROUTE_LENGTH_FT"), _obj.get("METHOD") or "", _obj.get("POSITION")), _catalog)
+                _obj.get("OBJECT_ID"), _obj.get("OBJECT_TYPE"), _obj.get("SECTOR"),
+                float(_obj["BEARING_DEG"]) if _obj.get("BEARING_DEG") is not None else None,
+                float(_obj["FACING_AZ_DEG"]) if _obj.get("FACING_AZ_DEG") is not None else None,
+                float(_obj["CENTER_HEIGHT_FT"]) if _obj.get("CENTER_HEIGHT_FT") is not None else None,
+                tuple(_dims) if _dims else None,
+                _obj.get("MODEL_GUESS") or "",
+                _conf,
+                float(_obj["ROUTE_LENGTH_FT"]) if _obj.get("ROUTE_LENGTH_FT") is not None else None,
+                _obj.get("METHOD") or "",
+                _obj.get("POSITION")), _catalog)
             identified_objects.append({
                 "catalog": _match,
                 "dims_in": _dims,
