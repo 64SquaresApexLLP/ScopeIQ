@@ -109,6 +109,7 @@ export default function SharePoint() {
   const [results, setResults] = useState<Result[]>([]);
   const [error, setError] = useState<ApiError | null>(null);
   const [hover, setHover] = useState(false);
+  const [deletingFile, setDeletingFile] = useState<string | null>(null);
   const files = useApi<{ files: R[] }>(canUseSharePoint && siteId ? `/sharepoint/sites/${siteId}/files` : null);
   const dropRef = useRef<any>(null);
 
@@ -128,6 +129,25 @@ export default function SharePoint() {
     for (const f of files.data?.files ?? []) (g[f.folder] ??= []).push(f);
     return g;
   }, [files.data]);
+
+  const handleDeleteFile = async (folder: string, fileName: string) => {
+    if (!siteId) return;
+    if (Platform.OS === 'web') {
+      const ok = window.confirm(`Permanently delete "${fileName}" from SharePoint?`);
+      if (!ok) return;
+    }
+    const key = `${folder}/${fileName}`;
+    setDeletingFile(key);
+    try {
+      await api.del(`/sharepoint/sites/${siteId}/files?folder=${encodeURIComponent(folder)}&file_name=${encodeURIComponent(fileName)}`);
+      await files.reload(true);
+      await sites.reload(true);
+    } catch (err: any) {
+      alert(err?.message || 'Failed to delete file');
+    } finally {
+      setDeletingFile(null);
+    }
+  };
 
   const addFiles = async (list: Picked[]) => {
     const existing = files.data?.files ?? [];
@@ -630,13 +650,31 @@ export default function SharePoint() {
                   <Icon name="folder" size={15} color={colors.accent} />
                   <Text style={{ fontSize: 12, fontWeight: '800', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.8 }}>{folder}</Text>
                 </View>
-                {list.map((f) => (
-                  <View key={folder + f.name} style={{ flexDirection: 'row', alignItems: 'center', gap: space(3), paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#EEF1F7' }}>
-                    <Icon name={fileIcon(f.name)} size={16} color={colors.muted} />
-                    <Text style={{ flex: 1, color: colors.text, fontSize: 13.5 }} numberOfLines={1}>{f.name}</Text>
-                    <Muted>{kb(f.size)}</Muted>
-                  </View>
-                ))}
+                {list.map((f) => {
+                  const fileKey = `${folder}/${f.name}`;
+                  const isDeleting = deletingFile === fileKey;
+                  return (
+                    <View key={fileKey} style={{ flexDirection: 'row', alignItems: 'center', gap: space(3), paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#EEF1F7' }}>
+                      <Icon name={fileIcon(f.name)} size={16} color={colors.muted} />
+                      <Text style={{ flex: 1, color: colors.text, fontSize: 13.5 }} numberOfLines={1}>{f.name}</Text>
+                      <Muted>{kb(f.size)}</Muted>
+                      <Pressable
+                        onPress={() => handleDeleteFile(folder, f.name)}
+                        disabled={isDeleting}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Delete ${f.name}`}
+                        style={({ pressed }) => ({
+                          padding: 6,
+                          borderRadius: 6,
+                          backgroundColor: pressed ? '#FDE8E8' : 'transparent',
+                          opacity: isDeleting ? 0.4 : 1,
+                        })}
+                      >
+                        <Icon name="trash-2" size={15} color="#E02424" />
+                      </Pressable>
+                    </View>
+                  );
+                })}
               </View>
             ))}
           </Step>
