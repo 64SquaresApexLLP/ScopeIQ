@@ -358,11 +358,15 @@ class PipelineService:
                                    "CREATED_AT": prev_rl.get(x.redline_id, {}).get("CREATED_AT") or ts, "UPDATED_AT": ts, "UPDATED_BY": user} for x in redlines])
         for x in redlines:
             x.status = prev_rl.get(x.redline_id, {}).get("STATUS") or "DRAFT"
+        for gone in set(prev_rl) - {x.redline_id for x in redlines}:      # a finding that no longer exists leaves no redline behind
+            r.delete_where("CORE.REDLINE", {"REDLINE_ID": gone})
         r.delete_where("CORE.REDLINE_PROOF", {"SITE_ID": sid})                          # proof is chosen again from this run's footage
         r.insert("CORE.REDLINE_PROOF", [{"PROOF_ID": stable_id("PRF", x.redline_id, x.rank), "REDLINE_ID": x.redline_id, "SITE_ID": sid, "RANK": x.rank,
                                          "KIND": x.kind, "PATH": _rel(x.path, self.output_dir), "CAPTION": x.caption, "BASIS": x.basis, "SECTOR": x.sector,
                                          "TIME_S": x.time_s, "BEARING_DEG": x.bearing_deg, "OFF_DEG": x.off_deg, "CREATED_AT": ts} for x in proofs])
         prev_rfi = {x["RFI_ID"]: x for x in r.select("CORE.RFI", {"SITE_ID": sid})}
+        for gone in set(prev_rfi) - {x.rfi_id for x in rfis}:             # likewise for RFIs the documents now answer
+            r.delete_where("CORE.RFI", {"RFI_ID": gone})
         r.upsert("CORE.RFI", [{"RFI_ID": x.rfi_id, "SITE_ID": sid, "TO_PARTY": x.to_party, "SUBJECT": x.subject, "QUESTION": x.question,
                                "PROPOSED_ANSWER": x.proposed_answer, "ANSWER": prev_rfi.get(x.rfi_id, {}).get("ANSWER"), "DISC_IDS": x.disc_ids,
                                "STATUS": prev_rfi.get(x.rfi_id, {}).get("STATUS") or "DRAFT", "CREATED_AT": prev_rfi.get(x.rfi_id, {}).get("CREATED_AT") or ts,

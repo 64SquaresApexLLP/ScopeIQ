@@ -47,12 +47,16 @@ class Ctx:
         self.tol_rc = float(st.get("engine.rad_center_tolerance_ft", 2))
         self.tol_route = float(st.get("engine.route_tolerance_ft", 10))
         self.threshold = float(st.get("engine.extraction_confidence_threshold", 0.8))
+        scope = st.get("engine.compared_families", None)
+        self.families = set(scope) if scope is not None else None
 
     def add(self, rule_id: str, title: str, description: str, *, sector=None, position=None, key=None, expected=None, found=None,
             governing: str = "", sources=(), bom_impact: str = "", evidence=(), confidence: float = 1.0, sheet: str | None = None) -> Discrepancy | None:
         if not self.ref.rule_active(rule_id, self.stream):
             return None
         rule = self.ref.consistency_rule(rule_id)
+        if self.families is not None and rule["FAMILY"] not in self.families:       # outside this release's comparison scope
+            return None
         params = rule.get("PARAMS", {})
         d = Discrepancy(stable_id("DSC", self.f.site_id, rule_id, sector or "", position or "", key or "", title), self.f.site_id, rule_id,
                         rule["FAMILY"], rule["SEVERITY"], rule["OUTCOME"], title, description, sector, position, expected, found, governing,
@@ -288,10 +292,10 @@ def cd_vs_field(c: Ctx):
                 alike = i.attrs.get("look_alikes") or []
                 model = _name(c.ref, i.catalog_key) + (f" (or look-alike {', '.join(_name(c.ref, a) for a in alike)})" if alike else "")
                 c.add("FLD-01", f"Unrecorded {cl} at {_sec(sec)} position {pos}",
-                      f"Drone survey finds a {cl} ({model}, {i.confidence:.0%} confidence) at {_sec(sec)} position {pos} that neither the CD nor "
-                      "the RFDS records. Raise an RFI; it is not in the final design, so the BOM adds a removal line.",
+                      f"Drone survey finds a {cl} ({model}, {i.confidence:.0%} confidence) at {_sec(sec)} position {pos} that the CD "
+                      "does not record. Raise an RFI; it is not in the final design, so the BOM adds a removal line.",
                       sector=sec, position=pos, key=i.catalog_key, expected=None, found=i.catalog_key, governing="FIELD",
-                      sources=[fsrc, f"{cd_src} A-3", f"RFDS {f.rfds_revision}"], evidence=c.frames_for(sec) + [i.attrs.get("object_id", "")],
+                      sources=[fsrc, f"{cd_src} A-3"], evidence=c.frames_for(sec) + [i.attrs.get("object_id", "")],
                       bom_impact=f"+1 Remove {i.catalog_key}", confidence=i.confidence)
         elif len(f_here) < len(d_here):
             missing = list((dk - fk).elements())[: len(d_here) - len(f_here)] or [d_here[-1].catalog_key]
@@ -315,7 +319,7 @@ def cd_vs_field(c: Ctx):
     if rc_diffs:
         avg = sum(d[4] - d[3] for d in rc_diffs) / len(rc_diffs)
         c.add("FLD-03", f"Existing antennas measured {abs(avg):.0f} ft {'lower' if avg < 0 else 'higher'} than drawn",
-              f"{len(rc_diffs)} existing antenna(s) measure {rc_diffs[0][4]:.0f} ft rad center vs {rc_diffs[0][3]:g} ft on the CD/RFDS "
+              f"{len(rc_diffs)} existing antenna(s) measure {rc_diffs[0][4]:.0f} ft rad center vs {rc_diffs[0][3]:g} ft on the CD "
               f"(tolerance {c.tol_rc:g} ft). Raise an RFI and redline the CD elevation; trunk length is recomputed from the design rad center.",
               expected=sorted({d[3] for d in rc_diffs}), found=sorted({round(d[4], 1) for d in rc_diffs}), governing="FIELD",
               sources=[f"{cd_src} A-2", fsrc], evidence=c.frames_for(None)[:3], bom_impact="None unless the trunk step changes")

@@ -1,7 +1,7 @@
 """Redlines and the red-marked CD PDFs; RFIs with answers. Both move through the workflow."""
 from fastapi import APIRouter, Depends
 
-from api.deps import check_site_scope, current_user, pipeline, repo, require, site_scope, workflow
+from api.deps import check_site_scope, current_user, finished_sites, pipeline, repo, require, site_scope, workflow
 from api.schemas import RfiAnswerIn, TransitionIn
 from scopeiq.common.errors import ValidationError
 from scopeiq.db.repository import now_iso
@@ -20,7 +20,8 @@ def _scoped(rows, user):
 @router.get("/redlines")
 def list_redlines(site_id: str | None = None, status: str | None = None, user: dict = Depends(current_user)):
     where = {k: v for k, v in {"SITE_ID": site_id, "STATUS": status}.items() if v}
-    rows = _scoped(repo().select("CORE.REDLINE", where or None, order_by="SITE_ID, SHEET"), user)
+    ready = finished_sites()
+    rows = [x for x in _scoped(repo().select("CORE.REDLINE", where or None, order_by="SITE_ID, SHEET"), user) if x["SITE_ID"] in ready]
     proofs: dict[str, list] = {}
     for p in repo().select("CORE.REDLINE_PROOF", {"SITE_ID": site_id} if site_id else None, order_by="REDLINE_ID, RANK"):
         proofs.setdefault(p["REDLINE_ID"], []).append({**p, "URL": f"/files/{p['PATH']}"})
@@ -129,7 +130,8 @@ def list_rfis(site_id: str | None = None, status: str | None = None, to_party: s
     # All authorized roles (ADMIN, AE_ENGINEER, SCOPER, REVIEWER) oversee all RFIs across sites
     # for full project context, while action/answer permissions are enforced per role.
 
-    rows = _scoped(repo().select("CORE.RFI", where or None, order_by="SITE_ID"), user)
+    ready = finished_sites()
+    rows = [x for x in _scoped(repo().select("CORE.RFI", where or None, order_by="SITE_ID"), user) if x["SITE_ID"] in ready]
     for x in rows:
         acts = [a["action"] for a in workflow().actions("RFI", x["STATUS"], user["role"])]
         # AE_ENGINEER only has action buttons on RFIs addressed to AE_ENGINEER:

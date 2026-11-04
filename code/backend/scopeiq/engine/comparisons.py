@@ -242,7 +242,11 @@ class _Log:
 def build_comparisons(facts: SiteFacts, ref: ReferenceData, discs: list[Discrepancy], *, stream: str | None = None) -> list[dict]:
     """The stage 3 comparison log for one site (JSON-ready)."""
     lg = _Log(facts, ref, discs, stream or facts.project.get("stream", "BOM"))
+    scope = get_settings().get("engine.compared_families", None)
+    wanted = {"cd_vs_drone": "CD_VS_FIELD", "rfds_vs_cd": "RFDS_VS_CD"}
     for fn in (lg.cd_vs_drone, lg.rfds_vs_cd, lg.others):
+        if scope is not None and (fn.__name__ in wanted and wanted[fn.__name__] not in scope or fn.__name__ == "others" and set(scope) <= set(wanted.values())):
+            continue                                              # not part of this release's comparison
         try:
             fn()
         except Exception:  # noqa: BLE001 - the log is a view; it must never fail a run

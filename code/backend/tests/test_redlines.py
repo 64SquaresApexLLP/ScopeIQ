@@ -230,17 +230,52 @@ def test_rfi_wording_shows_plain_numbers_for_a_list_of_measurements(ref):
     assert rfis and "67.9 ft rad center vs 63 ft" in rfis[0].question and "np." not in rfis[0].question
 
 
-def test_site_without_orbit_video_stops_with_missing_data(tmp_path, ref):
-    """No drone video means no proof for the redlines: the run stops at ingest and says what to supply, instead of carrying on without it."""
+# ----------------------------------------------------------------------------- the run stops where a stage cannot do its job
+def _site_copy(tmp_path):
+    import shutil
+
+    from scopeiq.config import get_settings
+
+    src = next(p for p in sorted(get_settings().path("paths.sites_dir").iterdir()) if (p / "drone" / "video").is_dir() and any((p / "drone" / "video").iterdir()))
+    site = tmp_path / "TXZZ9999"
+    shutil.copytree(src, site)
+    return site
+
+
+def test_stage_1_stops_when_the_site_folder_has_no_documents(tmp_path, ref):
+    from scopeiq.common.errors import MissingDataError
+    from scopeiq.engine.facts import build_site_facts
+
+    site = tmp_path / "TXZZ9999"
+    site.mkdir()
+    with pytest.raises(MissingDataError, match="no documents were found"):
+        build_site_facts(site, ref)
+
+
+@pytest.mark.parametrize("folder,label", [("drone/video", "drone orbit video"), ("cds", "CD drawing")])
+def test_stage_1_names_the_required_document_that_is_missing(tmp_path, ref, folder, label):
     import shutil
 
     from scopeiq.common.errors import MissingDataError
-    from scopeiq.config import get_settings
     from scopeiq.engine.facts import build_site_facts
 
-    src = next(p for p in get_settings().path("paths.sites_dir").iterdir() if (p / "drone" / "video").is_dir() and any((p / "drone" / "video").iterdir()))
-    site = tmp_path / "TXZZ9999"
-    shutil.copytree(src, site)
-    shutil.rmtree(site / "drone" / "video")
-    with pytest.raises(MissingDataError, match="Missing data: no drone orbit video"):
+    site = _site_copy(tmp_path)
+    shutil.rmtree(site / folder)
+    with pytest.raises(MissingDataError, match=label):
         build_site_facts(site, ref)
+
+
+@pytest.mark.parametrize("source,label", [("cd", "CD drawing"), ("drone", "drone survey data")])
+def test_stage_2_stops_when_a_source_cannot_be_read(tmp_path, ref, source, label):
+    """An unreadable CD or drone file must stop the run: carrying on would compare against nothing and report a clean site."""
+    from scopeiq.common.errors import ExtractionError
+    from scopeiq.engine.facts import build_site_facts
+
+    site = _site_copy(tmp_path)
+    broken = list((site / "cds").glob("*")) if source == "cd" else [p for p in (site / "drone").glob("*") if p.suffix.lower() in (".laz", ".csv")]
+    assert broken
+    for p in broken:
+        p.write_bytes(b"not a real file")
+    with pytest.raises(ExtractionError, match=label):
+        build_site_facts(site, ref)
+

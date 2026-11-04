@@ -271,3 +271,21 @@ def test_implement_only_approved_redlines(client):
     r = client.post(f"/redlines/{first}/transition", json={"action": "INCORPORATE", "reason_code": "RC-AE-REVISED"}, headers=ae)
     assert r.status_code == 200, r.text
     assert any(u["FILE_NAME"] == f"{site}_CD_REV2.dxf" for u in client.get(f"/sites/{site}/documents", headers=h).json()["uploads"])
+
+
+def test_redlines_and_rfis_are_shown_only_while_the_latest_run_succeeded(client, api_results):
+    """They are results of a pipeline run: a site that is running, failed, or never ran shows none."""
+    from api.deps import repo
+    h = login(client, "admin")
+    sid = next(s for s in api_results if client.get(f"/redlines?site_id={s}", headers=h).json() and client.get(f"/rfis?site_id={s}", headers=h).json())
+    run = {"RUN_ID": "RUN-TEST-FAILED", "SITE_ID": sid, "STARTED_AT": "2999-01-01T00:00:00+00:00", "STATUS": "FAILED", "STEPS": [], "REFERENCE_VERSIONS": {}}
+    repo().insert("CORE.PIPELINE_RUN", [run])
+    try:
+        assert client.get(f"/redlines?site_id={sid}", headers=h).json() == []
+        assert client.get(f"/rfis?site_id={sid}", headers=h).json() == []
+        repo().update("CORE.PIPELINE_RUN", {"STATUS": "RUNNING"}, {"RUN_ID": "RUN-TEST-FAILED"})
+        assert client.get(f"/redlines?site_id={sid}", headers=h).json() == []
+    finally:
+        repo().delete_where("CORE.PIPELINE_RUN", {"RUN_ID": "RUN-TEST-FAILED"})
+    assert client.get(f"/redlines?site_id={sid}", headers=h).json()
+

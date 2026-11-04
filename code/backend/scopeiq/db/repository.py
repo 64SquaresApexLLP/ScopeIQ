@@ -30,7 +30,7 @@ from scopeiq.db.schema import REF_TABLE_FILES, TABLES, Table, get_table, tables
 
 log = get_logger("db.repository")      # 'scopeiq.db.*' loggers are never written back to APP_LOG (no recursion)
 
-_FQN = re.compile(r"\b(RAW|REF|CORE|WF|AUDIT)\.([A-Z_]+)\b")
+_FQN = re.compile(r"\b(RAW|REF|CORE|WF|AUDIT)\.([A-Z][A-Z0-9_]*)\b")
 
 
 def now_iso() -> str:

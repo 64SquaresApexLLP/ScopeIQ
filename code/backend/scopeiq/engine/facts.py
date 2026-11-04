@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from scopeiq.common.context import bind
-from scopeiq.common.errors import AppError, ErrorRecorder, MissingDataError
+from scopeiq.common.errors import AppError, ErrorRecorder, ExtractionError, MissingDataError
 from scopeiq.common.logging import get_logger, log_call
 from scopeiq.config import get_settings
 from scopeiq.domain import SectorInfo, SiteFacts
@@ -61,16 +61,14 @@ def build_site_facts(site_dir: Path, ref: ReferenceData, *, sitetracker: SiteTra
         doc_paths: dict = {}
         facts.documents = register_site_folder(site_dir, site_id, upload_dir=Path(st.path("paths.upload_dir")) / site_id, paths=doc_paths)
         facts.site["doc_paths"] = {k: str(v) for k, v in doc_paths.items()}
-        if st.get("engine.require_drone_video", True) and not any(x.doc_type == "DRONE_VIDEO" and x.status == "CURRENT" for x in facts.documents):
-            raise MissingDataError(f"Missing data: no drone orbit video found for {site_id}. Add the survey's orbit video to the site's drone/video "
-                                   "folder and run the pipeline again.", details={"site_id": site_id, "missing": "DRONE_VIDEO"})
+        _require_documents(facts, st)
         if on_ingested:
             on_ingested(facts)
         path = lambda d: doc_paths.get(d.doc_id) or _abs(site_dir, d.rel_path)  # noqa: E731
         cat = ref.catalog
 
         # RFDS (governs RF)
-        d = facts.doc("RFDS")
+        d = facts.doc("RFDS") if _reads(st, "RFDS") else None
         if d:
             r = _guard(facts, "rfds", rfds.extract_rfds, path(d), site_id=site_id, doc_id=d.doc_id, catalog=cat)
             if r:
@@ -106,9 +104,12 @@ def build_site_facts(site_dir: Path, ref: ReferenceData, *, sitetracker: SiteTra
                     facts.trunks["CD"] = r.trunk
                 facts.site["cd_scope_lines"] = r.scope_lines
                 facts.site["cd_jumpers"] = r.jumpers
+            if not (r and r.items):                       # the CD is one of the two sources every comparison needs
+                raise ExtractionError(f"The CD drawing for {site_id} could not be read: {_why(facts, 'cd', r)}. Nothing was compared.",
+                                      details={"site_id": site_id, "source": "CD"})
 
         # MA / SA
-        d = facts.doc("MA_SA")
+        d = facts.doc("MA_SA") if _reads(st, "MA_SA") else None
         if d:
             r = _guard(facts, "ma_sa", ma_sa.extract_ma_sa, path(d), site_id=site_id, doc_id=d.doc_id, catalog=cat)
             if r:
@@ -116,7 +117,7 @@ def build_site_facts(site_dir: Path, ref: ReferenceData, *, sitetracker: SiteTra
                 facts.fields += f
 
         # REV 0 BOM
-        d = facts.doc("BOM_REV0")
+        d = facts.doc("BOM_REV0") if _reads(st, "BOM_REV0") else None
         if d:
             r = _guard(facts, "bom_rev0", bom_rev0.extract_rev0, path(d), site_id=site_id, doc_id=d.doc_id, catalog=cat)
             if r:
@@ -150,19 +151,54 @@ def build_site_facts(site_dir: Path, ref: ReferenceData, *, sitetracker: SiteTra
                 _merge_sectors(facts, sectors)
                 if trunk:
                     facts.trunks["FIELD"] = trunk
+        if (vend or cloud) and not facts.field_items:     # the drone survey is the other source every comparison needs
+            raise ExtractionError(f"The drone survey data for {site_id} could not be read: {_why(facts, 'drone_vendor', None) or _why(facts, 'pointcloud', None)}. "
+                                  "Nothing was compared.", details={"site_id": site_id, "source": "DRONE"})
         vid = next((x for x in facts.documents if x.doc_type == "DRONE_VIDEO" and x.status == "CURRENT"), None)
         if vid and evidence_dir:
             meta = next((x for x in facts.documents if x.doc_type == "DRONE_META" and x.status == "CURRENT"), None)
             orbit = _orbit_plan(facts, st, path(meta) if meta else None)
             facts.frames = _guard(facts, "video", video.sample_frames, path(vid), Path(evidence_dir) / site_id, site_id=site_id,
                                   n_frames=st.get("engine.video_frames_per_site", 48), sector_azimuths=design_az, orbit=orbit) or []
-            if not facts.frames and st.get("engine.require_drone_video", True):
-                raise MissingDataError(f"Missing data: the drone orbit video for {site_id} could not be read ({facts.warnings[-1] if facts.warnings else 'no frames'}). "
-                                       "Upload a playable orbit video and run the pipeline again.", details={"site_id": site_id, "missing": "DRONE_VIDEO"})
+            if not facts.frames and _required(st, "DRONE_VIDEO"):
+                raise ExtractionError(f"The drone orbit video for {site_id} could not be read: {_why(facts, 'video', None)}. Upload a playable orbit video and run again.",
+                                      details={"site_id": site_id, "source": "DRONE_VIDEO"})
     log.info("site facts built: rfds=%s cd=%s(%s) field=%s(%d items) ma=%s sa=%s rev0=%d lines, %d warnings", facts.rfds_revision,
              facts.cd_revision, facts.cd_method, facts.field_method, len(facts.field_items), facts.ma.result if facts.ma else None,
              facts.sa.result if facts.sa else None, len(facts.rev0), len(facts.warnings), extra={"site_id": site_id})
     return facts
+
+
+LABELS = {"CD": "CD drawing", "DRONE_VIDEO": "drone orbit video", "DRONE_VENDOR": "drone vendor measurements (CSV)", "DRONE_POINTCLOUD": "drone point cloud",
+          "RFDS": "RFDS", "MA_SA": "MA/SA report", "BOM_REV0": "REV 0 BOM"}
+
+
+def _reads(st, source: str) -> bool:
+    """Whether stage 2 reads this source (engine.extract_documents). CD and DRONE are the sources of this release's comparison."""
+    scope = st.get("engine.extract_documents", None)
+    return scope is None or source in scope
+
+
+def _required(st, doc_type: str) -> bool:
+    return any(doc_type in str(g).split("|") for g in st.get("engine.required_documents", []) or [])
+
+
+def _require_documents(facts: SiteFacts, st) -> None:
+    """Stage 1: the site's folder must hold every required document (a group written A|B needs at least one of them), else the run stops."""
+    have = {x.doc_type for x in facts.documents if x.status == "CURRENT"}
+    missing = [" or ".join(LABELS.get(t, t) for t in str(g).split("|")) for g in st.get("engine.required_documents", []) or []
+               if not have & set(str(g).split("|"))]
+    if missing:
+        what = "no documents were found" if not facts.documents else "required documents are missing: " + "; ".join(missing)
+        raise MissingDataError(f"Missing documents for {facts.site_id}: {what}. Upload them to the site's SharePoint folder and run the pipeline again.",
+                               details={"site_id": facts.site_id, "missing": missing})
+
+
+def _why(facts: SiteFacts, step: str, result) -> str:
+    """The reason an extractor gave nothing: its own warnings, else the last warning recorded for that step."""
+    own = [str(w) for w in (getattr(result, "warnings", None) or [])]
+    rec = [w.split(":", 1)[1].strip() for w in facts.warnings if w.lower().startswith(step + ":")]
+    return (own or rec or ["no usable content was found in the file"])[-1].rstrip(".")
 
 
 def _orbit_plan(facts: SiteFacts, st, meta_path) -> tuple[float, bool]:
