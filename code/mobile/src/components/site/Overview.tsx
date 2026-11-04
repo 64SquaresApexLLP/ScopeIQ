@@ -1,10 +1,13 @@
-import React from 'react';
+import { router } from 'expo-router';
+import React, { useState } from 'react';
 import { Linking, Pressable, Text, View } from 'react-native';
-import { authedUrl } from '../../lib/api';
+import { api, authedUrl } from '../../lib/api';
+import { useAuth } from '../../lib/auth';
 import { when } from '../../lib/format';
 import { SiteDetail } from '../../lib/types';
+import { mutateApi } from '../../lib/useApi';
 import { colors, space } from '../theme';
-import { Badge, Card, Icon, IconBadge, IconName, KV, Muted, Row, Section, Title } from '../ui';
+import { Badge, Button, Card, Icon, IconBadge, IconName, KV, Muted, Row, Section, Title } from '../ui';
 
 const kb = (n?: number) =>
   !n ? '' : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
@@ -46,6 +49,8 @@ const docTypeLabel = (typ: string) => {
 };
 
 export function Overview({ d }: { d: SiteDetail; reload: () => void }) {
+  const { can } = useAuth();
+  const [deleting, setDeleting] = useState(false);
   const st = d.site;
   const run = d.last_run?.[0];
   const docs = d.documents ?? [];
@@ -53,6 +58,21 @@ export function Overview({ d }: { d: SiteDetail; reload: () => void }) {
 
   const currentDocs = docs.filter((x) => x.STATUS === 'CURRENT');
   const supersededDocs = docs.filter((x) => x.STATUS === 'SUPERSEDED');
+
+  const deleteSite = async () => {
+    if (typeof window !== 'undefined' && !window.confirm(`Are you sure you want to permanently delete site ${st.SITE_ID}? All documents, pipeline run history, discrepancies, redlines, and files will be permanently removed from the database and disk.`)) return;
+    setDeleting(true);
+    try {
+      await api.del(`/sites/${encodeURIComponent(st.SITE_ID)}`);
+      mutateApi('/sites');
+      mutateApi('/sharepoint/sites');
+      mutateApi('/sites/dashboard');
+      router.replace('/(tabs)/sites');
+    } catch (e: any) {
+      alert(`Could not delete site: ${e?.message || e}`);
+      setDeleting(false);
+    }
+  };
 
   return (
     <View style={{ gap: space(4) }}>
@@ -194,6 +214,27 @@ export function Overview({ d }: { d: SiteDetail; reload: () => void }) {
           })
         )}
       </Section>
+
+      {/* 3. Admin Danger Zone: Delete site */}
+      {can('ADMIN') ? (
+        <Card style={{ borderColor: '#FECACA', backgroundColor: '#FEF2F2', padding: space(4), marginTop: space(2) }}>
+          <Row style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: space(3) }}>
+            <View style={{ flex: 1, minWidth: 220, gap: 2 }}>
+              <Text style={{ fontSize: 14, fontWeight: '800', color: colors.danger }}>Delete site</Text>
+              <Text style={{ fontSize: 12, color: colors.muted }}>
+                Permanently deletes {st.SITE_ID}, including all registered documents, pipeline run history, discrepancies, redlines, and files.
+              </Text>
+            </View>
+            <Button
+              title={deleting ? 'Deleting...' : 'Delete site'}
+              kind="danger"
+              small
+              disabled={deleting}
+              onPress={deleteSite}
+            />
+          </Row>
+        </Card>
+      ) : null}
     </View>
   );
 }

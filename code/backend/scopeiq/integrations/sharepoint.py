@@ -91,6 +91,9 @@ class SharePointStore(ABC):
     @abstractmethod
     def save_file(self, site_id: str, folder: str, file_name: str, data: bytes, replace_file: str | None = None) -> dict: ...
 
+    def delete_site_folder(self, site_id: str) -> bool:
+        return False
+
     # shared behaviour -----------------------------------------------------------------------------------------------
     def upload(self, site_id: str, file_name: str, data: bytes, doc_type: str | None = None,
                replace_file: str | None = None) -> dict:
@@ -181,6 +184,14 @@ class LocalSharePoint(SharePointStore):
         except Exception:
             pass
         return {"site_id": validate_site_id(site_id), "path": f"{self.library_root}/{site_id}", "folders": SITE_FOLDERS}
+
+    def delete_site_folder(self, site_id: str) -> bool:
+        import shutil
+        d = self._site_dir(site_id)
+        if d.is_dir():
+            shutil.rmtree(d, ignore_errors=True)
+            return True
+        return False
 
     def list_site_ids(self) -> list[str]:
         return sorted(p.name for p in self.base.iterdir() if p.is_dir() and SITE_ID_RE.match(p.name))
@@ -378,7 +389,8 @@ def get_store() -> SharePointStore:
         if provider == "graph":
             _store = GraphSharePoint(st.section("sharepoint").get("graph", {}), lib)
         else:
-            _store = LocalSharePoint(st.path("sharepoint.local_root"), lib, auto_seed=True)
+            auto_seed = bool(st.get("sharepoint.auto_seed", False))
+            _store = LocalSharePoint(st.path("sharepoint.local_root"), lib, auto_seed=auto_seed)
     return _store
 
 

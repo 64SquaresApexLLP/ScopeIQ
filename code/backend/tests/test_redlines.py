@@ -242,5 +242,5 @@ def test_site_without_orbit_video_stops_with_missing_data(tmp_path, ref):
     site = tmp_path / "TXZZ9999"
     shutil.copytree(src, site)
     shutil.rmtree(site / "drone" / "video")
-    with pytest.raises(MissingDataError, match="Missing data: no drone orbit video"):
+    with pytest.raises(MissingDataError, match="Drone orbit video missing"):
         build_site_facts(site, ref)

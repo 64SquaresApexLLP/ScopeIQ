@@ -343,6 +343,33 @@ export default function Admin() {
     }
   };
 
+  const deleteAllSites = async () => {
+    if (typeof window !== 'undefined' && !window.confirm('Are you sure you want to delete ALL sites and wipe their pipeline data?')) return;
+    setBusy(true);
+    try {
+      await api.del('/admin/sites');
+      sites.reload();
+      mutateApi('/sites');
+      mutateApi('/sharepoint/sites');
+    } catch (e) {
+      setError(e as ApiError);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteSingleSite = async (sid: string) => {
+    if (typeof window !== 'undefined' && !window.confirm(`Delete site ${sid} and all its documents and findings?`)) return;
+    try {
+      await api.del(`/admin/sites/${encodeURIComponent(sid)}`);
+      sites.reload();
+      mutateApi('/sites');
+      mutateApi('/sharepoint/sites');
+    } catch (e) {
+      setError(e as ApiError);
+    }
+  };
+
   return (
     <ScrollView style={s.screen} contentContainerStyle={[s.content, { maxWidth: 820, width: '100%', alignSelf: 'center' }]}
       refreshControl={<RefreshControl refreshing={sites.loading} onRefresh={sites.reload} />}>
@@ -568,9 +595,20 @@ export default function Admin() {
         ) : null}
       </Card>
 
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: space(5), marginBottom: space(3) }}>
-        <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>All sites</Text>
-        <Muted>{sites.data?.sites.length ?? 0} in SharePoint</Muted>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: space(5), marginBottom: space(3) }}>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space(2) }}>
+          <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>All sites</Text>
+          <Muted>{sites.data?.sites.length ?? 0} in SharePoint</Muted>
+        </View>
+        {(sites.data?.sites.length ?? 0) > 0 ? (
+          <Button
+            title="Delete all sites"
+            kind="danger"
+            small
+            disabled={busy}
+            onPress={deleteAllSites}
+          />
+        ) : null}
       </View>
       {sites.error ? <ErrorView error={sites.error} onRetry={sites.reload} /> : null}
       {sites.data && sites.data.sites.length === 0 ? <Card><View style={{ alignItems: 'center', padding: space(4) }}><Icon name="folder" size={28} color="#B8C2D6" /><Muted style={{ marginTop: 6 }}>No sites yet. Create the first one above.</Muted></View></Card> : null}
@@ -583,6 +621,18 @@ export default function Admin() {
           </View>
           {x.stream ? <Badge text={x.stream} color={colors.info} /> : null}
           <Badge text={`${x.files} file${x.files === 1 ? '' : 's'}`} color={x.files ? colors.ok : colors.muted} />
+          <Pressable
+            onPress={() => deleteSingleSite(x.site_id)}
+            style={({ pressed }) => ({
+              padding: 8,
+              borderRadius: 8,
+              backgroundColor: '#FEE2E2',
+              opacity: pressed ? 0.7 : 1,
+            })}
+            accessibilityLabel={`Delete site ${x.site_id}`}
+          >
+            <Icon name="trash-2" size={16} color={colors.danger} />
+          </Pressable>
         </Card>
       ))}
       </>}

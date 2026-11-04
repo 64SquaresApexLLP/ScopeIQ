@@ -62,8 +62,22 @@ def build_site_facts(site_dir: Path, ref: ReferenceData, *, sitetracker: SiteTra
         facts.documents = register_site_folder(site_dir, site_id, upload_dir=Path(st.path("paths.upload_dir")) / site_id, paths=doc_paths)
         facts.site["doc_paths"] = {k: str(v) for k, v in doc_paths.items()}
         if st.get("engine.require_drone_video", True) and not any(x.doc_type == "DRONE_VIDEO" and x.status == "CURRENT" for x in facts.documents):
-            raise MissingDataError(f"Missing data: no drone orbit video found for {site_id}. Add the survey's orbit video to the site's drone/video "
-                                   "folder and run the pipeline again.", details={"site_id": site_id, "missing": "DRONE_VIDEO"})
+            # Show a clear message: distinguish "no documents at all" vs "docs present but drone video missing"
+            active_docs = [x for x in facts.documents if x.status == "CURRENT"]
+            if not active_docs:
+                raise MissingDataError(
+                    f"No documents found for site {site_id}. "
+                    "Please upload the required documents — RFDS, Construction Drawing (CD), "
+                    "drone orbit video (.mp4), and BOM — to the site's SharePoint folder, "
+                    "then run the pipeline again.",
+                    details={"site_id": site_id, "missing": "ALL_DOCUMENTS"},
+                )
+            raise MissingDataError(
+                f"Drone orbit video missing for site {site_id}. "
+                "A drone survey video (.mp4) is required so the pipeline can verify field conditions. "
+                "Please upload the orbit video to the site's drone/video folder and run the pipeline again.",
+                details={"site_id": site_id, "missing": "DRONE_VIDEO"},
+            )
         if on_ingested:
             on_ingested(facts)
         path = lambda d: doc_paths.get(d.doc_id) or _abs(site_dir, d.rel_path)  # noqa: E731
