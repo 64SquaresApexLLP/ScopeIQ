@@ -23,7 +23,7 @@ const DOC_TYPE_COLORS: Record<string, string> = {
 const docColor = (t: string) => DOC_TYPE_COLORS[t] ?? colors.info;
 
 export default function Sites() {
-  const { can } = useAuth();
+  const { user, can } = useAuth();
   const sites = useApi<R[]>('/sites');
   const [q, setQ] = useState('');
 
@@ -96,7 +96,10 @@ export default function Sites() {
           return (
             <Card
               onPress={() =>
-                router.push({ pathname: '/site/[id]', params: { id: item.SITE_ID } })
+                router.push({
+                  pathname: '/site/[id]',
+                  params: user?.role === 'AE_ENGINEER' ? { id: item.SITE_ID, tab: 'redlines' } : { id: item.SITE_ID },
+                })
               }
             >
               {/* Header row — Site ID + workflow state */}
