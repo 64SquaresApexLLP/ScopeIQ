@@ -10,7 +10,9 @@ or locked one is never touched and the run creates the next revision instead.
 from __future__ import annotations
 
 import contextvars
+import dataclasses
 import json
+import shutil
 import threading
 import uuid
 from contextlib import contextmanager
@@ -33,6 +35,10 @@ from scopeiq.engine.drivers import build_drivers, estimate, site_requirements
 from scopeiq.engine.facts import build_site_facts
 from scopeiq.engine.reconcile import reconcile
 from scopeiq.engine.proof import Proof, attach_proofs, read_stills, remove_proofs
+from scopeiq.bom.design_stage import design_items, read_design_documents
+from scopeiq.bom.engine import generate as generate_bom_lines
+from scopeiq.bom.export import write_bom_workbook
+from scopeiq.bom.rulebook import load_rulebook
 from scopeiq.engine.redlines import decide, draft_redlines_and_rfis
 from scopeiq.engine.revisions import build_rev1, validate_rev0
 from scopeiq.extract.sitetracker import SiteTracker
@@ -45,9 +51,9 @@ from scopeiq.workflow.engine import WorkflowEngine
 log = get_logger("pipeline")
 
 ALL_STEP_DEFS = [("INGEST", "Ingest documents"), ("EXTRACT", "Extract values"), ("RECONCILE", "Reconcile sources"),
-                 ("REDLINES", "Redlines and RFIs"), ("DELTA", "Design delta"), ("GENERATE", "Generate BOM"), ("ESTIMATE", "Estimate"),
+                 ("REDLINES", "Redlines and RFIs"), ("DESIGN", "Extract RFDS and MA/SA"), ("BOM", "Generate BOM"), ("DELTA", "Design delta"), ("GENERATE", "Generate BOM"), ("ESTIMATE", "Estimate"),
                  ("PERSIST", "Save results"), ("FILES", "Write files")]
-LAST_STAGE = "REDLINES"           # the run ends here for now; the later stages stay in the code and come back by changing this
+LAST_STAGE = "BOM"                # the run ends here for now; the later stages stay in the code and come back by changing this
 STEP_DEFS = ALL_STEP_DEFS[:[k for k, _ in ALL_STEP_DEFS].index(LAST_STAGE) + 1]
 
 
@@ -112,6 +118,11 @@ class RunProgress:
         started = s["started_at"] or end
         s.update(status="DONE", finished_at=end, message=message, counts=counts or {},
                  duration_ms=int((datetime.fromisoformat(end) - datetime.fromisoformat(started)).total_seconds() * 1000))
+        self._flush()
+
+    def skip(self, key: str, message: str) -> None:
+        """A stage that does not apply to this run (its condition was not met): not run, and not a failure."""
+        self._get(key).update(status="SKIPPED", message=message)
         self._flush()
 
     @contextmanager
@@ -195,6 +206,8 @@ class PipelineService:
         prog = RunProgress(self.repo, run_id)
         with bind(site_id=site_id, component="pipeline"):
             try:
+                self._clear_design_outputs(site_id)               # a run shows only what it produced itself, never an earlier run's design or BOM
+
                 def ingested(f):          # documents are registered: Ingest is done, the extractors start
                     prog.finish("INGEST", f"{len(f.documents)} document(s) registered", _count(d.doc_type for d in f.documents))
                     prog.start("EXTRACT")
@@ -226,8 +239,33 @@ class PipelineService:
                         prog.finish("REDLINES", (f"redlined drawing written with {len(redlines)} markup(s)" if decision.required else "no redlined drawing needed")
                                     + f"; {len(rfis)} RFI(s) drafted",
                                     {"redline_required": decision.required, "redlines": len(redlines), "rfis": len(rfis)})
+                design_summary: dict = {}
+                if stage_on("DESIGN"):
+                    live = [d for d in discs if d.status not in ("DISMISSED", "RESOLVED", "CLOSED")]       # mismatches stage 3 found that nobody has settled
+                    open_items = max(len(live), (decision.redline_count + decision.rfi_count) if decision else 0)
+                    if open_items:                          # the CD and the drone survey still disagree: that has to be solved before the design is priced
+                        why = (f"Pipeline stopped after stage 4: {len(live)} mismatch(es) between the CD and the drone survey need to be resolved "
+                               f"({decision.redline_count if decision else 0} redline(s), {decision.rfi_count if decision else 0} RFI(s)). Stages 5 and 6 run only "
+                               "once there is nothing left to resolve; run the pipeline again after the redlines are done.")
+                        prog.skip("DESIGN", why)
+                        prog.skip("BOM", why)
+                        design_summary = {"skipped": True, "reason": why}
+                    else:
+                        rb, final_m = None, None
+                        with prog.step("DESIGN"):
+                            rb, final_m, docs = self._design_stage(run_id, facts)
+                            prog.finish("DESIGN", f"{len(final_m.devices)} equipment item(s) and {len(final_m.ma_mods)} mount change(s) read from "
+                                        f"{sum(1 for d in docs if d['status'] != 'MISSING')} document(s)",
+                                        {"items": len(final_m.devices), "mount_changes": len(final_m.ma_mods), "documents": len(docs)})
+                            design_summary["documents"] = docs
+                        with prog.step("BOM"):
+                            res = self._bom_stage(run_id, facts, rb, final_m)
+                            prog.finish("BOM", f"{len(res.lines)} BOM line(s) generated with rules {res.revision}; {len(res.issues)} issue(s) to review",
+                                        {"lines": len(res.lines), "issues": len(res.issues), "needs_review": res.summary()["needs_review"]})
+                            design_summary["bom"] = res.summary() | {"issue_list": [i.__dict__ for i in res.issues], "trunk": res.trunk,
+                                                                     "rulebook": rb.summary()}
                 if not stage_on("GENERATE"):
-                    return self._finish_after_reconcile(run_id, site_id, facts, discs, comparisons, decision, redline_files)
+                    return self._finish_after_reconcile(run_id, site_id, facts, discs, comparisons, decision, redline_files, design_summary)
                 with prog.step("DELTA"):
                     as_drawn_m = build_model(facts, self.ref, AS_DRAWN, discs)
                     final_m = build_model(facts, self.ref, FINAL, discs)
@@ -282,7 +320,7 @@ class PipelineService:
                 raise
 
     def _finish_after_reconcile(self, run_id: str, site_id: str, facts: SiteFacts, discs, comparisons: list[dict], decision=None,
-                                redline_files: dict | None = None) -> dict:
+                                redline_files: dict | None = None, design: dict | None = None) -> dict:
         by_outcome: dict[str, int] = {}
         for d in discs:
             by_outcome[d.outcome] = by_outcome.get(d.outcome, 0) + 1
@@ -290,11 +328,51 @@ class PipelineService:
                    "cd_method": facts.cd_method, "warnings": len(facts.warnings)}
         if decision is not None:
             summary |= {"redline_decision": decision.to_dict(), "redlines": decision.redline_count, "rfis": decision.rfi_count, "files": redline_files or {}}
+        if design:
+            summary["design"] = design
+            if design.get("bom", {}).get("file"):
+                summary["files"] = dict(summary.get("files") or {}, bom_xlsx=design["bom"]["file"])
         self._advance_workflow(site_id)
         self.repo.update("CORE.PIPELINE_RUN", {"FINISHED_AT": now_iso(), "STATUS": "SUCCEEDED" if not facts.warnings else "SUCCEEDED_WITH_WARNINGS",
                                                "STEPS": self._steps_of(run_id), "SUMMARY": summary, "WARNINGS": facts.warnings}, {"RUN_ID": run_id})
         log.info("pipeline finished for %s after %s: %d discrepancies", site_id, LAST_STAGE, len(discs))
         return {"run_id": run_id, "site_id": site_id, "status": "SUCCEEDED", "summary": summary, "warnings": facts.warnings}
+
+    # ------------------------------------------------------------------------------------ stages 5 and 6
+    def _clear_design_outputs(self, site_id: str) -> None:
+        """Remove the design items, the BOM rows and the BOM file left by an earlier run, so nothing old can be shown as this run's result."""
+        for table in ("CORE.DESIGN_ITEM", "CORE.BOM_OUTPUT_LINE"):
+            self.repo.delete_where(table, {"SITE_ID": site_id})
+        shutil.rmtree(self.output_dir / "sites" / site_id / "bom", ignore_errors=True)
+
+    def _design_stage(self, run_id: str, facts: SiteFacts):
+        """Stage 5: read the RFDS and the MA/SA report, build the site's final design, store it as design items."""
+        st = get_settings()
+        rb = load_rulebook()                                           # the catalog the models are matched against, from the Excel file, read now
+        docs = read_design_documents(facts, rb.catalog, list(st.get("engine.required_design_documents", ["RFDS"]) or []))
+        ref = dataclasses.replace(self.ref, catalog=rb.catalog)
+        m = build_model(facts, ref, FINAL, None)
+        rows = design_items(m, rb, run_id)
+        self.repo.delete_where("CORE.DESIGN_ITEM", {"SITE_ID": facts.site_id})
+        self.repo.insert("CORE.DESIGN_ITEM", rows)
+        return rb, m, docs
+
+    def _bom_stage(self, run_id: str, facts: SiteFacts, rb, m):
+        """Stage 6: apply the BOM rules to the design built in stage 5, store the lines and write the workbook."""
+        res = generate_bom_lines(m, rb)
+        ts = now_iso()
+        rows = [{"LINE_ID": stable_id("BOM", run_id, i), "RUN_ID": run_id, "SITE_ID": facts.site_id, "MARKET": l.market, "SECTOR": l.sector,
+                 "TECHNOLOGY": l.technology, "BAND": l.band, "CATEGORY": l.category, "SUBCATEGORY": l.subcategory, "MANUFACTURER": l.manufacturer,
+                 "MODEL": l.model, "MANUFACTURER_PN": l.mfr_pn, "CUSTOMER_PN": l.customer_pn, "DESCRIPTION": l.description, "UOM": l.uom,
+                 "DESIGN_QTY": l.design_qty, "SPARE_QTY": l.spare_qty, "TOTAL_QTY": l.total_qty, "SUPPLY": l.supply, "ACTION": l.action,
+                 "SOURCE": l.source, "DRAWING": l.drawing, "RULE_ID": l.rule_id, "REVISION": l.revision, "STATUS": l.status,
+                 "CATALOG_KEY": l.catalog_key, "PARENT_KEY": l.parent_key, "TRACE": l.trace, "CREATED_AT": ts} for i, l in enumerate(res.lines)]
+        self.repo.delete_where("CORE.BOM_OUTPUT_LINE", {"SITE_ID": facts.site_id})
+        self.repo.insert("CORE.BOM_OUTPUT_LINE", rows)
+        out = self.output_dir / "sites" / facts.site_id / "bom" / f"{facts.site_id}_BOM.xlsx"
+        write_bom_workbook(out, facts.site_id, res)
+        res.file = _rel(str(out), self.output_dir)
+        return res
 
     # ------------------------------------------------------------------------------------ stage 4
     def _apply_live_status(self, site_id: str, discs) -> None:
@@ -358,18 +436,25 @@ class PipelineService:
                                    "CREATED_AT": prev_rl.get(x.redline_id, {}).get("CREATED_AT") or ts, "UPDATED_AT": ts, "UPDATED_BY": user} for x in redlines])
         for x in redlines:
             x.status = prev_rl.get(x.redline_id, {}).get("STATUS") or "DRAFT"
-        for gone in set(prev_rl) - {x.redline_id for x in redlines}:      # a finding that no longer exists leaves no redline behind
-            r.delete_where("CORE.REDLINE", {"REDLINE_ID": gone})
+        for gone in set(prev_rl) - {x.redline_id for x in redlines}:      # a finding that no longer exists in drawing
+            pr = prev_rl.get(gone, {})
+            if pr.get("STATUS") in ("CLOSED", "REMOVED"):
+                r.delete_where("CORE.REDLINE", {"REDLINE_ID": gone})
+            else:
+                # Retain redline as INCORPORATED with revised revision until explicitly removed by scoper
+                r.update("CORE.REDLINE", {"STATUS": "INCORPORATED", "DOC_REVISION": f.cd_revision or "REV 2",
+                                          "UPDATED_AT": ts, "UPDATED_BY": "system"}, {"REDLINE_ID": gone})
         r.delete_where("CORE.REDLINE_PROOF", {"SITE_ID": sid})                          # proof is chosen again from this run's footage
         r.insert("CORE.REDLINE_PROOF", [{"PROOF_ID": stable_id("PRF", x.redline_id, x.rank), "REDLINE_ID": x.redline_id, "SITE_ID": sid, "RANK": x.rank,
                                          "KIND": x.kind, "PATH": _rel(x.path, self.output_dir), "CAPTION": x.caption, "BASIS": x.basis, "SECTOR": x.sector,
                                          "TIME_S": x.time_s, "BEARING_DEG": x.bearing_deg, "OFF_DEG": x.off_deg, "CREATED_AT": ts} for x in proofs])
         prev_rfi = {x["RFI_ID"]: x for x in r.select("CORE.RFI", {"SITE_ID": sid})}
-        for gone in set(prev_rfi) - {x.rfi_id for x in rfis}:             # likewise for RFIs the documents now answer
-            r.delete_where("CORE.RFI", {"RFI_ID": gone})
         r.upsert("CORE.RFI", [{"RFI_ID": x.rfi_id, "SITE_ID": sid, "TO_PARTY": x.to_party, "SUBJECT": x.subject, "QUESTION": x.question,
                                "PROPOSED_ANSWER": x.proposed_answer, "ANSWER": prev_rfi.get(x.rfi_id, {}).get("ANSWER"), "DISC_IDS": x.disc_ids,
-                               "STATUS": prev_rfi.get(x.rfi_id, {}).get("STATUS") or "DRAFT", "CREATED_AT": prev_rfi.get(x.rfi_id, {}).get("CREATED_AT") or ts,
+                               "STATUS": prev_rfi.get(x.rfi_id, {}).get("STATUS") or "DRAFT",
+                               "AI_REASON": getattr(x, "ai_reason", None) or prev_rfi.get(x.rfi_id, {}).get("AI_REASON"),
+                               "AI_CONFIDENCE": getattr(x, "ai_confidence", None) or prev_rfi.get(x.rfi_id, {}).get("AI_CONFIDENCE"),
+                               "CREATED_AT": prev_rfi.get(x.rfi_id, {}).get("CREATED_AT") or ts,
                                "UPDATED_AT": ts, "UPDATED_BY": user} for x in rfis])
 
     def _steps_of(self, run_id: str) -> list:

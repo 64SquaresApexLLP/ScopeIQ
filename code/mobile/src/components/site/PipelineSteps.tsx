@@ -2,7 +2,7 @@
 // the rows it produced - documents, extracted values, findings, equipment delta, BOM, estimate, redlines and RFIs.
 import { router } from 'expo-router';
 import React, { useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import { authedUrl } from '../../lib/api';
 import { label, money, num, SECTOR, show } from '../../lib/format';
 import { PipelineStep, Row as R } from '../../lib/types';
@@ -37,7 +37,7 @@ function Marker({ status, isAborted }: { status: PipelineStep['status']; isAbort
       </View>
     );
   }
-  if (isAborted) {
+  if (isAborted || status === 'SKIPPED') {
     return (
       <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#F1F3F4', alignItems: 'center', justifyContent: 'center' }}>
         <Text style={{ fontSize: 13, fontWeight: '800', color: colors.muted }}>⊘</Text>
@@ -76,7 +76,8 @@ export function PipelineSteps({ runId, siteId, steps, detail = true, onChanged }
       {steps.map((st, i) => {
         const isRunning = st.status === 'RUNNING';
         const isStepFailed = st.status === 'FAILED';
-        const isAborted = hasFailed && i > failedIndex;
+        const isSkipped = st.status === 'SKIPPED';
+        const isAborted = hasFailed && i > failedIndex && !isSkipped;
         const can = detail && (st.status === 'DONE' || isStepFailed) && st.key !== 'PERSIST';
         const isOpen = !!openMap[st.key];
 
@@ -100,10 +101,10 @@ export function PipelineSteps({ runId, siteId, steps, detail = true, onChanged }
                 <View style={{ flex: 1, marginLeft: space(2) }}>
                   <Row style={{ justifyContent: 'space-between', flexWrap: 'nowrap', alignItems: 'center' }}>
                     <Row style={{ alignItems: 'center', gap: space(1) }}>
-                      <Title style={st.status === 'PENDING' ? { color: colors.muted } : isStepFailed ? { color: colors.danger } : undefined}>
+                      <Title style={st.status === 'PENDING' || isSkipped ? { color: colors.muted } : isStepFailed ? { color: colors.danger } : undefined}>
                         {`Stage ${i + 1}: ${st.label}`}
                       </Title>
-                      {isRunning ? <Badge text="RUNNING..." color={colors.info} /> : isStepFailed ? <Badge text="FAILED" color={colors.danger} /> : isAborted ? <Badge text="ABORTED" color={colors.muted} /> : null}
+                      {isSkipped ? <Badge text="NOT RUN" color={colors.muted} /> : isRunning ? <Badge text="RUNNING..." color={colors.info} /> : isStepFailed ? <Badge text="FAILED" color={colors.danger} /> : isAborted ? <Badge text="ABORTED" color={colors.muted} /> : null}
                     </Row>
                     <Muted>{isRunning ? 'Processing...' : seconds(st.duration_ms)}</Muted>
                   </Row>
@@ -170,12 +171,140 @@ function StepDetail({ runId, siteId, stepKey, stepStatus, onChanged }: { runId: 
     case 'EXTRACT': return <Extracted x={x} isRunning={stepStatus === 'RUNNING'} />;
     case 'RECONCILE': return <Reconcile x={x} />;
     case 'DELTA': return <Delta rows={x.delta} />;
+    case 'DESIGN': return <DesignStage x={x} />;
+    case 'BOM': return <BomStage x={x} runId={runId} />;
     case 'GENERATE': return <Bom x={x} />;
     case 'ESTIMATE': return <Estimate x={x} />;
     case 'REDLINES': return <RedlinesAndRfis siteId={siteId} x={x} reload={() => { void d.reload(); onChanged?.(); }} />;
     case 'FILES': return <Files files={x.files} />;
     default: return <Empty text="Nothing to show for this step." />;
   }
+}
+
+// ------------------------------------------------------------------------------------------------ stages 5 and 6
+type Col = { key: string; label: string; width: number; align?: 'left' | 'center' | 'right'; render?: (row: R) => React.ReactNode };
+
+/** A wide table that scrolls sideways inside its card, so every field stays visible on any screen. */
+function WideTable({ cols, rows, empty }: { cols: Col[]; rows: R[]; empty: string }) {
+  if (!rows.length) return <Muted style={{ fontSize: 12 }}>{empty}</Muted>;
+  const width = cols.reduce((a, c) => a + c.width, 0);
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator>
+      <View style={{ width }}>
+        <View style={{ flexDirection: 'row', borderBottomWidth: 2, borderBottomColor: colors.border, paddingVertical: 4 }}>
+          {cols.map((c) => <Muted key={c.key} style={{ width: c.width, fontSize: 11, fontWeight: '700', textAlign: c.align ?? 'left', paddingHorizontal: 4 }}>{c.label}</Muted>)}
+        </View>
+        {rows.map((r, i) => (
+          <View key={r.LINE_ID ?? r.ITEM_ID ?? i} style={{ flexDirection: 'row', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: String(r.STATUS ?? r.MATCH_STATUS ?? '').match(/Review|Not in/) ? '#FFF8E1' : undefined }}>
+            {cols.map((c) => (
+              <View key={c.key} style={{ width: c.width, paddingHorizontal: 4, justifyContent: 'center' }}>
+                {c.render ? c.render(r) : <Text style={{ fontSize: 12, color: colors.text, textAlign: c.align ?? 'left' }}>{r[c.key] == null || r[c.key] === '' ? '—' : String(r[c.key])}</Text>}
+              </View>
+            ))}
+          </View>
+        ))}
+      </View>
+    </ScrollView>
+  );
+}
+
+const sectorName = (c: string | null) => (c ? (SECTOR[c] ?? (c === 'SITE' ? 'Site' : c)) : '—');
+const qty = (v: any) => (v == null ? '—' : String(Math.round(Number(v) * 100) / 100));
+
+function DesignStage({ x }: { x: any }) {
+  const docs: R[] = x.documents ?? [];
+  const items: R[] = x.items ?? [];
+  if (x.skipped) return <Muted>{x.reason}</Muted>;
+  const cols: Col[] = [
+    { key: 'SECTOR', label: 'Sector', width: 64, render: (r) => <Text style={{ fontSize: 12 }}>{sectorName(r.SECTOR)}{r.POSITION != null ? ` P${r.POSITION}` : ''}</Text> },
+    { key: 'ACTION', label: 'Action', width: 72, render: (r) => <Badge text={r.ACTION} color={r.ACTION === 'Install' ? colors.ok : r.ACTION === 'Remove' ? colors.danger : colors.muted} /> },
+    { key: 'TECHNOLOGY', label: 'Technology', width: 80 }, { key: 'BAND', label: 'Band', width: 80 },
+    { key: 'CATEGORY', label: 'Equipment Category', width: 130 }, { key: 'MANUFACTURER', label: 'Manufacturer', width: 100 },
+    { key: 'MODEL', label: 'Model', width: 150 }, { key: 'MANUFACTURER_PN', label: 'Manufacturer P/N', width: 130 }, { key: 'CUSTOMER_PN', label: 'Customer P/N', width: 100 },
+    { key: 'DESCRIPTION', label: 'Description', width: 260 }, { key: 'UOM', label: 'UOM', width: 44 }, { key: 'QTY', label: 'Qty', width: 44, render: (r) => <Text style={{ fontSize: 12 }}>{qty(r.QTY)}</Text> },
+    { key: 'SUPPLY', label: 'Supply', width: 60 }, { key: 'SOURCE', label: 'Source', width: 90 }, { key: 'DRAWING', label: 'Drawing', width: 100 },
+    { key: 'MATCH_STATUS', label: 'Catalog match', width: 100 },
+  ];
+  return (
+    <View>
+      <Card style={{ marginBottom: space(2), backgroundColor: colors.surfaceAlt }}>
+        <Muted style={{ fontWeight: '700', color: colors.text, marginBottom: 6 }}>1. Data format check</Muted>
+        {docs.map((d, i) => (
+          <Row key={i} style={{ justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4, borderBottomWidth: i < docs.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
+            <Row style={{ alignItems: 'center', gap: space(1), flex: 1, flexWrap: 'wrap' }}>
+              <Badge text={d.status === 'MISSING' ? 'MISSING' : `.${String(d.format).toLowerCase()}`} color={d.status === 'MISSING' ? colors.muted : colors.primary} />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text }}>{d.doc_type === 'MA_SA' ? 'MA/SA report' : d.doc_type}</Text>
+              <Muted style={{ fontSize: 12, flex: 1 }} numberOfLines={1}>{d.file_name || d.note}</Muted>
+            </Row>
+            <Muted style={{ fontSize: 11 }}>{d.tool ? `read with: ${d.tool}${d.values != null ? `, ${d.values} values` : ''}` : ''}</Muted>
+          </Row>
+        ))}
+      </Card>
+      <Card style={{ backgroundColor: colors.surfaceAlt }}>
+        <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: space(1) }}>
+          <Muted style={{ fontWeight: '700', color: colors.text }}>2. Extracted design items (stored in the database)</Muted>
+          <Badge text={`${items.length} items`} color={colors.primary} />
+        </Row>
+        <WideTable cols={cols} rows={items} empty="No design items were stored." />
+      </Card>
+    </View>
+  );
+}
+
+function BomStage({ x, runId }: { x: any; runId: string }) {
+  if (x.skipped) return <Muted>{x.reason}</Muted>;
+  const lines: R[] = x.lines ?? [];
+  const issues: R[] = x.issues ?? [];
+  const sm = x.summary ?? {};
+  const rb = x.rulebook ?? {};
+  const cols: Col[] = [
+    { key: 'SITE_ID', label: 'Site ID', width: 76 }, { key: 'MARKET', label: 'Market', width: 56 },
+    { key: 'SECTOR', label: 'Sector', width: 60, render: (r) => <Text style={{ fontSize: 12 }}>{sectorName(r.SECTOR)}</Text> },
+    { key: 'TECHNOLOGY', label: 'Technology', width: 76 }, { key: 'BAND', label: 'Band', width: 70 },
+    { key: 'CATEGORY', label: 'Equipment Category', width: 130 }, { key: 'MANUFACTURER', label: 'Manufacturer', width: 100 },
+    { key: 'MODEL', label: 'Model', width: 150 }, { key: 'MANUFACTURER_PN', label: 'Manufacturer P/N', width: 130 }, { key: 'CUSTOMER_PN', label: 'Customer P/N', width: 100 },
+    { key: 'DESCRIPTION', label: 'Description', width: 280 }, { key: 'UOM', label: 'UOM', width: 44 },
+    { key: 'DESIGN_QTY', label: 'Design Qty', width: 70, align: 'center', render: (r) => <Text style={{ fontSize: 12, textAlign: 'center' }}>{qty(r.DESIGN_QTY)}</Text> },
+    { key: 'SPARE_QTY', label: 'Spare Qty', width: 64, align: 'center', render: (r) => <Text style={{ fontSize: 12, textAlign: 'center' }}>{qty(r.SPARE_QTY)}</Text> },
+    { key: 'TOTAL_QTY', label: 'Total Qty', width: 64, align: 'center', render: (r) => <Text style={{ fontSize: 12, fontWeight: '700', textAlign: 'center' }}>{qty(r.TOTAL_QTY)}</Text> },
+    { key: 'SUPPLY', label: 'Supply', width: 90 },
+    { key: 'ACTION', label: 'Action', width: 72, render: (r) => <Badge text={r.ACTION} color={r.ACTION === 'Install' ? colors.ok : colors.danger} /> },
+    { key: 'SOURCE', label: 'Source', width: 130 }, { key: 'DRAWING', label: 'Drawing', width: 100 },
+    { key: 'RULE_ID', label: 'BOM Rule', width: 70 }, { key: 'REVISION', label: 'Revision', width: 150 }, { key: 'STATUS', label: 'Status', width: 190 },
+  ];
+  return (
+    <View>
+      <Row style={{ gap: space(1), flexWrap: 'wrap', marginBottom: space(2) }}>
+        <Badge text={`${sm.lines ?? lines.length} lines`} color={colors.primary} />
+        <Badge text={`${sm.install_lines ?? 0} install`} color={colors.ok} />
+        <Badge text={`${sm.remove_lines ?? 0} remove`} color={colors.danger} />
+        <Badge text={`${sm.needs_review ?? 0} need review`} color={sm.needs_review ? colors.warn : colors.muted} />
+        <Badge text={`${issues.length} issue${issues.length === 1 ? '' : 's'}`} color={issues.length ? colors.warn : colors.muted} />
+        {rb.revision ? <Badge text={rb.revision} color={colors.muted} /> : null}
+      </Row>
+      <Muted style={{ fontSize: 12, marginBottom: space(2) }}>
+        {`Built in this run from the design items of stage 5 and the BOM rules read from ${rb.files?.rules ?? 'the rules file'} and ${rb.files?.catalog ?? 'the catalog file'} (${rb.applied ?? '?'} of ${rb.rules ?? '?'} rules applied).`}
+        {x.trunk?.key ? ` Hybrid trunk: ${x.trunk.count} x ${x.trunk.key} (required ${x.trunk.required_ft} ft).` : x.trunk?.held ? ` Hybrid trunk: held. ${x.trunk.reason}` : ''}
+      </Muted>
+      {issues.length ? (
+        <View style={{ marginBottom: space(2), padding: space(2), backgroundColor: '#FFF8E1', borderRadius: 8, borderWidth: 1, borderColor: colors.warn }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text, marginBottom: 4 }}>Needs your attention ({issues.length})</Text>
+          {issues.map((i, k) => (
+            <Row key={k} style={{ gap: space(1), alignItems: 'flex-start', marginBottom: 2 }}>
+              <Badge text={i.severity} color={i.severity === 'HIGH' ? colors.danger : colors.warn} />
+              <Text style={{ flex: 1, fontSize: 12, color: colors.text }}>{i.message}</Text>
+            </Row>
+          ))}
+        </View>
+      ) : null}
+      {x.file ? (
+        <View style={{ marginBottom: space(2), alignSelf: 'flex-start' }}>
+          <Button small title="Download BOM (Excel)" onPress={() => Linking.openURL(authedUrl(`/pipeline/runs/${runId}/file/bom_xlsx`))} />
+        </View>
+      ) : null}
+      <WideTable cols={cols} rows={lines} empty="No BOM lines were generated." />
+    </View>
+  );
 }
 
 function Documents({ data, rows }: { data?: any; rows: R[] }) {

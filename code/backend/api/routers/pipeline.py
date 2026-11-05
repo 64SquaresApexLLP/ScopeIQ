@@ -185,10 +185,20 @@ def step_detail(run_id: str, key: str, user: dict = Depends(current_user)):
         _catalog = reference().catalog
         for _obj in field_objs:
             _dims = _obj.get("DIMS_IN")
+            if _dims and isinstance(_dims, (list, tuple)):
+                _dims = [float(d) for d in _dims]
+            _conf = float(_obj["CONFIDENCE"]) if _obj.get("CONFIDENCE") is not None else 0.0
             _match = identify_object(FieldObject(
-                _obj.get("OBJECT_ID"), _obj.get("OBJECT_TYPE"), _obj.get("SECTOR"), _obj.get("BEARING_DEG"), _obj.get("FACING_AZ_DEG"),
-                _obj.get("CENTER_HEIGHT_FT"), tuple(_dims) if _dims else None, _obj.get("MODEL_GUESS") or "", _obj.get("CONFIDENCE") or 0.0,
-                _obj.get("ROUTE_LENGTH_FT"), _obj.get("METHOD") or "", _obj.get("POSITION")), _catalog)
+                _obj.get("OBJECT_ID"), _obj.get("OBJECT_TYPE"), _obj.get("SECTOR"),
+                float(_obj["BEARING_DEG"]) if _obj.get("BEARING_DEG") is not None else None,
+                float(_obj["FACING_AZ_DEG"]) if _obj.get("FACING_AZ_DEG") is not None else None,
+                float(_obj["CENTER_HEIGHT_FT"]) if _obj.get("CENTER_HEIGHT_FT") is not None else None,
+                tuple(_dims) if _dims else None,
+                _obj.get("MODEL_GUESS") or "",
+                _conf,
+                float(_obj["ROUTE_LENGTH_FT"]) if _obj.get("ROUTE_LENGTH_FT") is not None else None,
+                _obj.get("METHOD") or "",
+                _obj.get("POSITION")), _catalog)
             identified_objects.append({
                 "catalog": _match,
                 "dims_in": _dims,
@@ -325,6 +335,17 @@ def step_detail(run_id: str, key: str, user: dict = Depends(current_user)):
         est = r.select("CORE.ESTIMATE", by_run)
         return {"estimate": est[0] if est else None, "drivers": r.select("CORE.DRIVER_LINE", by_run),
                 "requirements": (r.select("CORE.SITE_REQUIREMENT", by_run) or [None])[0]}
+    if key == "DESIGN":
+        d = (run.get("SUMMARY") or {}).get("design") or {}
+        items = r.select("CORE.DESIGN_ITEM", by_run, order_by="SECTOR, POSITION, ACTION")
+        return {"items": items, "total": len(items), "documents": d.get("documents", []), "skipped": bool(d.get("skipped")), "reason": d.get("reason", "")}
+    if key == "BOM":
+        d = (run.get("SUMMARY") or {}).get("design") or {}
+        bom = d.get("bom") or {}
+        lines = r.select("CORE.BOM_OUTPUT_LINE", by_run, order_by="SECTOR, RULE_ID, CATALOG_KEY")
+        return {"lines": lines, "total": len(lines), "summary": {k: v for k, v in bom.items() if k not in ("issue_list", "rulebook", "trunk")},
+                "issues": bom.get("issue_list", []), "rulebook": bom.get("rulebook"), "trunk": bom.get("trunk"), "file": bom.get("file"),
+                "skipped": bool(d.get("skipped")), "reason": d.get("reason", "")}
     if key == "REDLINES":
         summary = run.get("SUMMARY") or {}
         return {"redlines": r.select("CORE.REDLINE", {"SITE_ID": sid}, order_by="SHEET"), "rfis": r.select("CORE.RFI", {"SITE_ID": sid}),

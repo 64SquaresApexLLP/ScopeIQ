@@ -32,7 +32,7 @@ export interface ReasonCode {
 export interface PipelineStep {
   key: string;
   label: string;
-  status: 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED';
+  status: 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED' | 'SKIPPED';
   started_at: string | null;
   finished_at: string | null;
   duration_ms: number | null;
