@@ -432,10 +432,10 @@ class PipelineService:
             r.update("CORE.REDLINE", {"PDF_PATH": None}, {"SITE_ID": sid})          # the drawing is rewritten (or no longer needed) on every run
         r.upsert("CORE.REDLINE", [{"REDLINE_ID": x.redline_id, "SITE_ID": sid, "DISC_ID": x.disc_id, "DOC_TYPE": x.doc_type, "DOC_REVISION": x.doc_revision,
                                    "SHEET": x.sheet, "MARKUP": x.markup, "CHANGE_FROM": x.change_from, "CHANGE_TO": x.change_to,
-                                   "STATUS": prev_rl.get(x.redline_id, {}).get("STATUS") or "DRAFT", "PDF_PATH": pdf_rel if x.doc_type == "CD" else None,
+                                   "STATUS": prev_rl.get(x.redline_id, {}).get("STATUS") or "IN_REVIEW", "PDF_PATH": pdf_rel if x.doc_type == "CD" else None,
                                    "CREATED_AT": prev_rl.get(x.redline_id, {}).get("CREATED_AT") or ts, "UPDATED_AT": ts, "UPDATED_BY": user} for x in redlines])
         for x in redlines:
-            x.status = prev_rl.get(x.redline_id, {}).get("STATUS") or "DRAFT"
+            x.status = prev_rl.get(x.redline_id, {}).get("STATUS") or "IN_REVIEW"
         for gone in set(prev_rl) - {x.redline_id for x in redlines}:      # a finding that no longer exists in drawing
             pr = prev_rl.get(gone, {})
             if pr.get("STATUS") in ("CLOSED", "REMOVED"):
