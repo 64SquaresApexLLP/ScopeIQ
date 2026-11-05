@@ -37,7 +37,9 @@ def list_redlines(site_id: str | None = None, status: str | None = None, user: d
     for x in rows:
         x["PDF_URL"] = f"/files/{x['PDF_PATH']}" if x.get("PDF_PATH") else None
         x["PROOF"] = proofs.get(x["REDLINE_ID"], [])            # the drone footage that shows what the redline is about
-        x["ACTIONS"] = [a["action"] for a in workflow().actions("REDLINE", x["STATUS"], user["role"])] if user.get("role") in ("AE_ENGINEER", "ADMIN") else []
+        raw_acts = [a["action"] for a in workflow().actions("REDLINE", x["STATUS"], user["role"])] if user.get("role") in ("AE_ENGINEER", "ADMIN") else []
+        allowed_acts = ["REVIEW_DONE", "COMPLETE", "REJECT"]
+        x["ACTIONS"] = [a for a in allowed_acts if a in raw_acts]
 
         rl_events = events_by_id.get(x["REDLINE_ID"], [])
 
