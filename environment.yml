@@ -1,0 +1,7 @@
+name: scopeiq
+channels:
+  - snowflake
+dependencies:
+  - streamlit
+  - snowflake-snowpark-python
+  - pandas

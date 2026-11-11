@@ -1,0 +1,13 @@
+definition_version: 2
+entities:
+  scopeiq_app:
+    type: streamlit
+    identifier:
+      name: SCOPEIQ_APP
+      database: SCOPEIQ_DB
+      schema: APP
+    query_warehouse: SCOPEIQ_WH
+    main_file: streamlit_app.py
+    artifacts:
+      - streamlit_app.py
+      - environment.yml
