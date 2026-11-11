@@ -1,9 +1,14 @@
 """SharePoint tab (first version: page shell, connection state, setup steps and folder layout; document handling comes next)."""
+from urllib.parse import urlparse
+
 import streamlit as st
 
+import settings
 from ui.theme import icon
 
-SITE_URL = "https://64squaresllc.sharepoint.com/sites/ScopeIQ"
+SITE_URL = settings.sharepoint_site_url()
+HOST = urlparse(SITE_URL).netloc or "not set"
+SITE_NAME = (urlparse(SITE_URL).path.rstrip("/").split("/") or [""])[-1] or "ScopeIQ"
 LIBRARY = "Documents"
 ROOT = "Sites"
 DOC_FOLDERS = [("CD", "Construction drawings"), ("DRONE", "Video, photos, point cloud, vendor CSV"),
@@ -26,13 +31,13 @@ def render() -> None:
         '<div class="page-title">SharePoint</div>'
         '<div class="page-sub">Every site has its own folder in the ScopeIQ SharePoint site. Documents are uploaded there, '
         'and the pipeline reads them from there.</div></div>'
-        f'<a class="btn ghost" href="{SITE_URL}" target="_blank" rel="noopener">{icon("open_in_new")}Open in SharePoint</a>'
+        + (f'<a class="btn ghost" href="{SITE_URL}" target="_blank" rel="noopener">{icon("open_in_new")}Open in SharePoint</a>' if SITE_URL else "") +
         '</div>'
     )
 
     cards = [
         ("amber", "link_off", "Connection", "Not connected", '<span class="badge amber"><span class="dot amber"></span>Waiting for access</span>'),
-        ("blue", "hub", "SharePoint site", "ScopeIQ", "64squaresllc.sharepoint.com"),
+        ("blue", "hub", "SharePoint site", SITE_NAME, HOST),
         ("violet", "folder_open", "Library", f"{LIBRARY} / {ROOT}", "One folder per site"),
         ("teal", "location_on", "Site folders", "&ndash;", "Shown once connected"),
     ]

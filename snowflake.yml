@@ -11,5 +11,6 @@ entities:
     artifacts:
       - streamlit_app.py
       - environment.yml
+      - settings.py
       - ui/*.py
       - views/*.py
