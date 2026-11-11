@@ -2,6 +2,6 @@ name: scopeiq
 channels:
   - snowflake
 dependencies:
-  - streamlit
+  - streamlit=1.52.2
   - snowflake-snowpark-python
   - pandas
