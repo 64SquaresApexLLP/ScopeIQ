@@ -1,4 +1,4 @@
-"""ScopeIQ - admin console on Snowflake (Streamlit). Nav bar on top; one view per tab."""
+"""ScopeIQ - admin console on Snowflake (Streamlit). Command bar on top; one view per tab."""
 import streamlit as st
 
 from ui import navbar, theme
@@ -7,21 +7,22 @@ from views import coming_soon, sharepoint
 st.set_page_config(page_title="ScopeIQ", page_icon=":material/cell_tower:", layout="wide", initial_sidebar_state="collapsed")
 
 
-def signed_in_user() -> tuple[str, str]:
-    """User and role of the viewer. Falls back to a placeholder when the app runs outside Snowflake."""
-    if "who" not in st.session_state:
+def viewer() -> dict:
+    """Who is viewing and where the app runs. Falls back to a local preview outside Snowflake."""
+    if "viewer" not in st.session_state:
         try:
             from snowflake.snowpark.context import get_active_session
-            row = get_active_session().sql("SELECT CURRENT_USER(), CURRENT_ROLE()").collect()[0]
-            st.session_state["who"] = (str(row[0]), str(row[1]))
+            row = get_active_session().sql("SELECT CURRENT_USER(), CURRENT_ROLE(), CURRENT_WAREHOUSE()").collect()[0]
+            st.session_state["viewer"] = {"user": str(row[0]), "role": str(row[1]), "warehouse": str(row[2] or ""), "live": True}
         except Exception:
-            st.session_state["who"] = ("Local preview", "Not in Snowflake")
-    return st.session_state["who"]
+            st.session_state["viewer"] = {"user": "Local user", "role": "Developer", "warehouse": "", "live": False}
+    return st.session_state["viewer"]
 
 
 theme.apply()
-name, role = signed_in_user()
-tab = navbar.render(name.title() if name.isupper() else name, role.replace("_", " ").title())
+v = viewer()
+name = v["user"].title() if v["user"].isupper() else v["user"]
+tab = navbar.render(name, v["role"].replace("_", " ").title(), v)
 
 if tab == "SharePoint":
     sharepoint.render()
