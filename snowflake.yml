@@ -12,5 +12,7 @@ entities:
       - streamlit_app.py
       - environment.yml
       - settings.py
+      - .streamlit/config.toml
       - ui/*.py
+      - services/*.py
       - views/*.py

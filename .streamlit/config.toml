@@ -1,0 +1,11 @@
+# Light theme everywhere (the page design is light), so widgets never turn dark with the viewer's system theme.
+[theme]
+base = "light"
+primaryColor = "#4F6BFF"
+backgroundColor = "#F3F6FB"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#0F172A"
+font = "sans serif"
+
+[server]
+maxUploadSize = 1000

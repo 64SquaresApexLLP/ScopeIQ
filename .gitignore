@@ -5,4 +5,4 @@ __pycache__/
 .venv/
 output/
 *.p8
-config.toml
+.snowflake/config.toml

@@ -5,11 +5,12 @@ import sys
 import streamlit as st
 
 import settings
+from services import graph
 from ui import navbar, theme
 from views import coming_soon, sharepoint
 
 # Snowflake keeps imported modules in memory between runs; reload ours so a newly uploaded file always takes effect.
-for _m in (settings, theme, navbar, sharepoint, coming_soon):
+for _m in (settings, graph, theme, navbar, sharepoint, coming_soon):
     importlib.reload(sys.modules[_m.__name__])
 
 st.set_page_config(page_title="ScopeIQ", page_icon=":material/cell_tower:", layout="wide", initial_sidebar_state="collapsed")
