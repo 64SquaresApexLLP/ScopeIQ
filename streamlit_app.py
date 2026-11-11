@@ -29,7 +29,12 @@ def viewer() -> dict:
 
 theme.apply()
 v = viewer()
-name = v["user"].title() if v["user"].isupper() else v["user"]
+who = v["user"]
+try:                                  # in Snowflake, st.user is the person viewing the app (CURRENT_USER() is the app's service user)
+    who = st.user.get("user_name") or st.user.get("email") or who
+except Exception:
+    pass
+name = who.title() if who.isupper() else who
 tab = navbar.render(name, v["role"].replace("_", " ").title(), v)
 
 if tab == "SharePoint":

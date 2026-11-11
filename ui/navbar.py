@@ -16,8 +16,6 @@ TABS = [
 ]
 DEFAULT_TAB = "SharePoint"
 
-_LABELS = {name: f":material/{ic}: {name}" for name, ic in TABS}
-_BY_LABEL = {label: name for name, label in _LABELS.items()}
 _ICON = dict(TABS)
 
 
@@ -28,7 +26,7 @@ def _initials(name: str) -> str:
 
 def render(user_name: str, role: str, env: dict) -> str:
     """Draws the bar and returns the name of the selected tab. env = {"live": bool, "warehouse": str}."""
-    current = _BY_LABEL.get(st.session_state.get("nav_tab", ""), DEFAULT_TAB)
+    current = st.session_state.get("tab", DEFAULT_TAB)
     status = (
         f'<span class="env" title="Running in Snowflake"><span class="dot"></span><span class="label">Snowflake</span>'
         f'<span class="mono">{env.get("warehouse") or "-"}</span></span>'
@@ -52,12 +50,12 @@ def render(user_name: str, role: str, env: dict) -> str:
             f'<div class="user-role">{role}</div></div><div class="avatar">{_initials(user_name)}</div></div></div>',
             unsafe_allow_html=True,
         )
-        choice = st.radio(
-            "Navigation",
-            list(_LABELS.values()),
-            index=[n for n, _ in TABS].index(DEFAULT_TAB),
-            horizontal=True,
-            label_visibility="collapsed",
-            key="nav_tab",
-        )
-    return _BY_LABEL[choice]
+        with st.container(key="rail"):
+            cols = st.columns(len(TABS), gap="small")
+            for i, (name, ic) in enumerate(TABS):
+                key = f"navtab_{i}" + ("_on" if name == current else "")
+                if cols[i].button(f":material/{ic}: {name}", key=key, use_container_width=True):
+                    st.session_state["tab"] = name
+                    st.rerun()
+    return current
+

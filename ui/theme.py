@@ -52,7 +52,9 @@ html, body, [data-testid="stApp"] { font-family: 'Inter', system-ui, -apple-syst
 }
 @keyframes edge { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 .st-key-topnav { display: flex; flex-direction: column; gap: 0 !important; padding: 14px 16px 14px !important; }
-.st-key-topnav [data-testid="stLayoutWrapper"] { margin: 0 0 16px !important; }      /* clear space between the top row and the tab rail */
+.st-key-topnav > [data-testid="stLayoutWrapper"] { margin: 0 0 16px !important; }
+.st-key-topnav > [data-testid="stLayoutWrapper"]:last-child { margin-bottom: 0 !important; }
+.st-key-rail [data-testid="stLayoutWrapper"] { margin: 0 !important; }      /* clear space between the top row and the tab rail */
 .st-key-topnav [data-testid="stHorizontalBlock"] { align-items: center; gap: 14px; min-height: 44px; }
 .st-key-topnav [data-testid="stColumn"], .st-key-topnav [data-testid="stColumn"] > [data-testid="stVerticalBlock"] { min-height: 44px; justify-content: center; }
 .st-key-topnav [data-testid="stElementContainer"] { margin: 0 !important; }
@@ -95,77 +97,43 @@ html, body, [data-testid="stApp"] { font-family: 'Inter', system-ui, -apple-syst
 .avatar::after { content: ""; position: absolute; right: -1px; bottom: -1px; width: 10px; height: 10px; border-radius: 50%;
   background: #34D399; border: 2px solid #0C1D47; }
 
-/* ---------- tab rail: equal-width tabs with a highlight that slides to the selected one ---------- */
-.st-key-topnav [data-testid="stRadio"] > label { display: none; }
-.st-key-topnav [data-testid="stElementContainer"]:has([data-testid="stRadio"]),
-.st-key-topnav [data-testid="stRadio"], .st-key-topnav [data-testid="stRadio"] > div { width: 100% !important; max-width: none !important; }
-.st-key-topnav div[role="radiogroup"] {
-  --n: 8; --pad: 5px;
-  position: relative; display: grid !important; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 0 !important;
-  width: 100%; padding: var(--pad); border-radius: 15px;
-  background: rgba(2,6,23,0.35); border: 1px solid rgba(255,255,255,0.07);
-  box-shadow: 0 1px 0 rgba(255,255,255,0.05), 0 2px 10px rgba(0,0,0,0.25) inset;
-  overflow: hidden;                                         /* nothing can poke out of the rail */
+/* ---------- tab rail: one button per tab (plain buttons render the same locally and in Snowflake) ---------- */
+.st-key-rail { gap: 0 !important; padding: 5px; border-radius: 15px; background: rgba(2,6,23,0.35); border: 1px solid rgba(255,255,255,0.07);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.05), 0 2px 10px rgba(0,0,0,0.25) inset; overflow: hidden; }
+.st-key-rail [data-testid="stHorizontalBlock"] { gap: 2px !important; flex-wrap: nowrap !important; align-items: stretch; }
+.st-key-rail [data-testid="stColumn"] { min-width: 0 !important; flex: 1 1 0 !important; width: auto !important; }
+.st-key-rail [data-testid="stElementContainer"], .st-key-rail [data-testid="stButton"] { width: 100% !important; margin: 0 !important; }
+.st-key-rail button {
+  position: relative; width: 100%; height: var(--nav-h); min-height: var(--nav-h); padding: 0 10px; margin: 0;
+  border: 0 !important; border-radius: 11px; background: transparent !important; box-shadow: none !important; overflow: hidden;
+  color: rgba(203,213,255,0.68) !important; cursor: pointer;
+  transition: background .25s ease, color .2s ease, transform .2s ease, box-shadow .25s ease;
 }
-.st-key-topnav div[role="radiogroup"]::before {   /* the sliding highlight */
-  content: ""; position: absolute; z-index: 0; top: var(--pad); bottom: var(--pad);
-  width: calc((100% - 2 * var(--pad)) / var(--n)); left: calc(var(--pad) + (100% - 2 * var(--pad)) / var(--n) * var(--i, 0));
-  border-radius: 11px;
-  background: linear-gradient(135deg, #5B74FF 0%, #4F6BFF 45%, #14B8A6 140%);
-  box-shadow: 0 8px 22px -6px rgba(79,107,255,0.85), 0 0 0 1px rgba(255,255,255,0.22) inset, 0 1px 0 rgba(255,255,255,0.35) inset;
-  transition: left .38s cubic-bezier(.22,1,.36,1);        /* smooth slide, no overshoot past the ends */
-}
-.st-key-topnav div[role="radiogroup"]:has(> label:nth-of-type(1) input:checked) { --i: 0; }
-.st-key-topnav div[role="radiogroup"]:has(> label:nth-of-type(2) input:checked) { --i: 1; }
-.st-key-topnav div[role="radiogroup"]:has(> label:nth-of-type(3) input:checked) { --i: 2; }
-.st-key-topnav div[role="radiogroup"]:has(> label:nth-of-type(4) input:checked) { --i: 3; }
-.st-key-topnav div[role="radiogroup"]:has(> label:nth-of-type(5) input:checked) { --i: 4; }
-.st-key-topnav div[role="radiogroup"]:has(> label:nth-of-type(6) input:checked) { --i: 5; }
-.st-key-topnav div[role="radiogroup"]:has(> label:nth-of-type(7) input:checked) { --i: 6; }
-.st-key-topnav div[role="radiogroup"]:has(> label:nth-of-type(8) input:checked) { --i: 7; }
-
-.st-key-topnav label[data-baseweb="radio"] {
-  position: relative; z-index: 1; margin: 0 !important; padding: 0 !important; cursor: pointer; justify-content: center;
-  height: var(--nav-h); border-radius: 11px; display: flex !important; align-items: center;
-}
-.st-key-topnav label[data-baseweb="radio"] > div:first-child { display: none !important; }   /* hide the radio dot */
-.st-key-topnav label[data-baseweb="radio"] > div:last-child { padding: 0 8px; margin: 0 !important; }
-.st-key-topnav label[data-baseweb="radio"] p {
-  margin: 0; display: flex; align-items: center; gap: 8px; white-space: nowrap;
-  color: rgba(203,213,255,0.66); font-size: 13.2px; font-weight: 600; letter-spacing: 0.1px;
-  transition: color .2s ease;
-}
-.st-key-topnav label[data-baseweb="radio"] span[data-testid="stIconMaterial"] {
-  font-size: 19px; transition: transform .4s var(--ease-spring), color .2s ease, filter .2s ease;
-}
-/* hover: soft glass plate, icon rises, label brightens, a scan line glints along the top */
-.st-key-topnav label[data-baseweb="radio"]::before {
-  content: ""; position: absolute; inset: 3px; border-radius: 9px; z-index: -1; opacity: 0;
-  background: rgba(255,255,255,0.07); box-shadow: 0 0 0 1px rgba(255,255,255,0.08) inset; transition: opacity .2s ease;
-}
-.st-key-topnav label[data-baseweb="radio"]::after {
-  content: ""; position: absolute; top: 3px; left: 50%; width: 0; height: 2px; border-radius: 2px; transform: translateX(-50%);
-  background: linear-gradient(90deg, transparent, #7DE9DB, transparent); transition: width .35s ease; filter: drop-shadow(0 0 4px #7DE9DB);
-}
-.st-key-topnav label[data-baseweb="radio"]:hover::before { opacity: 1; }
-.st-key-topnav label[data-baseweb="radio"]:hover::after { width: 54%; }
-.st-key-topnav label[data-baseweb="radio"]:hover p { color: #fff; }
-.st-key-topnav label[data-baseweb="radio"]:hover span[data-testid="stIconMaterial"] { transform: translateY(-2px) scale(1.15); color: #7DE9DB; filter: drop-shadow(0 0 6px rgba(125,233,219,0.6)); }
-.st-key-topnav label[data-baseweb="radio"]:active span[data-testid="stIconMaterial"] { transform: scale(0.92); }
-.st-key-topnav label[data-baseweb="radio"]:has(input:checked)::before,
-.st-key-topnav label[data-baseweb="radio"]:has(input:checked)::after { opacity: 0; width: 0; }
-.st-key-topnav label[data-baseweb="radio"]:has(input:checked) p { color: #fff; font-weight: 700; }
-.st-key-topnav label[data-baseweb="radio"]:has(input:checked) span[data-testid="stIconMaterial"] { color: #fff; transform: none; filter: none; }
-.st-key-topnav label[data-baseweb="radio"]:has(input:focus-visible) { outline: 2px solid #7DE9DB; outline-offset: -2px; }
+.st-key-rail button p, .st-key-rail button div { margin: 0; color: inherit !important; font-size: 13.2px; font-weight: 600; letter-spacing: .1px; white-space: nowrap; }
+.st-key-rail button [data-testid="stMarkdownContainer"] { display: flex; align-items: center; justify-content: center; gap: 7px; }
+.st-key-rail button [data-testid="stIconMaterial"] { font-size: 19px; transition: transform .35s ease, color .2s ease, filter .2s ease; }
+/* hover: glass plate, icon lifts and glows, a light line appears along the top edge */
+.st-key-rail button::after { content: ""; position: absolute; top: 3px; left: 50%; width: 0; height: 2px; border-radius: 2px; transform: translateX(-50%);
+  background: linear-gradient(90deg, transparent, #7DE9DB, transparent); transition: width .3s ease; filter: drop-shadow(0 0 4px #7DE9DB); }
+.st-key-rail button:hover { background: rgba(255,255,255,0.09) !important; color: #fff !important; transform: translateY(-1px); }
+.st-key-rail button:hover::after { width: 54%; }
+.st-key-rail button:hover [data-testid="stIconMaterial"] { transform: translateY(-2px) scale(1.15); color: #7DE9DB; filter: drop-shadow(0 0 6px rgba(125,233,219,0.6)); }
+.st-key-rail button:active { transform: scale(0.97); }
+.st-key-rail button:focus-visible { outline: 2px solid #7DE9DB; outline-offset: -2px; }
+/* the selected tab */
+.st-key-rail [class*="st-key-navtab"][class*="_on"] button {
+  background: linear-gradient(135deg, #5B74FF 0%, #4F6BFF 45%, #14B8A6 140%) !important; color: #fff !important; transform: none;
+  box-shadow: 0 8px 22px -6px rgba(79,107,255,0.85), 0 0 0 1px rgba(255,255,255,0.22) inset, 0 1px 0 rgba(255,255,255,0.35) inset !important; }
+.st-key-rail [class*="st-key-navtab"][class*="_on"] button::after { display: none; }
+.st-key-rail [class*="st-key-navtab"][class*="_on"] button p { font-weight: 700; }
 
 /* narrow screens: the rail scrolls sideways and every tab sizes to its label */
 @media (max-width: 1080px) {
   .crumbs, .user-text, .env .label { display: none; }
   .st-key-topnav { position: relative; top: 0; }
-  .st-key-topnav div[role="radiogroup"] { display: flex !important; flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none; }
-  .st-key-topnav div[role="radiogroup"]::before { display: none; }
-  .st-key-topnav label[data-baseweb="radio"] { flex: none; padding: 0 6px !important; }
-  .st-key-topnav label[data-baseweb="radio"]:has(input:checked) { background: linear-gradient(135deg, #5B74FF, #14B8A6); }
+  .st-key-rail { overflow-x: auto; scrollbar-width: none; }
+  .st-key-rail [data-testid="stColumn"] { flex: 0 0 auto !important; }
+  .st-key-rail button { padding: 0 14px; }
 }
 
 /* ======================================================================
