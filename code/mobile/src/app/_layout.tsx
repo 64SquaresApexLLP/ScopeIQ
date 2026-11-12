@@ -11,10 +11,17 @@ function RootStack() {
   const { user, ready } = useAuth();
   if (!ready) return <Loading />;
   return (
-    <Stack screenOptions={{ headerStyle: { backgroundColor: colors.primary }, headerTintColor: '#fff', contentStyle: { backgroundColor: colors.bg } }}>
+    <Stack
+      screenOptions={{
+        headerStyle: { backgroundColor: colors.primary },
+        headerTintColor: '#fff',
+        headerTitleStyle: { fontWeight: '700' as any },
+        contentStyle: { backgroundColor: colors.bg },
+      }}
+    >
       <Stack.Protected guard={!!user}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="site/[id]" options={{ title: 'Site' }} />
+        <Stack.Screen name="site/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="discrepancy/[id]" options={{ title: 'Discrepancy' }} />
         <Stack.Screen name="bom/[revId]" options={{ title: 'BOM revision' }} />
         <Stack.Screen name="upload/[siteId]" options={{ title: 'Upload document', presentation: 'modal' }} />
