@@ -54,13 +54,23 @@ export function WorkflowActions({ actions, endpoint, entity, onDone, details }: 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
 
-  // If both COMPLETE and INCORPORATE are present for REDLINE, keep only INCORPORATE to avoid duplicate "Complete" buttons
+  // For REDLINE: strictly keep only Review Done, Complete, Reject
   const deduplicatedActions = useMemo(() => {
     if (entity === 'REDLINE') {
-      const names = actions.map((a) => (typeof a === 'string' ? a : a.action));
-      if (names.includes('INCORPORATE') && names.includes('COMPLETE')) {
-        return actions.filter((a) => (typeof a === 'string' ? a : a.action) !== 'COMPLETE');
+      const allowed = ['REVIEW_DONE', 'COMPLETE', 'REJECT'];
+      const seen = new Set<string>();
+      const result: (WorkflowAction | string)[] = [];
+      for (const act of allowed) {
+        const found = actions.find((a) => {
+          const name = typeof a === 'string' ? a : a.action;
+          return name === act || (act === 'COMPLETE' && name === 'INCORPORATE');
+        });
+        if (found && !seen.has(act)) {
+          seen.add(act);
+          result.push(typeof found === 'string' ? act : { ...found, action: act });
+        }
       }
+      return result;
     }
     return actions;
   }, [actions, entity]);
