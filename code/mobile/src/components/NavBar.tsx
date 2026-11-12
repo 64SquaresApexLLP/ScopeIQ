@@ -245,3 +245,4 @@ export function NavBar() {
   const wide = width >= 768;
   return wide ? <DesktopNav /> : <MobileNav />;
 }
+
