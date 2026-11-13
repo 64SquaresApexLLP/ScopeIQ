@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { BomView } from '../../components/site/BomView';
 import { Discrepancies } from '../../components/site/Discrepancies';
 import { Overview } from '../../components/site/Overview';
 import { Pipeline } from '../../components/site/Pipeline';
@@ -12,13 +13,14 @@ import { useAuth } from '../../lib/auth';
 import { SiteDetail } from '../../lib/types';
 import { useApi } from '../../lib/useApi';
 
-type Tab = 'overview' | 'pipeline' | 'discrepancies' | 'redlines';
+type Tab = 'overview' | 'pipeline' | 'discrepancies' | 'redlines' | 'bom';
 
 const ALL_TABS: { key: Tab; label: string; icon: any }[] = [
   { key: 'overview', label: 'Overview', icon: 'info' },
   { key: 'pipeline', label: 'Pipeline', icon: 'zap' },
   { key: 'discrepancies', label: 'Discrepancies', icon: 'alert-triangle' },
   { key: 'redlines', label: 'Redlines & RFIs', icon: 'edit-3' },
+  { key: 'bom', label: 'BOM View', icon: 'table' },
 ];
 
 function SiteTabBar({ tabs, tab, onChange }: { tabs: typeof ALL_TABS; tab: Tab; onChange: (t: Tab) => void }) {
@@ -73,7 +75,7 @@ export default function Site() {
 
   const defaultTab: Tab = isAe
     ? 'redlines'
-    : initial && ['overview', 'pipeline', 'discrepancies', 'redlines'].includes(initial as Tab)
+    : initial && ['overview', 'pipeline', 'discrepancies', 'redlines', 'bom'].includes(initial as Tab)
       ? (initial as Tab)
       : 'overview';
 
@@ -100,7 +102,7 @@ export default function Site() {
       <SiteTabBar tabs={tabs} tab={activeTab} onChange={setTab} />
 
       <ScrollView
-        contentContainerStyle={[s.content, { maxWidth: 1100, width: '100%', alignSelf: 'center' }]}
+        contentContainerStyle={[s.content, { maxWidth: activeTab === 'bom' ? 1280 : 1100, width: '100%', alignSelf: 'center' }]}
         refreshControl={
           <RefreshControl
             refreshing={d.loading}
@@ -118,6 +120,7 @@ export default function Site() {
             {!isAe && activeTab === 'pipeline' && <Pipeline siteId={id} onFinished={d.reload} />}
             {!isAe && activeTab === 'discrepancies' && <Discrepancies siteId={id} />}
             {activeTab === 'redlines' && <Redlines siteId={id} />}
+            {!isAe && activeTab === 'bom' && <BomView siteId={id} />}
           </View>
         )}
       </ScrollView>
