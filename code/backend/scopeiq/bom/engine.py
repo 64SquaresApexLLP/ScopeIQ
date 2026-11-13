@@ -64,6 +64,8 @@ class BomLineOut:
     catalog_key: str = ""
     parent_key: str = ""
     trace: dict = field(default_factory=dict)
+    unit_cost: float = 0.0
+    total_cost: float = 0.0
 
     @property
     def total_qty(self) -> float:
@@ -81,7 +83,8 @@ class BomResult:
     def summary(self) -> dict:
         return {"lines": len(self.lines), "install_lines": sum(l.action == "Install" for l in self.lines),
                 "remove_lines": sum(l.action == "Remove" for l in self.lines), "needs_review": sum(l.status != "Applied" for l in self.lines),
-                "issues": len(self.issues), "revision": self.revision, "file": self.file}
+                "issues": len(self.issues), "revision": self.revision, "file": self.file,
+                "total_cost": round(sum(l.total_cost for l in self.lines), 2)}
 
 
 def _source(refs: list[SourceRef | None]) -> tuple[str, str]:
@@ -124,10 +127,12 @@ class _Builder:
             self.issue("HIGH", "PART_NOT_APPROVED", f"{item.key} ({item.model}) is not customer-approved but {rule_id} selects it", rule_id=rule_id, sector=sector)
         tech, band = self._technology_band(item, parent_item, device)
         source, drawing = _source(refs or [])
+        unit_cost = round(item.unit_cost if item and item.unit_cost is not None else 0.0, 2) if action == "Install" else 0.0
+        total_cost = round(unit_cost * (qty + spare), 2)
         self.lines.append(BomLineOut(
             self.m.site_id, self.m.market, sector, tech, band, item.category, item.subcategory, item.manufacturer, item.model, item.mfr_pn,
             item.customer_pn, item.description, item.uom, qty, spare, "N/A (existing)" if action == "Remove" else item.supply, action, source, drawing,
-            rule_id, self.rb.revision, status, item.key, parent_key, dict(trace or {})))
+            rule_id, self.rb.revision, status, item.key, parent_key, dict(trace or {}), unit_cost, total_cost))
 
     def fire(self, trigger: str, sector: str, variables: dict, *, device: Device | None = None, parent_key: str = "", refs: list | None = None,
              child_override: str | None = None, action: str = "Install", trace: dict | None = None) -> None:

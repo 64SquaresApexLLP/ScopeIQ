@@ -26,6 +26,7 @@ interface BomPreviewResponse {
     remove_qty?: number;
     needs_review?: number;
     issues_count?: number;
+    total_material_cost?: number;
     revision?: string | null;
   };
   sheets: BomSheet[];
@@ -52,6 +53,8 @@ const COL_WIDTHS: Record<string, number> = {
   'Design Qty': 84,
   'Spare Qty': 80,
   'Total Qty': 80,
+  'Unit Cost ($)': 108,
+  'Total Cost ($)': 114,
   'Supply (CFM/VFM)': 120,
   Action: 88,
   Source: 160,
@@ -66,6 +69,11 @@ const COL_WIDTHS: Record<string, number> = {
 };
 
 const NUMERIC_COLS = new Set(['Design Qty', 'Spare Qty', 'Total Qty']);
+const CURRENCY_COLS = new Set(['Unit Cost ($)', 'Total Cost ($)']);
+
+function formatCurrency(val: number): string {
+  return `$${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
 function colWidth(name: string): number {
   return COL_WIDTHS[name] ?? 125;
@@ -73,7 +81,10 @@ function colWidth(name: string): number {
 
 function formatCell(val: string | number | boolean | null | undefined, colName: string): string {
   if (val === null || val === undefined || val === '') return '—';
-  if (typeof val === 'number' && NUMERIC_COLS.has(colName)) return num(val);
+  if (typeof val === 'number') {
+    if (CURRENCY_COLS.has(colName)) return formatCurrency(val);
+    if (NUMERIC_COLS.has(colName)) return num(val);
+  }
   return String(val);
 }
 
@@ -163,7 +174,7 @@ function ExcelGrid({ sheet, query, actionFilter }: { sheet: BomSheet; query: str
                           borderRightWidth: cIdx < sheet.columns.length - 1 ? 1 : 0,
                           borderRightColor: '#E2E8F0',
                           justifyContent: 'center',
-                          alignItems: NUMERIC_COLS.has(c) ? 'flex-end' : 'flex-start',
+                          alignItems: (NUMERIC_COLS.has(c) || CURRENCY_COLS.has(c)) ? 'flex-end' : 'flex-start',
                         }}
                       >
                         {isAction && raw ? (
@@ -174,7 +185,7 @@ function ExcelGrid({ sheet, query, actionFilter }: { sheet: BomSheet; query: str
                               fontSize: 12,
                               color: isTotal ? colors.primary : colors.text,
                               fontWeight: isTotal ? '700' : '400',
-                              textAlign: NUMERIC_COLS.has(c) ? 'right' : 'left',
+                              textAlign: (NUMERIC_COLS.has(c) || CURRENCY_COLS.has(c)) ? 'right' : 'left',
                             }}
                             numberOfLines={2}
                           >
@@ -261,6 +272,12 @@ function TableSummaryView({ lines, query, actionFilter }: { lines: Record<string
                 <View style={{ alignItems: 'flex-end', gap: 4 }}>
                   <Text style={{ fontSize: 15, fontWeight: '800', color: colors.primary }}>{`${num(l.TOTAL_QTY)} ${l.UOM || 'EA'}`}</Text>
                   <Muted style={{ fontSize: 11 }}>{`Design ${num(l.DESIGN_QTY)} + Spare ${num(l.SPARE_QTY)}`}</Muted>
+                  {l.ACTION === 'Install' && l.TOTAL_COST_USD != null ? (
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#059669' }}>
+                      {formatCurrency(Number(l.TOTAL_COST_USD))}
+                      {l.UNIT_COST_USD ? ` (${formatCurrency(Number(l.UNIT_COST_USD))}/ea)` : ''}
+                    </Text>
+                  ) : null}
                   <Badge text={l.ACTION} color={l.ACTION === 'Install' ? colors.ok : colors.danger} />
                 </View>
               </Row>
@@ -322,6 +339,9 @@ export function BomView({ siteId }: { siteId: string }) {
         {/* Summary metrics */}
         <Row style={{ gap: space(1.5), flexWrap: 'wrap', marginTop: space(3) }}>
           <Badge text={`${summary.lines ?? lines.length} total lines`} color={colors.primary} />
+          {summary.total_material_cost != null && summary.total_material_cost > 0 ? (
+            <Badge text={`Total Material: ${formatCurrency(summary.total_material_cost)}`} color="#059669" />
+          ) : null}
           <Badge text={`${summary.install_lines ?? 0} install (${num(summary.install_qty)} qty)`} color={colors.ok} />
           <Badge text={`${summary.remove_lines ?? 0} remove (${num(summary.remove_qty)} qty)`} color={colors.danger} />
           {(summary.needs_review ?? 0) > 0 ? (
