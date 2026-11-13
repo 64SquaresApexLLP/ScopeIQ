@@ -1,25 +1,29 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { BomView } from '../../components/site/BomView';
 import { Discrepancies } from '../../components/site/Discrepancies';
 import { Overview } from '../../components/site/Overview';
 import { Pipeline } from '../../components/site/Pipeline';
 import { Redlines } from '../../components/site/Redlines';
-import { brandGradient, colors, shadow, space } from '../../components/theme';
+import { brandGradient, colors, space } from '../../components/theme';
 import { ErrorView, Icon, Loading, s } from '../../components/ui';
 import { NavBar } from '../../components/NavBar';
+import { useAuth } from '../../lib/auth';
 import { SiteDetail } from '../../lib/types';
 import { useApi } from '../../lib/useApi';
 
-type Tab = 'overview' | 'pipeline' | 'discrepancies' | 'redlines';
-const TABS: { key: Tab; label: string; icon: any }[] = [
+type Tab = 'overview' | 'pipeline' | 'discrepancies' | 'redlines' | 'bom';
+
+const ALL_TABS: { key: Tab; label: string; icon: any }[] = [
   { key: 'overview', label: 'Overview', icon: 'info' },
   { key: 'pipeline', label: 'Pipeline', icon: 'zap' },
   { key: 'discrepancies', label: 'Discrepancies', icon: 'alert-triangle' },
   { key: 'redlines', label: 'Redlines & RFIs', icon: 'edit-3' },
+  { key: 'bom', label: 'BOM View', icon: 'table' },
 ];
 
-function SiteTabBar({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => void }) {
+function SiteTabBar({ tabs, tab, onChange }: { tabs: typeof ALL_TABS; tab: Tab; onChange: (t: Tab) => void }) {
   return (
     <View style={{ backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: colors.border }}>
       <ScrollView
@@ -27,7 +31,7 @@ function SiteTabBar({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => void })
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ flexDirection: 'row', paddingHorizontal: space(4), gap: space(1) }}
       >
-        {TABS.map((t) => {
+        {tabs.map((t) => {
           const active = tab === t.key;
           return (
             <Pressable
@@ -63,12 +67,20 @@ function SiteTabBar({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => void })
 }
 
 export default function Site() {
+  const { user } = useAuth();
+  const isAe = user?.role === 'AE_ENGINEER';
+  const tabs = isAe ? ALL_TABS.filter((t) => t.key === 'redlines') : ALL_TABS;
+
   const { id, tab: initial } = useLocalSearchParams<{ id: string; tab?: Tab }>();
-  const [tab, setTab] = useState<Tab>(
-    initial && ['overview', 'pipeline', 'discrepancies', 'redlines'].includes(initial as Tab)
+
+  const defaultTab: Tab = isAe
+    ? 'redlines'
+    : initial && ['overview', 'pipeline', 'discrepancies', 'redlines', 'bom'].includes(initial as Tab)
       ? (initial as Tab)
-      : 'overview'
-  );
+      : 'overview';
+
+  const [tab, setTab] = useState<Tab>(defaultTab);
+  const activeTab: Tab = isAe ? 'redlines' : tab;
   const [key, setKey] = useState(0);
   const d = useApi<SiteDetail>(`/sites/${id}`);
 
@@ -87,10 +99,10 @@ export default function Site() {
       </View>
 
       {/* Sub tab bar */}
-      <SiteTabBar tab={tab} onChange={setTab} />
+      <SiteTabBar tabs={tabs} tab={activeTab} onChange={setTab} />
 
       <ScrollView
-        contentContainerStyle={[s.content, { maxWidth: 1100, width: '100%', alignSelf: 'center' }]}
+        contentContainerStyle={[s.content, { maxWidth: activeTab === 'bom' ? 1280 : 1100, width: '100%', alignSelf: 'center' }]}
         refreshControl={
           <RefreshControl
             refreshing={d.loading}
@@ -103,11 +115,12 @@ export default function Site() {
         ) : !d.data ? (
           <Loading />
         ) : (
-          <View key={`${tab}-${key}`}>
-            {tab === 'overview' && <Overview d={d.data} reload={d.reload} />}
-            {tab === 'pipeline' && <Pipeline siteId={id} onFinished={d.reload} />}
-            {tab === 'discrepancies' && <Discrepancies siteId={id} />}
-            {tab === 'redlines' && <Redlines siteId={id} />}
+          <View key={`${activeTab}-${key}`}>
+            {!isAe && activeTab === 'overview' && <Overview d={d.data} reload={d.reload} />}
+            {!isAe && activeTab === 'pipeline' && <Pipeline siteId={id} onFinished={d.reload} />}
+            {!isAe && activeTab === 'discrepancies' && <Discrepancies siteId={id} />}
+            {activeTab === 'redlines' && <Redlines siteId={id} />}
+            {!isAe && activeTab === 'bom' && <BomView siteId={id} />}
           </View>
         )}
       </ScrollView>
