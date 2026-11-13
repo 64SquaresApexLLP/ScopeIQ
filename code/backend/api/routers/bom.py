@@ -3,10 +3,11 @@ DRAFT only - approved/FBA revisions are immutable), workflow, and xlsx export.""
 import uuid
 from pathlib import Path
 
+import openpyxl
 from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse
 
-from api.deps import current_user, ref, repo, require, site_scope, workflow
+from api.deps import check_site_scope, current_user, ref, repo, require, site_scope, workflow
 from api.schemas import BomLineAddIn, BomLineEditIn, TransitionIn
 from scopeiq.common.audit import AuditTrail
 from scopeiq.common.errors import ImmutableRecordError, NotFound, ValidationError
@@ -41,6 +42,178 @@ def revisions(site_id: str, user: dict = Depends(current_user)):
     for r in revs:
         r["ACTIONS"] = [a["action"] for a in workflow().actions("BOM_REVISION", r["STATUS"], user["role"])] if r["KIND"] != "TOOL_REV0" else []
     return revs
+
+
+def _find_site_bom_xlsx(r, site: dict, site_id: str, run_id: str | None) -> tuple[Path | None, dict]:
+    """Locate the generated Excel BOM workbook for a site, returning (path, run_bom_meta)."""
+    base = Path(get_settings().path("paths.output_dir")).resolve()
+    run = r.select("CORE.PIPELINE_RUN", {"RUN_ID": run_id})[0] if run_id else None
+    bom_meta = ((run or {}).get("SUMMARY") or {}).get("design", {}).get("bom") or {}
+    rel = bom_meta.get("file") or ((run or {}).get("SUMMARY") or {}).get("files", {}).get("bom_xlsx")
+    candidates = []
+    if rel:
+        candidates.append((base / rel).resolve())
+    candidates.append((base / "sites" / site_id / "bom" / f"{site_id}_BOM.xlsx").resolve())
+    for p in candidates:
+        if base in p.parents and p.is_file():
+            return p, bom_meta
+    return None, bom_meta
+
+
+def _read_xlsx_sheets(path: Path) -> list[dict]:
+    """Read all sheets of an Excel workbook as column headers + JSON-safe row arrays."""
+    wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+    sheets = []
+    try:
+        for name in wb.sheetnames:
+            ws = wb[name]
+            all_rows = list(ws.iter_rows(values_only=True))
+            if not all_rows:
+                continue
+            headers = [str(c) if c is not None else "" for c in all_rows[0]]
+            # Trim trailing empty columns if any
+            while headers and headers[-1] == "":
+                headers.pop()
+            col_count = len(headers)
+            data_rows = []
+            for row in all_rows[1:]:
+                vals = list(row[:col_count])
+                if any(v is not None and str(v).strip() != "" for v in vals):
+                    data_rows.append([v if isinstance(v, (int, float, bool, str)) or v is None else str(v) for v in vals])
+            sheets.append({"name": name, "columns": headers, "rows": data_rows})
+    finally:
+        wb.close()
+    return sheets
+
+
+@router.get("/sites/{site_id}/preview")
+def site_bom_preview(site_id: str, user: dict = Depends(current_user)):
+    """Return the generated BOM preview (Excel sheets + structured lines) for a site, or available=False if none yet."""
+    site = check_site_scope(user, site_id)
+    r = repo()
+    bom_lines = r.select("CORE.BOM_OUTPUT_LINE", {"SITE_ID": site_id}, order_by="SECTOR, RULE_ID, CATALOG_KEY")
+    run_id = bom_lines[0]["RUN_ID"] if bom_lines else site.get("LAST_RUN_ID")
+    xlsx_path, bom_meta = _find_site_bom_xlsx(r, site, site_id, run_id)
+
+    # Fallback: check if a generated BOM_REVISION exists when BOM_OUTPUT_LINE is empty
+    rev_fallback = None
+    if not bom_lines and not xlsx_path:
+        revs = [x for x in r.select("CORE.BOM_REVISION", {"SITE_ID": site_id}, order_by="REV_NO DESC") if x.get("KIND") != "TOOL_REV0"]
+        if revs:
+            rev_fallback = revs[0]
+            rev_lines = r.select("CORE.BOM_LINE", {"BOM_REV_ID": rev_fallback["BOM_REV_ID"]})
+            cat = ref().catalog
+            for l in rev_lines:
+                it = cat.items.get(l["CATALOG_KEY"])
+                bom_lines.append({
+                    "LINE_ID": l["LINE_ID"],
+                    "RUN_ID": rev_fallback.get("RUN_ID"),
+                    "SITE_ID": site_id,
+                    "MARKET": site.get("MARKET") or "",
+                    "SECTOR": l.get("SECTOR"),
+                    "TECHNOLOGY": it.technology if it else "",
+                    "BAND": it.bands if it else "",
+                    "CATEGORY": it.category if it else "",
+                    "MANUFACTURER": it.manufacturer if it else "",
+                    "MODEL": it.model if it else l.get("CATALOG_KEY"),
+                    "MANUFACTURER_PN": it.mfr_pn if it else "",
+                    "CUSTOMER_PN": it.customer_pn if it else "",
+                    "DESCRIPTION": it.description if it else "",
+                    "UOM": it.uom if it else "",
+                    "DESIGN_QTY": l.get("DESIGN_QTY"),
+                    "SPARE_QTY": l.get("SPARE_QTY"),
+                    "TOTAL_QTY": l.get("TOTAL_QTY"),
+                    "SUPPLY": it.supply if it else "",
+                    "ACTION": l.get("ACTION"),
+                    "SOURCE": l.get("SOURCE"),
+                    "DRAWING": "",
+                    "RULE_ID": l.get("RULE_ID"),
+                    "REVISION": rev_fallback.get("REV_LABEL"),
+                    "STATUS": rev_fallback.get("STATUS"),
+                    "CATALOG_KEY": l.get("CATALOG_KEY"),
+                })
+
+    if not bom_lines and not xlsx_path:
+        return {
+            "available": False,
+            "site_id": site_id,
+            "run_id": None,
+            "file_name": None,
+            "download_path": None,
+            "summary": {},
+            "sheets": [],
+            "lines": [],
+            "issues": [],
+        }
+
+    sheets = _read_xlsx_sheets(xlsx_path) if xlsx_path else []
+    if not sheets and bom_lines:
+        from scopeiq.bom.export import COLUMNS as _BOM_COLS
+        from scopeiq.domain import SECTOR_NAMES
+
+        sheets = [{
+            "name": site_id,
+            "columns": list(_BOM_COLS),
+            "rows": [
+                [
+                    l.get("SITE_ID"), l.get("MARKET"), SECTOR_NAMES.get(l.get("SECTOR"), l.get("SECTOR") or "Site"),
+                    l.get("TECHNOLOGY"), l.get("BAND"), l.get("CATEGORY"), l.get("MANUFACTURER"), l.get("MODEL"),
+                    l.get("MANUFACTURER_PN"), l.get("CUSTOMER_PN"), l.get("DESCRIPTION"), l.get("UOM"),
+                    l.get("DESIGN_QTY"), l.get("SPARE_QTY"), l.get("TOTAL_QTY"), l.get("SUPPLY"), l.get("ACTION"),
+                    l.get("SOURCE"), l.get("DRAWING"), l.get("RULE_ID"), l.get("REVISION"), l.get("STATUS"),
+                ]
+                for l in bom_lines
+            ],
+        }]
+
+    issues = bom_meta.get("issue_list") or []
+    install_lines = [l for l in bom_lines if str(l.get("ACTION") or "").lower() == "install"]
+    remove_lines = [l for l in bom_lines if str(l.get("ACTION") or "").lower() == "remove"]
+    needs_review = sum(1 for l in bom_lines if "review" in str(l.get("STATUS") or "").lower() or "not in" in str(l.get("STATUS") or "").lower())
+
+    download_path = (
+        f"/bom/sites/{site_id}/export"
+        if xlsx_path
+        else (f"/bom/revisions/{rev_fallback['BOM_REV_ID']}/export" if rev_fallback else None)
+    )
+
+    return {
+        "available": True,
+        "site_id": site_id,
+        "run_id": run_id,
+        "file_name": xlsx_path.name if xlsx_path else f"{site_id}_BOM.xlsx",
+        "download_path": download_path,
+        "summary": {
+            "lines": len(bom_lines) or (len(sheets[0]["rows"]) if sheets else 0),
+            "install_lines": len(install_lines),
+            "remove_lines": len(remove_lines),
+            "install_qty": round(sum(float(l.get("TOTAL_QTY") or 0) for l in install_lines), 2),
+            "remove_qty": round(sum(float(l.get("TOTAL_QTY") or 0) for l in remove_lines), 2),
+            "needs_review": needs_review,
+            "issues_count": len(issues),
+            "revision": bom_meta.get("revision") or (rev_fallback.get("REV_LABEL") if rev_fallback else None),
+        },
+        "sheets": sheets,
+        "lines": bom_lines,
+        "issues": issues,
+    }
+
+
+@router.get("/sites/{site_id}/export")
+def export_site_bom(site_id: str, user: dict = Depends(current_user)):
+    """Download the generated Excel BOM workbook for a site."""
+    site = check_site_scope(user, site_id)
+    r = repo()
+    bom_lines = r.select("CORE.BOM_OUTPUT_LINE", {"SITE_ID": site_id}, limit=1)
+    run_id = bom_lines[0]["RUN_ID"] if bom_lines else site.get("LAST_RUN_ID")
+    xlsx_path, _ = _find_site_bom_xlsx(r, site, site_id, run_id)
+    if not xlsx_path:
+        raise NotFound(f"BOM Excel workbook is not available for site {site_id}")
+    return FileResponse(
+        xlsx_path,
+        filename=xlsx_path.name,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 @router.get("/revisions/{rev_id}")
