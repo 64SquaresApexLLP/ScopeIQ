@@ -257,7 +257,13 @@ async def upload(site_id: str, doc_type: str = Form(...), file: UploadFile = Fil
 
 
 @router.get("/documents/{doc_id}/download")
-def download(doc_id: str, user: dict = Depends(current_user)):
+def download(
+    doc_id: str,
+    disposition: str = "inline",
+    user: dict = Depends(current_user),
+):
+    import mimetypes
+
     d = repo().get("CORE.DOCUMENT", DOC_ID=doc_id)
     st = get_settings()
     prefix, _, rest = (d["REL_PATH"] or "").partition("/")
@@ -270,4 +276,46 @@ def download(doc_id: str, user: dict = Depends(current_user)):
     path = base / rest
     if not path.is_file():
         raise NotFound(f"File for {doc_id} is not available on this server")
-    return FileResponse(path, filename=path.name)
+
+    guessed, _ = mimetypes.guess_type(path.name)
+    ext = path.suffix.lower()
+    if ext == ".pdf":
+        media_type = "application/pdf"
+    elif ext in (".jpg", ".jpeg"):
+        media_type = "image/jpeg"
+    elif ext == ".png":
+        media_type = "image/png"
+    elif ext == ".mp4":
+        media_type = "video/mp4"
+    elif ext in (".laz", ".las"):
+        media_type = "application/octet-stream"
+    else:
+        media_type = guessed or "application/octet-stream"
+
+    disp_type = "attachment" if disposition.lower() == "attachment" else "inline"
+    return FileResponse(
+        path,
+        filename=path.name,
+        media_type=media_type,
+        content_disposition_type=disp_type,
+    )
+
+
+@router.get("/documents/{doc_id}/preview")
+def preview_document(doc_id: str, user: dict = Depends(current_user)):
+    """Return structured preview payload (spreadsheet, pdf, image, video, json, text) for a document."""
+    from api.routers.sharepoint import _build_file_preview
+    d = repo().get("CORE.DOCUMENT", DOC_ID=doc_id)
+    st = get_settings()
+    prefix, _, rest = (d["REL_PATH"] or "").partition("/")
+    if prefix == "sites":
+        base = st.path("paths.sites_dir")
+    elif prefix == "sharepoint":
+        base = st.path("sharepoint.local_root") / st.get("sharepoint.library_root", "Ericsson-Scoping/Sites")
+    else:
+        base = st.path("paths.upload_dir")
+    path = base / rest
+    if not path.is_file():
+        raise NotFound(f"File for {doc_id} is not available on this server")
+    download_url = f"/documents/{doc_id}/download"
+    return _build_file_preview(path, d["FILE_NAME"], download_url, site_id=d.get("SITE_ID"), doc_id=doc_id)
