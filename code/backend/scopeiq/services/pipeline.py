@@ -179,6 +179,32 @@ class PipelineService:
                                                "STEPS": RunProgress.initial(), "REFERENCE_VERSIONS": self.ref.versions}])
         return run_id
 
+    @staticmethod
+    def is_run_active(run_id: str) -> bool:
+        with _ACTIVE_LOCK:
+            return run_id in _ACTIVE.values()
+
+    @staticmethod
+    def is_site_active(site_id: str) -> bool:
+        with _ACTIVE_LOCK:
+            return site_id in _ACTIVE
+
+    def cancel_site_run(self, site_id: str) -> dict:
+        """Cancel any running job for a site and mark it as CANCELLED."""
+        with _ACTIVE_LOCK:
+            _ACTIVE.pop(site_id, None)
+        rows = self.repo.select("CORE.PIPELINE_RUN", {"SITE_ID": site_id, "STATUS": "RUNNING"})
+        ts = now_iso()
+        for r in rows:
+            steps = r.get("STEPS") or []
+            for s in steps:
+                if s.get("status") == "RUNNING":
+                    s["status"] = "CANCELLED"
+                    s["finished_at"] = ts
+                    s["message"] = "Cancelled by user"
+            self.repo.update("CORE.PIPELINE_RUN", {"STATUS": "CANCELLED", "FINISHED_AT": ts, "STEPS": steps}, {"RUN_ID": r["RUN_ID"]})
+        return {"site_id": site_id, "cancelled": True}
+
     def start_site(self, site_id: str, *, triggered_by: str | None = None) -> dict:
         """Run a site in the background and return at once; poll GET /pipeline/runs/{run_id}. One run per site at a time."""
         with _ACTIVE_LOCK:
