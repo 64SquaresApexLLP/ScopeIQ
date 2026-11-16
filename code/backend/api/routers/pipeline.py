@@ -12,9 +12,9 @@ from fastapi.responses import FileResponse
 
 from api.deps import check_site_scope, current_user, pipeline, ref as reference, repo, require, site_scope
 from api.schemas import RunIn
-from scopeiq.common.clock import now_iso
 from scopeiq.common.errors import NotFound
 from scopeiq.config import get_settings
+from scopeiq.db.repository import now_iso
 from scopeiq.domain import FieldObject
 from scopeiq.extract.drone import identify_object
 from scopeiq.services.pipeline import APPLY_PREFIX, STEP_DEFS, PipelineService
