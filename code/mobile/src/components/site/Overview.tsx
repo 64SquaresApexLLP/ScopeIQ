@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import React, { useState } from 'react';
 import { Linking, Pressable, Text, View } from 'react-native';
+import { FilePreviewModal, FilePreviewTarget } from '../FilePreviewModal';
 import { api, authedUrl } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { when } from '../../lib/format';
@@ -51,6 +52,7 @@ const docTypeLabel = (typ: string) => {
 export function Overview({ d }: { d: SiteDetail; reload: () => void }) {
   const { can } = useAuth();
   const [deleting, setDeleting] = useState(false);
+  const [previewTarget, setPreviewTarget] = useState<FilePreviewTarget | null>(null);
   const st = d.site;
   const run = d.last_run?.[0];
   const docs = d.documents ?? [];
@@ -167,12 +169,13 @@ export function Overview({ d }: { d: SiteDetail; reload: () => void }) {
             return (
               <Card
                 key={x.DOC_ID || x.FILE_NAME}
-                onPress={() => (x.DOC_ID ? Linking.openURL(authedUrl(`/documents/${x.DOC_ID}/download`)) : undefined)}
+                onPress={() => setPreviewTarget({ name: x.FILE_NAME, docId: x.DOC_ID, siteId: st.SITE_ID, size: x.SIZE_BYTES })}
                 style={{
                   marginBottom: space(2),
                   borderLeftWidth: 4,
                   borderLeftColor: isCurrent ? colors.ok : isSuperseded ? colors.warn : colors.muted,
                   backgroundColor: isSuperseded ? '#FCFCFD' : '#fff',
+                  cursor: 'pointer' as any,
                 }}
               >
                 <Row style={{ alignItems: 'flex-start', gap: space(3) }}>
@@ -194,18 +197,42 @@ export function Overview({ d }: { d: SiteDetail; reload: () => void }) {
                         />
                       </Row>
                     </Row>
-                    <Text style={{ fontSize: 13, color: isSuperseded ? colors.muted : colors.text, fontWeight: '600', marginTop: 4 }} numberOfLines={1}>
+                    <Text style={{ fontSize: 13, color: isSuperseded ? colors.muted : colors.text, fontWeight: '700', marginTop: 4 }} numberOfLines={1}>
                       {x.FILE_NAME}
                     </Text>
-                    <Row style={{ marginTop: 4, alignItems: 'center', gap: space(2) }}>
-                      <Muted style={{ fontSize: 12 }}>
-                        {[x.FILE_FORMAT, kb(x.SIZE_BYTES), x.DOC_DATE].filter(Boolean).join(' · ')}
-                      </Muted>
-                      {isSuperseded ? (
-                        <Text style={{ fontSize: 11, color: colors.warn, fontWeight: '700' }}>
-                          (Superseded by newer revision)
-                        </Text>
-                      ) : null}
+                    <Row style={{ marginTop: 4, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: space(2) }}>
+                      <Row style={{ alignItems: 'center', gap: space(2) }}>
+                        <Muted style={{ fontSize: 12 }}>
+                          {[x.FILE_FORMAT, kb(x.SIZE_BYTES), x.DOC_DATE].filter(Boolean).join(' · ')}
+                        </Muted>
+                        {isSuperseded ? (
+                          <Text style={{ fontSize: 11, color: colors.warn, fontWeight: '700' }}>
+                            (Superseded by newer revision)
+                          </Text>
+                        ) : null}
+                      </Row>
+                      <Row style={{ alignItems: 'center', gap: 6 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#EFF6FF', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                          <Icon name="eye" size={12} color={colors.accent} />
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: colors.accent }}>Click to preview</Text>
+                        </View>
+                        {x.DOC_ID ? (
+                          <Pressable
+                            onPress={(e: any) => {
+                              e.stopPropagation?.();
+                              Linking.openURL(authedUrl(`/documents/${x.DOC_ID}/download`));
+                            }}
+                            style={({ pressed }) => ({
+                              padding: 4,
+                              borderRadius: 4,
+                              backgroundColor: pressed ? '#E2E8F0' : '#F1F5F9',
+                            })}
+                            accessibilityLabel={`Download ${x.FILE_NAME}`}
+                          >
+                            <Icon name="download" size={14} color={colors.muted} />
+                          </Pressable>
+                        ) : null}
+                      </Row>
                     </Row>
                   </View>
                 </Row>
@@ -235,6 +262,7 @@ export function Overview({ d }: { d: SiteDetail; reload: () => void }) {
           </Row>
         </Card>
       ) : null}
+      <FilePreviewModal target={previewTarget} onClose={() => setPreviewTarget(null)} />
     </View>
   );
 }

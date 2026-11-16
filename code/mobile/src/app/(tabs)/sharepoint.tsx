@@ -3,10 +3,11 @@
 import * as DocumentPicker from 'expo-document-picker';
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { Linking, Platform, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { FilePreviewModal, FilePreviewTarget } from '../../components/FilePreviewModal';
 import { colors, shadow, space } from '../../components/theme';
 import { Badge, Button, Card, Chips, ErrorView, Hero, Icon, IconBadge, Muted, Row, s } from '../../components/ui';
-import { api, ApiError } from '../../lib/api';
+import { api, ApiError, authedUrl } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { computeFileSha256 } from '../../lib/hash';
 import { getLogger } from '../../lib/logger';
@@ -110,6 +111,7 @@ export default function SharePoint() {
   const [error, setError] = useState<ApiError | null>(null);
   const [hover, setHover] = useState(false);
   const [deletingFile, setDeletingFile] = useState<string | null>(null);
+  const [previewTarget, setPreviewTarget] = useState<FilePreviewTarget | null>(null);
   const files = useApi<{ files: R[] }>(canUseSharePoint && siteId ? `/sharepoint/sites/${siteId}/files` : null);
   const dropRef = useRef<any>(null);
 
@@ -272,7 +274,7 @@ export default function SharePoint() {
     }
   };
 
-  const uploadableFiles = picked.filter((f) => !f.isDuplicate && !f.notAllowedForAe);
+  const uploadableFiles = picked.filter((f) => (!f.isDuplicate || f.replace) && !f.notAllowedForAe);
   const allBlocked = picked.length > 0 && uploadableFiles.length === 0;
 
   const upload = async () => {
@@ -291,15 +293,15 @@ export default function SharePoint() {
         setDone((n) => n + 1);
         continue;
       }
-      if (f.isDuplicate) {
-        // Do NOT upload same/duplicate file to the site
+      if (f.isDuplicate && !f.replace) {
+        // Do NOT upload same/duplicate file to the site unless user checked overwrite
         out.push({
           name: f.name,
           ok: false,
           isDuplicate: true,
           duplicateOf: f.duplicateOf || undefined,
           hash: f.hash,
-          message: `Upload blocked: Same file already exists on this site ("${f.duplicateOf || f.name}").`,
+          message: `Upload blocked: Same file already exists on this site ("${f.duplicateOf || f.name}"). Check "Overwrite" to re-upload.`,
         });
         setDone((n) => n + 1);
         continue;
@@ -355,6 +357,11 @@ export default function SharePoint() {
     files.reload();
     sites.reload();
     mutateApi('/sites');
+    if (siteId) {
+      mutateApi(`/sites/${siteId}`);
+      mutateApi(`/sites/${siteId}/documents`);
+      mutateApi('/sites/dashboard');
+    }
   };
 
   const okCount = results.filter((r) => r.ok).length;
@@ -477,21 +484,60 @@ export default function SharePoint() {
                         </View>
                       ) : null}
 
-                      {/* Same data detected: Already exists banner - NO replace option */}
+                      {/* Same data detected: Already exists banner with Overwrite option */}
                       {isDup ? (
-                        <View
-                          style={{
-                            backgroundColor: '#FEF2F2',
-                            borderWidth: 1,
-                            borderColor: '#FECACA',
-                            padding: space(2.5),
-                            borderRadius: 8,
-                            marginTop: space(1),
-                          }}
-                        >
-                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#B91C1C' }}>
-                            File already exists on this site. Same file will not be uploaded.
-                          </Text>
+                        <View style={{ gap: space(1.5), marginTop: space(1) }}>
+                          <View
+                            style={{
+                              backgroundColor: '#FEF2F2',
+                              borderWidth: 1,
+                              borderColor: '#FECACA',
+                              padding: space(2.5),
+                              borderRadius: 8,
+                            }}
+                          >
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: '#B91C1C' }}>
+                              File already exists on this site with identical content. Check below if you wish to overwrite it.
+                            </Text>
+                          </View>
+                          <Pressable
+                            onPress={() => setPicked((p) => p.map((x) => (x.name === f.name ? { ...x, replace: !x.replace } : x)))}
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: space(2.5),
+                              backgroundColor: f.replace ? '#FEF3C7' : '#F8FAFC',
+                              padding: space(2.5),
+                              borderRadius: 8,
+                              borderWidth: 1.5,
+                              borderColor: f.replace ? '#F59E0B' : '#CBD5E1',
+                            }}
+                          >
+                            <View
+                              style={{
+                                width: 20,
+                                height: 20,
+                                borderRadius: 5,
+                                borderWidth: 1.5,
+                                borderColor: f.replace ? '#D97706' : colors.muted,
+                                backgroundColor: f.replace ? '#D97706' : '#FFFFFF',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              {f.replace ? <Icon name="check" size={14} color="#FFFFFF" /> : null}
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 12.5, fontWeight: '700', color: f.replace ? '#92400E' : colors.text }}>
+                                {f.replace
+                                  ? `Overwrite existing file "${f.duplicateOf || f.name}" with this file`
+                                  : `Overwrite existing file "${f.duplicateOf || f.name}"`}
+                              </Text>
+                              <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
+                                {f.replace ? 'Checked: existing file will be overwritten. Click to cancel.' : 'Unchecked: upload blocked because identical file already exists. Click to overwrite anyway.'}
+                              </Text>
+                            </View>
+                          </Pressable>
                         </View>
                       ) : null}
 
@@ -631,6 +677,18 @@ export default function SharePoint() {
                             SHA-256: {r.hash.slice(0, 16)}...
                           </Text>
                         ) : null}
+                        {r.ok ? (
+                          <View style={{ marginTop: space(2) }}>
+                            <Button
+                              small
+                              title="Preview Document"
+                              onPress={() => {
+                                const found = files.data?.files.find((x) => x.name === r.name);
+                                setPreviewTarget({ name: r.name, folder: found?.folder || 'cds', siteId });
+                              }}
+                            />
+                          </View>
+                        ) : null}
                       </View>
                     </View>
                   );
@@ -653,26 +711,85 @@ export default function SharePoint() {
                 {list.map((f) => {
                   const fileKey = `${folder}/${f.name}`;
                   const isDeleting = deletingFile === fileKey;
+                  const dlUrl = authedUrl(
+                    `/sharepoint/sites/${siteId}/files/download?folder=${encodeURIComponent(folder)}&file_name=${encodeURIComponent(f.name)}`
+                  );
                   return (
-                    <View key={fileKey} style={{ flexDirection: 'row', alignItems: 'center', gap: space(3), paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#EEF1F7' }}>
-                      <Icon name={fileIcon(f.name)} size={16} color={colors.muted} />
-                      <Text style={{ flex: 1, color: colors.text, fontSize: 13.5 }} numberOfLines={1}>{f.name}</Text>
+                    <Pressable
+                      key={fileKey}
+                      onPress={() => setPreviewTarget({ name: f.name, folder, size: f.size, siteId })}
+                      style={({ pressed, hovered }: any) => ({
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: space(3),
+                        paddingVertical: 9,
+                        paddingHorizontal: 8,
+                        borderRadius: 8,
+                        borderBottomWidth: 1,
+                        borderBottomColor: '#EEF1F7',
+                        backgroundColor: pressed ? '#F1F5F9' : hovered ? '#F8FAFC' : 'transparent',
+                        cursor: 'pointer' as any,
+                      })}
+                    >
+                      <Icon name={fileIcon(f.name)} size={18} color={colors.accent} />
+                      <View style={{ flex: 1, gap: 2 }}>
+                        <Text style={{ color: colors.text, fontSize: 13.5, fontWeight: '700' }} numberOfLines={1}>
+                          {f.name}
+                        </Text>
+                        <Text style={{ color: colors.muted, fontSize: 11 }}>
+                          Click to preview document
+                        </Text>
+                      </View>
+                      <Badge text={f.doc_type || folder} color={colors.muted} />
                       <Muted>{kb(f.size)}</Muted>
-                      <Pressable
-                        onPress={() => handleDeleteFile(folder, f.name)}
-                        disabled={isDeleting}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Delete ${f.name}`}
-                        style={({ pressed }) => ({
-                          padding: 6,
-                          borderRadius: 6,
-                          backgroundColor: pressed ? '#FDE8E8' : 'transparent',
-                          opacity: isDeleting ? 0.4 : 1,
-                        })}
-                      >
-                        <Icon name="trash-2" size={15} color="#E02424" />
-                      </Pressable>
-                    </View>
+                      <Row style={{ alignItems: 'center', gap: 6 }}>
+                        <Pressable
+                          onPress={(e: any) => {
+                            e.stopPropagation?.();
+                            setPreviewTarget({ name: f.name, folder, size: f.size, siteId });
+                          }}
+                          style={({ pressed }: any) => ({
+                            padding: 6,
+                            borderRadius: 6,
+                            backgroundColor: pressed ? '#E2E8F0' : '#F1F5F9',
+                          })}
+                          accessibilityLabel={`Preview ${f.name}`}
+                        >
+                          <Icon name="eye" size={15} color={colors.accent} />
+                        </Pressable>
+                        <Pressable
+                          onPress={(e: any) => {
+                            e.stopPropagation?.();
+                            Linking.openURL(dlUrl);
+                          }}
+                          style={({ pressed }: any) => ({
+                            padding: 6,
+                            borderRadius: 6,
+                            backgroundColor: pressed ? '#E2E8F0' : '#F1F5F9',
+                          })}
+                          accessibilityLabel={`Download ${f.name}`}
+                        >
+                          <Icon name="download" size={15} color={colors.muted} />
+                        </Pressable>
+                        <Pressable
+                          onPress={(e: any) => {
+                            e.stopPropagation?.();
+                            handleDeleteFile(folder, f.name);
+                          }}
+                          disabled={isDeleting}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Delete ${f.name}`}
+                          style={({ pressed }: any) => ({
+                            padding: 6,
+                            borderRadius: 6,
+                            backgroundColor: pressed ? '#FDE8E8' : 'transparent',
+                            opacity: isDeleting ? 0.4 : 1,
+                          })}
+                        >
+                          <Icon name="trash-2" size={15} color="#E02424" />
+                        </Pressable>
+                      </Row>
+                    </Pressable>
                   );
                 })}
               </View>
@@ -680,6 +797,7 @@ export default function SharePoint() {
           </Step>
         </>
       )}
+      <FilePreviewModal target={previewTarget} onClose={() => setPreviewTarget(null)} />
     </ScrollView>
   );
 }

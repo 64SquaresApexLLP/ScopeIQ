@@ -123,6 +123,8 @@ def site_bom_preview(site_id: str, user: dict = Depends(current_user)):
                     "DESIGN_QTY": l.get("DESIGN_QTY"),
                     "SPARE_QTY": l.get("SPARE_QTY"),
                     "TOTAL_QTY": l.get("TOTAL_QTY"),
+                    "UNIT_COST_USD": (it.unit_cost if it else 0.0) if str(l.get("ACTION") or "").lower() == "install" else 0.0,
+                    "TOTAL_COST_USD": round(((it.unit_cost if it else 0.0) if str(l.get("ACTION") or "").lower() == "install" else 0.0) * float(l.get("TOTAL_QTY") or 0.0), 2),
                     "SUPPLY": it.supply if it else "",
                     "ACTION": l.get("ACTION"),
                     "SOURCE": l.get("SOURCE"),
@@ -159,7 +161,9 @@ def site_bom_preview(site_id: str, user: dict = Depends(current_user)):
                     l.get("SITE_ID"), l.get("MARKET"), SECTOR_NAMES.get(l.get("SECTOR"), l.get("SECTOR") or "Site"),
                     l.get("TECHNOLOGY"), l.get("BAND"), l.get("CATEGORY"), l.get("MANUFACTURER"), l.get("MODEL"),
                     l.get("MANUFACTURER_PN"), l.get("CUSTOMER_PN"), l.get("DESCRIPTION"), l.get("UOM"),
-                    l.get("DESIGN_QTY"), l.get("SPARE_QTY"), l.get("TOTAL_QTY"), l.get("SUPPLY"), l.get("ACTION"),
+                    l.get("DESIGN_QTY"), l.get("SPARE_QTY"), l.get("TOTAL_QTY"),
+                    l.get("UNIT_COST_USD", 0.0) or 0.0, l.get("TOTAL_COST_USD", 0.0) or 0.0,
+                    l.get("SUPPLY"), l.get("ACTION"),
                     l.get("SOURCE"), l.get("DRAWING"), l.get("RULE_ID"), l.get("REVISION"), l.get("STATUS"),
                 ]
                 for l in bom_lines
@@ -170,6 +174,7 @@ def site_bom_preview(site_id: str, user: dict = Depends(current_user)):
     install_lines = [l for l in bom_lines if str(l.get("ACTION") or "").lower() == "install"]
     remove_lines = [l for l in bom_lines if str(l.get("ACTION") or "").lower() == "remove"]
     needs_review = sum(1 for l in bom_lines if "review" in str(l.get("STATUS") or "").lower() or "not in" in str(l.get("STATUS") or "").lower())
+    total_material_cost = round(sum(float(l.get("TOTAL_COST_USD") or 0.0) for l in install_lines), 2)
 
     download_path = (
         f"/bom/sites/{site_id}/export"
@@ -191,6 +196,7 @@ def site_bom_preview(site_id: str, user: dict = Depends(current_user)):
             "remove_qty": round(sum(float(l.get("TOTAL_QTY") or 0) for l in remove_lines), 2),
             "needs_review": needs_review,
             "issues_count": len(issues),
+            "total_material_cost": total_material_cost,
             "revision": bom_meta.get("revision") or (rev_fallback.get("REV_LABEL") if rev_fallback else None),
         },
         "sheets": sheets,
