@@ -12,11 +12,12 @@ from fastapi.responses import FileResponse
 
 from api.deps import check_site_scope, current_user, pipeline, ref as reference, repo, require, site_scope
 from api.schemas import RunIn
+from scopeiq.common.clock import now_iso
 from scopeiq.common.errors import NotFound
 from scopeiq.config import get_settings
 from scopeiq.domain import FieldObject
 from scopeiq.extract.drone import identify_object
-from scopeiq.services.pipeline import APPLY_PREFIX, STEP_DEFS
+from scopeiq.services.pipeline import APPLY_PREFIX, STEP_DEFS, PipelineService
 
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 STEP_KEYS = [k for k, _ in STEP_DEFS]
@@ -53,7 +54,26 @@ def runs(site_id: str | None = None, limit: int = 50, user: dict = Depends(curre
     if scope:
         ok = {s["SITE_ID"] for s in repo().select("CORE.SITE", scope)}
         rows = [r for r in rows if r["SITE_ID"] in ok]
-    return rows
+    return [_reconcile_active_status(r) for r in rows]
+
+
+def _reconcile_active_status(run: dict | None) -> dict | None:
+    if not run or run.get("STATUS") != "RUNNING":
+        return run
+    r_id = run.get("RUN_ID", "")
+    if not PipelineService.is_run_active(r_id):
+        ts = now_iso()
+        steps = run.get("STEPS") or []
+        for s in steps:
+            if s.get("status") == "RUNNING":
+                s["status"] = "FAILED"
+                s["finished_at"] = ts
+                s["message"] = "Run interrupted by server restart"
+        run["STATUS"] = "FAILED"
+        run["FINISHED_AT"] = ts
+        run["STEPS"] = steps
+        repo().update("CORE.PIPELINE_RUN", {"STATUS": "FAILED", "FINISHED_AT": ts, "STEPS": steps}, {"RUN_ID": r_id})
+    return run
 
 
 def _run(run_id: str, user: dict) -> dict:
@@ -61,7 +81,7 @@ def _run(run_id: str, user: dict) -> dict:
     if not rows:
         raise NotFound(f"Run {run_id} not found")
     check_site_scope(user, rows[0]["SITE_ID"])
-    return rows[0]
+    return _reconcile_active_status(rows[0])
 
 
 @router.get("/sites/{site_id}/latest")
@@ -69,7 +89,15 @@ def latest_run(site_id: str, user: dict = Depends(current_user)):
     """The newest pipeline run of a site (running or finished), or null when it has never run."""
     check_site_scope(user, site_id)
     rows = repo().select("CORE.PIPELINE_RUN", {"SITE_ID": site_id}, order_by="STARTED_AT DESC", limit=30)
-    return next((r for r in rows if r["RUN_ID"].startswith("RUN-")), None)
+    run = next((r for r in rows if r["RUN_ID"].startswith("RUN-")), None)
+    return _reconcile_active_status(run)
+
+
+@router.post("/sites/{site_id}/cancel")
+def cancel_site(site_id: str, user: dict = Depends(require("SCOPER", "REVIEWER", "ADMIN"))):
+    """Cancel any active pipeline run for a site and clear running status."""
+    check_site_scope(user, site_id)
+    return pipeline().cancel_site_run(site_id)
 
 
 # ---- implement changes: approved redlines -> next CD revision

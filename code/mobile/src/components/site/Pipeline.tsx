@@ -55,6 +55,19 @@ export function Pipeline({ siteId, onFinished }: { siteId: string; onFinished?: 
     }
   };
 
+  const cancel = async () => {
+    setErr(null);
+    try {
+      await api.post(`/pipeline/sites/${siteId}/cancel`);
+      setStarted(null);
+      void run.reload();
+      void latest.reload();
+      void history.reload();
+    } catch (e) {
+      setErr(e as ApiError);
+    }
+  };
+
   if (latest.error) return <ErrorView error={latest.error} onRetry={latest.reload} />;
   if (latest.loading && !id) return <Loading />;
   const r = run.data;
@@ -78,12 +91,22 @@ export function Pipeline({ siteId, onFinished }: { siteId: string; onFinished?: 
       <Card style={{ marginBottom: space(3), borderColor: running ? colors.info : isFailed ? colors.danger : colors.primary, borderWidth: 1.5, backgroundColor: colors.surface }}>
         {canRun ? (
           <Row style={{ alignItems: 'center', justifyContent: 'space-between', gap: space(2), flexWrap: 'wrap' }}>
-            <Button
-              kind="primary"
-              title={running ? 'Running Pipeline...' : isFailed ? '▶ Re-run Pipeline (Retry)' : r ? '▶ Run Pipeline (Re-run)' : '▶ Run Pipeline'}
-              disabled={running}
-              onPress={start}
-            />
+            <Row style={{ gap: space(2), alignItems: 'center', flexWrap: 'wrap' }}>
+              <Button
+                kind="primary"
+                title={running ? 'Running Pipeline...' : isFailed ? '▶ Re-run Pipeline (Retry)' : r ? '▶ Run Pipeline (Re-run)' : '▶ Run Pipeline'}
+                disabled={running}
+                onPress={start}
+              />
+              {running && (
+                <Button
+                  kind="outline"
+                  title="✕ Cancel / Reset"
+                  onPress={cancel}
+                  style={{ borderColor: colors.danger }}
+                />
+              )}
+            </Row>
             <Badge
               text={running ? 'RUNNING' : isFailed ? 'FAILED' : r?.STATUS ?? 'READY'}
               color={running ? colors.info : isFailed ? colors.danger : r?.STATUS === 'SUCCEEDED' ? colors.ok : colors.primary}
