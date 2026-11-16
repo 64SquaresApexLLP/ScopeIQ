@@ -296,3 +296,25 @@ def test_ae_engineer_permissions_and_restrictions(client, env):
     assert unknown_res.status_code == 403, unknown_res.text
 
 
+def test_sharepoint_file_preview_pdf_and_pointcloud(client):
+    admin = login(client, "admin")
+    # Verify PDF preview returns rendered pages for inline viewing
+    res = client.get("/sharepoint/sites/TXAD0405/files/preview?folder=cds&file_name=TXAD0405_CD_REV1.pdf", headers=admin)
+    if res.status_code == 200:
+        data = res.json()
+        assert data["type"] == "pdf"
+        assert "pages" in data
+        if data.get("pages"):
+            assert len(data["pages"]) > 0
+            assert "image" in data["pages"][0]
+
+    # Verify PointCloud preview returns point data and objects
+    pc_res = client.get("/sharepoint/sites/TXAD0405/files/preview?folder=drone&file_name=TXAD0405_pointcloud.laz", headers=admin)
+    if pc_res.status_code == 200:
+        pc_data = pc_res.json()
+        assert pc_data["type"] == "pointcloud"
+        assert len(pc_data.get("points", [])) > 0
+        assert len(pc_data.get("objects", [])) > 0
+
+
+

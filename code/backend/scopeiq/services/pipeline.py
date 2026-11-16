@@ -364,7 +364,8 @@ class PipelineService:
         rows = [{"LINE_ID": stable_id("BOM", run_id, i), "RUN_ID": run_id, "SITE_ID": facts.site_id, "MARKET": l.market, "SECTOR": l.sector,
                  "TECHNOLOGY": l.technology, "BAND": l.band, "CATEGORY": l.category, "SUBCATEGORY": l.subcategory, "MANUFACTURER": l.manufacturer,
                  "MODEL": l.model, "MANUFACTURER_PN": l.mfr_pn, "CUSTOMER_PN": l.customer_pn, "DESCRIPTION": l.description, "UOM": l.uom,
-                 "DESIGN_QTY": l.design_qty, "SPARE_QTY": l.spare_qty, "TOTAL_QTY": l.total_qty, "SUPPLY": l.supply, "ACTION": l.action,
+                 "DESIGN_QTY": l.design_qty, "SPARE_QTY": l.spare_qty, "TOTAL_QTY": l.total_qty,
+                 "UNIT_COST_USD": l.unit_cost, "TOTAL_COST_USD": l.total_cost, "SUPPLY": l.supply, "ACTION": l.action,
                  "SOURCE": l.source, "DRAWING": l.drawing, "RULE_ID": l.rule_id, "REVISION": l.revision, "STATUS": l.status,
                  "CATALOG_KEY": l.catalog_key, "PARENT_KEY": l.parent_key, "TRACE": l.trace, "CREATED_AT": ts} for i, l in enumerate(res.lines)]
         self.repo.delete_where("CORE.BOM_OUTPUT_LINE", {"SITE_ID": facts.site_id})

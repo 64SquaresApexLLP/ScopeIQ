@@ -47,8 +47,9 @@ def main() -> int:
         for sid in sites:
             try:
                 res = svc.run_site(sid, triggered_by=args.user)
-                s = res["summary"]
-                results.append((sid, "OK", s["discrepancies"], s["bom"]["rev_label"], s["redlines"], s["rfis"], len(res["warnings"])))
+                s = res.get("summary") or {}
+                bom_label = (s.get("bom") or {}).get("rev_label") or (s.get("design") or {}).get("bom") or "REV 1"
+                results.append((sid, "OK", s.get("discrepancies", 0), bom_label, s.get("redlines", 0), s.get("rfis", 0), len(res.get("warnings", []))))
             except Exception as exc:  # noqa: BLE001
                 log.error("site %s failed: %s", sid, exc)
                 results.append((sid, "FAILED", str(exc)[:80], "", "", "", ""))
