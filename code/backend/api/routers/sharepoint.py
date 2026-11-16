@@ -622,10 +622,94 @@ def _build_file_preview(
         return {**base, "type": "text", "content": path.read_text(encoding="utf-8", errors="replace")[:100000]}
 
     if ext in ("dxf", "dwg"):
+        cad_pages = []
+        if ext == "dxf":
+            try:
+                import ezdxf
+                import pymupdf
+                from ezdxf.addons.drawing import Frontend, RenderContext, layout
+                from ezdxf.addons.drawing import pymupdf as mupdf_backend
+                from ezdxf.addons.drawing.config import BackgroundPolicy, ColorPolicy, Configuration
+                from ezdxf.math import BoundingBox2d
+
+                doc = ezdxf.readfile(str(path))
+                msp = doc.modelspace()
+                cfg = Configuration(background_policy=BackgroundPolicy.WHITE, color_policy=ColorPolicy.COLOR)
+
+                SHEETS = ["T-1", "A-2", "A-3", "A-4", "E-1"]
+                GAP, W, H = 400, 340, 220
+
+                def _ref_x(e):
+                    try:
+                        t = e.dxftype()
+                        if t in ("TEXT", "MTEXT", "INSERT", "POINT"):
+                            return float(e.dxf.insert[0])
+                        elif t == "LINE":
+                            return float(e.dxf.start[0])
+                        elif t in ("LWPOLYLINE", "POLYLINE"):
+                            return float(e.vertices()[0][0])
+                    except Exception:
+                        pass
+                    return 0.0
+
+                groups = {}
+                for e in msp:
+                    groups.setdefault(int(_ref_x(e) // GAP), []).append(e)
+
+                matched_sheets = [s for i, s in enumerate(SHEETS) if groups.get(i)]
+                if len(matched_sheets) >= 2:
+                    for i, sheet_name in enumerate(SHEETS):
+                        ents = groups.get(i, [])
+                        if not ents:
+                            continue
+                        backend = mupdf_backend.PyMuPdfBackend()
+                        fe = Frontend(RenderContext(doc), backend, config=cfg)
+                        fe.set_background("#ffffff")
+                        fe.draw_entities(ents)
+                        page_layout = layout.Page(17, 11, layout.Units.inch)
+                        data = backend.get_pdf_bytes(
+                            page_layout,
+                            settings=layout.Settings(fit_page=True),
+                            render_box=BoundingBox2d([(i * GAP - 3, -3), (i * GAP + W + 3, H + 3)]),
+                        )
+                        with pymupdf.open("pdf", data) as pdoc:
+                            pix = pdoc[0].get_pixmap(dpi=110)
+                            img_bytes = pix.tobytes("jpeg", jpg_quality=80)
+                            b64 = base64.b64encode(img_bytes).decode("ascii")
+                            cad_pages.append({
+                                "sheet_name": sheet_name,
+                                "page_number": len(cad_pages) + 1,
+                                "width": pix.width,
+                                "height": pix.height,
+                                "image": f"data:image/jpeg;base64,{b64}",
+                            })
+                else:
+                    backend = mupdf_backend.PyMuPdfBackend()
+                    fe = Frontend(RenderContext(doc), backend, config=cfg)
+                    fe.set_background("#ffffff")
+                    fe.draw_layout(msp)
+                    page_layout = layout.Page(17, 11, layout.Units.inch)
+                    data = backend.get_pdf_bytes(page_layout, settings=layout.Settings(fit_page=True))
+                    with pymupdf.open("pdf", data) as pdoc:
+                        pix = pdoc[0].get_pixmap(dpi=110)
+                        img_bytes = pix.tobytes("jpeg", jpg_quality=80)
+                        b64 = base64.b64encode(img_bytes).decode("ascii")
+                        cad_pages.append({
+                            "sheet_name": "Model",
+                            "page_number": 1,
+                            "width": pix.width,
+                            "height": pix.height,
+                            "image": f"data:image/jpeg;base64,{b64}",
+                        })
+            except Exception:
+                pass
+
         return {
             **base,
             "type": "cad",
             "category": "CAD Drawing",
+            "pages": cad_pages,
+            "total_pages": len(cad_pages) if cad_pages else None,
             "note": "CAD drawings can be downloaded for viewing in AutoCAD / DWG TrueView or reviewed via rendered PDF revisions.",
         }
 

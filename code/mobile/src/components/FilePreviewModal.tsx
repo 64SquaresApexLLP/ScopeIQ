@@ -52,6 +52,7 @@ export interface PointCloudStats {
 
 export interface PdfPage {
   page_number: number;
+  sheet_name?: string;
   width: number;
   height: number;
   image: string;
@@ -858,7 +859,7 @@ function PdfViewer({
                   }}
                 >
                   <Text style={{ fontSize: 11.5, fontWeight: '700', color: active ? '#fff' : colors.text }}>
-                    Sheet {p.page_number}
+                    {p.sheet_name ? `Sheet ${p.sheet_name}` : `Sheet ${p.page_number}`}
                   </Text>
                 </Pressable>
               );
@@ -1067,7 +1068,7 @@ export function FilePreviewModal({
               <SpreadsheetViewer sheets={data.sheets} />
             ) : data.type === 'pointcloud' && data.points && data.points.length > 0 ? (
               <PointCloudViewer points={data.points} objects={data.objects} stats={data.stats} />
-            ) : data.type === 'pdf' ? (
+            ) : data.type === 'pdf' || (data.type === 'cad' && data.pages && data.pages.length > 0) ? (
               <PdfViewer pages={data.pages} fileUrl={inlineUrl || undefined} fileName={data.file_name} />
             ) : data.type === 'image' && inlineUrl ? (
               <ScrollView contentContainerStyle={{ alignItems: 'center', padding: space(4) }}>
