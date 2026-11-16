@@ -3,10 +3,19 @@ site's folder. The library behind it is chosen by `sharepoint.provider` (local f
 scopeiq/integrations/sharepoint.py."""
 from __future__ import annotations
 
+import base64
+import csv
+import hashlib
+import json
+import mimetypes
 import re
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Literal
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from api.deps import check_site_scope, current_user, repo, require, site_scope
@@ -408,6 +417,353 @@ def delete_all_sites(user: dict = Depends(require("ADMIN"))):
     return {"status": "ok", "deleted_sites": results}
 
 
+def sync_site_documents_to_db(site_id: str, r=None) -> list[dict]:
+    """Sync disk/SharePoint documents for a site into CORE.DOCUMENT in the repository."""
+    from dataclasses import asdict
+    from scopeiq.db.repository import get_repository, now_iso
+    from scopeiq.db.schema import tables
+    from scopeiq.extract.registry import register_site_folder
+
+    r = r or repo()
+    st = get_settings()
+    site_dir = st.path("paths.sites_dir") / site_id
+    doc_paths: dict = {}
+    upload_dir = Path(st.path("paths.upload_dir")) / site_id
+    try:
+        docs = register_site_folder(site_dir, site_id, upload_dir=upload_dir if upload_dir.is_dir() else None, paths=doc_paths)
+        r.delete_where("CORE.DOCUMENT", {"SITE_ID": site_id})
+        if docs:
+            known = {c for t in tables() if t.fqn == "CORE.DOCUMENT" for c in t.column_names}
+            rows = [
+                dict(
+                    {k.upper(): v for k, v in asdict(d).items() if k.upper() in known},
+                    INSERTED_AT=now_iso(),
+                    INSERTED_BY="sharepoint_sync",
+                )
+                for d in docs
+            ]
+            r.insert("CORE.DOCUMENT", rows)
+        return [d.__dict__ for d in docs]
+    except Exception as exc:
+        return []
+
+
+def _resolve_sharepoint_file_path(site_id: str, folder: str, file_name: str) -> Path | None:
+    st = get_settings()
+    sp_local = st.path("sharepoint.local_root")
+    sp_lib = st.get("sharepoint.library_root", "Ericsson-Scoping/Sites")
+    candidates = [
+        Path(sp_local) / sp_lib / site_id / folder / file_name,
+        Path(sp_local) / sp_lib / site_id / file_name,
+        st.path("paths.sites_dir") / site_id / folder / file_name,
+        st.path("paths.sites_dir") / site_id / file_name,
+        Path(st.path("paths.upload_dir")) / site_id / folder / file_name,
+        Path(st.path("paths.upload_dir")) / site_id / file_name,
+    ]
+    for p in candidates:
+        if p.is_file():
+            return p
+    for root in [Path(sp_local) / sp_lib / site_id, st.path("paths.sites_dir") / site_id]:
+        if root.is_dir():
+            for p in root.rglob(file_name):
+                if p.is_file():
+                    return p
+    return None
+
+
+def _read_excel_sheets(path: Path) -> list[dict]:
+    import openpyxl
+    wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+    sheets = []
+    try:
+        for name in wb.sheetnames:
+            ws = wb[name]
+            all_rows = list(ws.iter_rows(values_only=True))
+            if not all_rows:
+                continue
+            headers = [str(c) if c is not None else "" for c in all_rows[0]]
+            while headers and headers[-1] == "":
+                headers.pop()
+            col_count = len(headers)
+            data_rows = []
+            for row in all_rows[1:1001]:
+                vals = list(row[:col_count])
+                if any(v is not None and str(v).strip() != "" for v in vals):
+                    data_rows.append([v if isinstance(v, (int, float, bool, str)) or v is None else str(v) for v in vals])
+            sheets.append({
+                "name": name,
+                "columns": headers,
+                "rows": data_rows,
+                "total_rows": max(0, len(all_rows) - 1),
+            })
+    finally:
+        wb.close()
+    return sheets
+
+
+def _read_csv_sheets(path: Path) -> list[dict]:
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        reader = csv.reader(f)
+        all_rows = list(reader)
+        headers = all_rows[0] if all_rows else []
+        data_rows = all_rows[1:1001] if len(all_rows) > 1 else []
+        return [{
+            "name": path.stem,
+            "columns": headers,
+            "rows": data_rows,
+            "total_rows": max(0, len(all_rows) - 1),
+        }]
+
+
+def _build_file_preview(
+    path: Path,
+    file_name: str,
+    download_url: str,
+    site_id: str | None = None,
+    folder: str | None = None,
+    doc_id: str | None = None,
+) -> dict:
+    ext = path.suffix.lower().lstrip(".")
+    st_stat = path.stat()
+    size = st_stat.st_size
+    mod = datetime.fromtimestamp(st_stat.st_mtime, timezone.utc).isoformat()
+    doc_type = detect_doc_type(file_name)
+
+    base = {
+        "file_name": file_name,
+        "format": ext.upper(),
+        "doc_type": doc_type,
+        "size": size,
+        "modified": mod,
+        "download_url": download_url,
+        "site_id": site_id,
+        "folder": folder,
+        "doc_id": doc_id,
+    }
+
+    if ext in ("xlsx", "xls"):
+        try:
+            sheets = _read_excel_sheets(path)
+            return {
+                **base,
+                "type": "spreadsheet",
+                "sheets": sheets,
+                "summary": {
+                    "total_sheets": len(sheets),
+                    "total_rows": sum(s.get("total_rows", 0) for s in sheets),
+                },
+            }
+        except Exception as exc:
+            return {**base, "type": "binary", "error": f"Could not parse Excel preview: {exc}"}
+
+    if ext == "csv":
+        try:
+            sheets = _read_csv_sheets(path)
+            return {
+                **base,
+                "type": "spreadsheet",
+                "sheets": sheets,
+                "summary": {
+                    "total_sheets": 1,
+                    "total_rows": sheets[0].get("total_rows", 0) if sheets else 0,
+                },
+            }
+        except Exception as exc:
+            return {**base, "type": "text", "content": path.read_text(encoding="utf-8", errors="replace")[:100000]}
+
+    inline_url = f"{download_url}{'&' if '?' in download_url else '?'}disposition=inline"
+
+    if ext == "pdf":
+        pdf_pages = []
+        total_pages = 0
+        try:
+            import fitz
+            doc = fitz.open(str(path))
+            total_pages = len(doc)
+            # Render up to 12 pages for instantaneous preview
+            max_render = min(total_pages, 12)
+            for p_idx in range(max_render):
+                page = doc[p_idx]
+                pix = page.get_pixmap(dpi=130)
+                img_bytes = pix.tobytes("jpeg", jpg_quality=82)
+                b64 = base64.b64encode(img_bytes).decode("ascii")
+                pdf_pages.append({
+                    "page_number": p_idx + 1,
+                    "width": pix.width,
+                    "height": pix.height,
+                    "image": f"data:image/jpeg;base64,{b64}",
+                })
+        except Exception as p_err:
+            pass
+
+        return {
+            **base,
+            "type": "pdf",
+            "file_url": inline_url,
+            "pages": pdf_pages,
+            "total_pages": total_pages or (len(pdf_pages) if pdf_pages else None),
+        }
+
+    if ext in ("jpg", "jpeg", "png", "webp", "tif", "tiff", "gif", "svg"):
+        return {**base, "type": "image", "file_url": inline_url}
+
+    if ext in ("mp4", "mov", "webm", "avi", "m4v"):
+        return {**base, "type": "video", "file_url": inline_url}
+
+    if ext == "json":
+        try:
+            raw = path.read_text(encoding="utf-8", errors="replace")
+            parsed = json.loads(raw)
+            return {**base, "type": "json", "content": parsed, "raw": raw}
+        except Exception:
+            return {**base, "type": "text", "content": path.read_text(encoding="utf-8", errors="replace")[:100000]}
+
+    if ext in ("txt", "md", "yaml", "yml", "log", "xml", "ini", "cfg"):
+        return {**base, "type": "text", "content": path.read_text(encoding="utf-8", errors="replace")[:100000]}
+
+    if ext in ("dxf", "dwg"):
+        return {
+            **base,
+            "type": "cad",
+            "category": "CAD Drawing",
+            "note": "CAD drawings can be downloaded for viewing in AutoCAD / DWG TrueView or reviewed via rendered PDF revisions.",
+        }
+
+    if ext in ("laz", "las"):
+        try:
+            import laspy
+            import numpy as np
+            from scopeiq.extract.drone import read_pointcloud
+
+            objs, meta = read_pointcloud(path, rooftop=False)
+            obj_rows = [
+                {
+                    "object_id": o.object_id,
+                    "object_type": o.object_type,
+                    "sector": o.sector,
+                    "bearing_deg": float(o.bearing_deg) if o.bearing_deg is not None else None,
+                    "facing_az_deg": float(o.facing_az_deg) if o.facing_az_deg is not None else None,
+                    "center_height_ft": float(o.center_height_ft) if o.center_height_ft is not None else None,
+                    "dimensions_in": [round(float(x), 1) for x in o.dims_in] if o.dims_in else None,
+                    "confidence": round(float(o.confidence) * 100, 1) if o.confidence else 0,
+                    "method": o.method,
+                }
+                for o in objs
+            ]
+
+            las = laspy.read(str(path))
+            xyz = np.c_[las.x, las.y, las.z].astype(float)
+            cls = np.asarray(las.classification)
+
+            mask_eq = np.isin(cls, [64, 65, 66, 68])
+            center = xyz[mask_eq].mean(axis=0) if mask_eq.any() else xyz.mean(axis=0)
+            norm_xyz = xyz - center
+
+            sample_indices = []
+            targets = [(64, 1000), (65, 600), (66, 1000), (68, 400), (6, 800), (2, 200)]
+            for c_val, limit in targets:
+                idx = np.where(cls == c_val)[0]
+                if len(idx) > limit:
+                    idx = np.random.choice(idx, limit, replace=False)
+                sample_indices.extend(idx)
+
+            if not sample_indices:
+                step = max(1, len(xyz) // 3500)
+                sample_indices = list(range(0, len(xyz), step))
+
+            sampled_pts = norm_xyz[sample_indices]
+            sampled_cls = cls[sample_indices]
+            points_payload = [
+                [round(float(p[0]), 2), round(float(p[1]), 2), round(float(p[2]), 2), int(c)]
+                for p, c in zip(sampled_pts, sampled_cls)
+            ]
+
+            return {
+                **base,
+                "type": "pointcloud",
+                "category": "Drone LiDAR Point Cloud",
+                "points": points_payload,
+                "objects": obj_rows,
+                "stats": {
+                    "total_points": meta.get("points", len(xyz)),
+                    "rendered_points": len(points_payload),
+                    "equipment_objects": len(obj_rows),
+                    "roof_z_m": meta.get("roof_z_m", 0.0),
+                    "class_counts": {int(k): int(v) for k, v in meta.get("classes", {}).items()},
+                },
+            }
+        except Exception as exc:
+            return {
+                **base,
+                "type": "pointcloud",
+                "category": "Drone LiDAR Point Cloud",
+                "note": f"Point cloud preview: {exc}",
+                "error": str(exc),
+            }
+
+    return {**base, "type": "binary", "note": f"Binary file ({ext.upper()})"}
+
+
+@router.get("/sharepoint/sites/{site_id}/files/download")
+def download_sharepoint_file(
+    site_id: str,
+    folder: str,
+    file_name: str,
+    disposition: str = "inline",
+    user: dict = Depends(current_user),
+):
+    """Download or stream inline a file from the site's SharePoint / input folder."""
+    import mimetypes
+
+    sid = validate_site_id(site_id)
+    if repo().select("CORE.SITE", {"SITE_ID": sid}):
+        check_site_scope(user, sid)
+    path = _resolve_sharepoint_file_path(sid, folder, file_name)
+    if not path or not path.is_file():
+        raise NotFound(f"File '{file_name}' not found for site {sid}")
+
+    guessed, _ = mimetypes.guess_type(path.name)
+    ext = path.suffix.lower()
+    if ext == ".pdf":
+        media_type = "application/pdf"
+    elif ext in (".jpg", ".jpeg"):
+        media_type = "image/jpeg"
+    elif ext == ".png":
+        media_type = "image/png"
+    elif ext == ".mp4":
+        media_type = "video/mp4"
+    elif ext in (".laz", ".las"):
+        media_type = "application/octet-stream"
+    else:
+        media_type = guessed or "application/octet-stream"
+
+    disp_type = "attachment" if disposition.lower() == "attachment" else "inline"
+    return FileResponse(
+        path,
+        filename=file_name,
+        media_type=media_type,
+        content_disposition_type=disp_type,
+    )
+
+
+@router.get("/sharepoint/sites/{site_id}/files/preview")
+def preview_sharepoint_file(
+    site_id: str,
+    folder: str,
+    file_name: str,
+    user: dict = Depends(current_user),
+):
+    """Return an interactive preview payload (spreadsheet, pdf, image, video, json, text) for a site file."""
+    sid = validate_site_id(site_id)
+    if repo().select("CORE.SITE", {"SITE_ID": sid}):
+        check_site_scope(user, sid)
+    path = _resolve_sharepoint_file_path(sid, folder, file_name)
+    if not path or not path.is_file():
+        raise NotFound(f"File '{file_name}' not found for site {sid}")
+    download_url = f"/sharepoint/sites/{sid}/files/download?folder={quote(folder)}&file_name={quote(file_name)}"
+    return _build_file_preview(path, file_name, download_url, site_id=sid, folder=folder)
+
+
 @router.get("/sharepoint/sites/{site_id}/files")
 def site_files(site_id: str, user: dict = Depends(require("ADMIN", "AE_ENGINEER"))):
     sid = validate_site_id(site_id)
@@ -416,6 +772,25 @@ def site_files(site_id: str, user: dict = Depends(require("ADMIN", "AE_ENGINEER"
         raise NotFound(f"Site {sid} has no folder in SharePoint")
     if repo().select("CORE.SITE", {"SITE_ID": sid}):
         check_site_scope(user, sid)
+
+    # In local mode, ensure files from paths.sites_dir are mirrored into local SharePoint if not already there
+    if getattr(store, "name", "") == "local":
+        try:
+            import shutil
+            st = get_settings()
+            sites_dir = st.path("paths.sites_dir") / sid
+            if sites_dir.is_dir():
+                dest_dir = getattr(store, "_site_dir")(sid)
+                for p in sites_dir.rglob("*"):
+                    if p.is_file():
+                        rel = p.relative_to(sites_dir)
+                        target = dest_dir / rel
+                        if not target.is_file():
+                            target.parent.mkdir(parents=True, exist_ok=True)
+                            shutil.copy2(p, target)
+        except Exception:
+            pass
+
     files = store.list_files(sid)
     for f in files:
         f["doc_type"] = detect_doc_type(f["name"])
@@ -444,6 +819,7 @@ def delete_file(
     try:
         r = repo()
         r.delete_where("CORE.DOCUMENT", {"SITE_ID": sid, "FILE_NAME": file_name})
+        sync_site_documents_to_db(sid, r)
     except Exception:
         pass
 
@@ -525,6 +901,7 @@ async def upload(site_id: str, file: UploadFile = File(...), doc_type: str | Non
                       action="REPLACE_FILE" if (replace_file or saved.get("replaced")) else "UPLOAD",
                       after={"doc_type": saved["doc_type"], "size": saved["size"], "replaced": saved["replaced"],
                              "replace_file": replace_file}, site_id=sid, source="api")
+    sync_site_documents_to_db(sid, repo())
     out = {"site_id": sid, **saved}
     if inspection.status == "UPDATED":
         out["is_updated"] = True
