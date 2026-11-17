@@ -16,6 +16,7 @@ class LoginCreateIn(BaseModel):
     display_name: str = Field(min_length=2, max_length=80)
     password: str = Field(max_length=200)
     role: str = "SCOPER"
+    service_provider: str | None = Field(default=None, max_length=120)   # CX_SP only: the registered service provider of this login
 
 
 class LoginUpdateIn(BaseModel):

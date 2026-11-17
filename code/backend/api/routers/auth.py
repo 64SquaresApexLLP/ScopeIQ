@@ -1,4 +1,4 @@
-"""Sign-in. Roles in auth.password_roles (SCOPER) sign in with a username + password the admin created (CORE.USER_LOGIN);
+"""Sign-in. Roles in auth.password_roles (SCOPER, AE_ENGINEER, CX_SP, ADMIN) sign in with a username + password the admin created (CORE.USER_LOGIN);
 the other roles still use the demo login (pick an account, any non-empty password). Returns a signed bearer token."""
 from fastapi import APIRouter, Depends
 
@@ -35,8 +35,9 @@ def _credential_user(username: str, password: str, role: str | None = None) -> d
         raise AuthenticationError("Incorrect username or password")
     if role and row["ROLE_CODE"] != role.upper():        # a Scoper login cannot be used on the A&E Engineer card, and so on
         raise AuthenticationError("Incorrect username or password")
+    org = row.get("ORGANISATION") or ""
     return {"USER_ID": row["USERNAME"], "ROLE_CODE": row["ROLE_CODE"], "DISPLAY_NAME": row["DISPLAY_NAME"] or row["USERNAME"],
-            "ORGANISATION": row.get("ORGANISATION") or "", "SERVICE_PROVIDER": ""}
+            "ORGANISATION": org, "SERVICE_PROVIDER": org if row["ROLE_CODE"] == "CX_SP" else ""}
 
 
 def _demo_user(user_id: str | None) -> dict:

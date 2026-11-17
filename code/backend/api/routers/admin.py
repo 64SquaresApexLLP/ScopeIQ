@@ -98,7 +98,13 @@ def create_login(body: LoginCreateIn, user: dict = Depends(require("ADMIN"))):
     r = repo()
     if r.select("CORE.USER_LOGIN", {"USERNAME": username}):
         raise Conflict(f"Username {username} already exists")
-    org = next((u["ORGANISATION"] for u in ref().rows("users") if u["ROLE_CODE"] == role), "")
+    if role == "CX_SP":
+        providers = sorted({u["ORGANISATION"] for u in ref().rows("users") if u["ROLE_CODE"] == "CX_SP" and u.get("ACTIVE", "Y") == "Y"})
+        org = (body.service_provider or "").strip()
+        if org not in providers:          # the login only ever sees this provider's sites, so it must be one the platform knows
+            raise ValidationError("Choose the service provider this login belongs to", details={"service_providers": providers})
+    else:
+        org = next((u["ORGANISATION"] for u in ref().rows("users") if u["ROLE_CODE"] == role), "")
     row = {"USERNAME": username, "ROLE_CODE": role, "DISPLAY_NAME": body.display_name.strip(), "ORGANISATION": org,
            "PASSWORD_HASH": hash_password(body.password), "ACTIVE": True, "CREATED_AT": now_iso(), "CREATED_BY": user["sub"],
            "UPDATED_AT": now_iso(), "UPDATED_BY": user["sub"]}
