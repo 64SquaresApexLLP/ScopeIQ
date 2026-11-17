@@ -286,10 +286,12 @@ function PointCloudViewer({
   points = [],
   objects = [],
   stats,
+  focusObject,
 }: {
   points?: [number, number, number, number][];
   objects?: PointCloudObject[];
   stats?: PointCloudStats;
+  focusObject?: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [activeClasses, setActiveClasses] = useState<Record<number, boolean>>({
@@ -304,6 +306,7 @@ function PointCloudViewer({
   const [activeTab, setActiveTab] = useState<'both' | '3d' | 'equipment'>('both');
   const [tableQuery, setTableQuery] = useState('');
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
+  useEffect(() => { if (focusObject && objects.some((o) => o.object_id === focusObject)) setSelectedObjectId(focusObject); }, [focusObject, objects]);
 
   const rotRef = useRef({ rotX: 0.28, rotY: 0.65, zoom: 19, panX: 0, panY: 20 });
   const isDraggingRef = useRef(false);
@@ -552,7 +555,7 @@ function PointCloudViewer({
                 }}
               >
                 <Text style={{ fontSize: 11, color: '#fff', fontWeight: '700' }}>
-                  {autoRotate ? '⏸ Pause Orbit' : '▶ Auto Orbit'}
+                  {autoRotate ? 'Pause orbit' : 'Auto orbit'}
                 </Text>
               </Pressable>
               <Pressable
@@ -765,12 +768,21 @@ function PdfViewer({
   pages = [],
   fileUrl,
   fileName,
+  focus,
 }: {
   pages?: PdfPage[];
   fileUrl?: string;
   fileName: string;
+  focus?: string;
 }) {
   const [zoom, setZoom] = useState(100);
+  const sheetKey = (p: PdfPage) => String(p.sheet_name || p.page_number).toUpperCase();
+  const focusKey = focus ? String(focus).toUpperCase() : '';
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !focusKey || typeof document === 'undefined') return;
+    const el = document.getElementById(`siq-sheet-${focusKey}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [focusKey, pages.length]);
 
   if (!pages || pages.length === 0) {
     if (Platform.OS === 'web' && fileUrl) {
@@ -906,7 +918,11 @@ function PdfViewer({
               'div',
               {
                 key: p.page_number,
+                id: `siq-sheet-${sheetKey(p)}`,
                 style: {
+                  outline: focusKey && sheetKey(p) === focusKey ? '3px solid #2563EB' : 'none',
+                  outlineOffset: 6,
+                  borderRadius: 6,
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
@@ -955,120 +971,57 @@ function PdfViewer({
   );
 }
 
-export function FilePreviewModal({
-  target,
-  onClose,
-}: {
-  target: FilePreviewTarget | null;
-  onClose: () => void;
-}) {
+/** Loads the preview of a document (by id) or of a SharePoint file. */
+export function usePreviewData(target: FilePreviewTarget | null) {
   const [data, setData] = useState<PreviewData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
+  const key = target ? `${target.docId ?? ''}|${target.siteId ?? ''}|${target.folder ?? ''}|${target.name}` : '';
   useEffect(() => {
     if (!target) {
       setData(null);
       setError(null);
       return;
     }
-
     let isMounted = true;
     setLoading(true);
     setError(null);
-
     const url = target.docId
       ? `/documents/${target.docId}/preview`
       : `/sharepoint/sites/${target.siteId}/files/preview?folder=${encodeURIComponent(target.folder || '')}&file_name=${encodeURIComponent(target.name)}`;
-
     api
       .get<PreviewData>(url)
-      .then((res) => {
-        if (isMounted) {
-          setData(res);
-          setLoading(false);
-        }
-      })
-      .catch((err: any) => {
-        if (isMounted) {
-          setError(err?.message || 'Could not load file preview');
-          setLoading(false);
-        }
-      });
+      .then((res) => { if (isMounted) { setData(res); setLoading(false); } })
+      .catch((err: any) => { if (isMounted) { setError(err?.message || 'Could not load file preview'); setLoading(false); } });
+    return () => { isMounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return { data, loading, error };
+}
 
-    return () => {
-      isMounted = false;
-    };
-  }, [target]);
-
-  if (!target) return null;
-
+function previewUrls(target: FilePreviewTarget | null, data: PreviewData | null) {
   const downloadUrl = data?.download_url
     ? authedUrl(data.download_url + (data.download_url.includes('?') ? '&' : '?') + 'disposition=attachment')
-    : target.docId
+    : target?.docId
     ? authedUrl(`/documents/${target.docId}/download?disposition=attachment`)
-    : target.siteId && target.folder
+    : target?.siteId && target?.folder
     ? authedUrl(`/sharepoint/sites/${target.siteId}/files/download?folder=${encodeURIComponent(target.folder)}&file_name=${encodeURIComponent(target.name)}&disposition=attachment`)
     : null;
-
   const inlineUrl = data?.file_url
     ? authedUrl(data.file_url)
     : data?.download_url
     ? authedUrl(data.download_url + (data.download_url.includes('?') ? '&' : '?') + 'disposition=inline')
     : downloadUrl;
+  return { downloadUrl, inlineUrl };
+}
 
+/** The preview itself (sheets, point cloud, image, video, table, text), shared by the modal and the inline SourcePreview.
+ *  `focus` scrolls a drawing to a sheet (e.g. "A-3") or selects a point-cloud object (e.g. "PC-004"). */
+export function PreviewContent({ target, data, loading, error, downloadUrl, inlineUrl, focus }: {
+  target: FilePreviewTarget; data: PreviewData | null; loading: boolean; error: string | null; downloadUrl: string | null; inlineUrl: string | null; focus?: string;
+}) {
   return (
-    <Modal visible={Boolean(target)} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.container}>
-          {/* Header */}
-          <View style={styles.header}>
-            <Row style={{ alignItems: 'center', gap: space(3), flex: 1 }}>
-              <IconBadge name={fileIcon(target.name)} size={42} color={colors.accent} />
-              <View style={{ flex: 1 }}>
-                <Row style={{ alignItems: 'center', gap: space(2), flexWrap: 'wrap' }}>
-                  <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }} numberOfLines={1}>
-                    {target.name}
-                  </Text>
-                  {data?.doc_type ? <Badge text={data.doc_type} color={colors.accent} /> : null}
-                  {data?.format ? <Badge text={data.format} color={colors.muted} /> : null}
-                </Row>
-                <Muted style={{ fontSize: 12, marginTop: 2 }}>
-                  {[kb(data?.size || target.size), data?.modified ? `Updated ${data.modified.split('T')[0]}` : null, target.folder ? `Folder: ${target.folder}` : null]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </Muted>
-              </View>
-            </Row>
-
-            <Row style={{ alignItems: 'center', gap: space(2) }}>
-              {downloadUrl ? (
-                <Button
-                  small
-                  title="Download"
-                  onPress={() => Linking.openURL(downloadUrl)}
-                />
-              ) : null}
-              {inlineUrl && (data?.type === 'pdf' || data?.type === 'image' || data?.type === 'video') ? (
-                <Button
-                  small
-                  kind="secondary"
-                  title="New Tab"
-                  onPress={() => Linking.openURL(inlineUrl)}
-                />
-              ) : null}
-              <Pressable
-                onPress={onClose}
-                style={({ pressed }) => [styles.closeButton, pressed && { backgroundColor: '#E2E8F0' }]}
-                accessibilityLabel="Close"
-              >
-                <Icon name="x" size={18} color={colors.text} />
-              </Pressable>
-            </Row>
-          </View>
-
-          {/* Body Content */}
-          <View style={styles.body}>
+    <>
             {loading ? (
               <View style={styles.centered}>
                 <ActivityIndicator size="large" color={colors.accent} />
@@ -1094,9 +1047,9 @@ export function FilePreviewModal({
             ) : !data ? null : data.type === 'spreadsheet' && data.sheets ? (
               <SpreadsheetViewer sheets={data.sheets} />
             ) : data.type === 'pointcloud' && data.points && data.points.length > 0 ? (
-              <PointCloudViewer points={data.points} objects={data.objects} stats={data.stats} />
+              <PointCloudViewer points={data.points} objects={data.objects} stats={data.stats} focusObject={focus} />
             ) : data.type === 'pdf' || (data.type === 'cad' && data.pages && data.pages.length > 0) ? (
-              <PdfViewer pages={data.pages} fileUrl={inlineUrl || undefined} fileName={data.file_name} />
+              <PdfViewer pages={data.pages} fileUrl={inlineUrl || undefined} fileName={data.file_name} focus={focus} />
             ) : data.type === 'image' && inlineUrl ? (
               <ScrollView contentContainerStyle={{ alignItems: 'center', padding: space(4) }}>
                 {Platform.OS === 'web' ? (
@@ -1153,6 +1106,87 @@ export function FilePreviewModal({
                 ) : null}
               </View>
             )}
+    </>
+  );
+}
+
+/** Inline source document preview (no modal), for side-by-side review of extracted values. */
+export function SourcePreview({ target, focus, height = 640 }: { target: FilePreviewTarget; focus?: string; height?: number }) {
+  const { data, loading, error } = usePreviewData(target);
+  const { downloadUrl, inlineUrl } = previewUrls(target, data);
+  return (
+    <View style={{ height, minHeight: 360 }}>
+      <PreviewContent target={target} data={data} loading={loading} error={error} downloadUrl={downloadUrl} inlineUrl={inlineUrl} focus={focus} />
+    </View>
+  );
+}
+
+export function FilePreviewModal({
+  target,
+  onClose,
+}: {
+  target: FilePreviewTarget | null;
+  onClose: () => void;
+}) {
+  const { data, loading, error } = usePreviewData(target);
+
+  if (!target) return null;
+
+  const { downloadUrl, inlineUrl } = previewUrls(target, data);
+
+  return (
+    <Modal visible={Boolean(target)} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <View style={styles.container}>
+          {/* Header */}
+          <View style={styles.header}>
+            <Row style={{ alignItems: 'center', gap: space(3), flex: 1 }}>
+              <IconBadge name={fileIcon(target.name)} size={42} color={colors.accent} />
+              <View style={{ flex: 1 }}>
+                <Row style={{ alignItems: 'center', gap: space(2), flexWrap: 'wrap' }}>
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }} numberOfLines={1}>
+                    {target.name}
+                  </Text>
+                  {data?.doc_type ? <Badge text={data.doc_type} color={colors.accent} /> : null}
+                  {data?.format ? <Badge text={data.format} color={colors.muted} /> : null}
+                </Row>
+                <Muted style={{ fontSize: 12, marginTop: 2 }}>
+                  {[kb(data?.size || target.size), data?.modified ? `Updated ${data.modified.split('T')[0]}` : null, target.folder ? `Folder: ${target.folder}` : null]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </Muted>
+              </View>
+            </Row>
+
+            <Row style={{ alignItems: 'center', gap: space(2) }}>
+              {downloadUrl ? (
+                <Button
+                  small
+                  title="Download"
+                  onPress={() => Linking.openURL(downloadUrl)}
+                />
+              ) : null}
+              {inlineUrl && (data?.type === 'pdf' || data?.type === 'image' || data?.type === 'video') ? (
+                <Button
+                  small
+                  kind="secondary"
+                  title="New Tab"
+                  onPress={() => Linking.openURL(inlineUrl)}
+                />
+              ) : null}
+              <Pressable
+                onPress={onClose}
+                style={({ pressed }) => [styles.closeButton, pressed && { backgroundColor: '#E2E8F0' }]}
+                accessibilityLabel="Close"
+              >
+                <Icon name="x" size={18} color={colors.text} />
+              </Pressable>
+            </Row>
+          </View>
+
+          {/* Body Content */}
+          <View style={styles.body}>
+            <PreviewContent target={target} data={data} loading={loading} error={error} downloadUrl={downloadUrl} inlineUrl={inlineUrl} />
           </View>
         </View>
       </View>

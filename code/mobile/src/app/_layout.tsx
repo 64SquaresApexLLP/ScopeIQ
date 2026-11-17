@@ -6,16 +6,20 @@ import { ErrorBoundary } from '../components/ErrorBoundary';
 import { colors } from '../components/theme';
 import { EnvBanner, Loading } from '../components/ui';
 import { AuthProvider, useAuth } from '../lib/auth';
+import { installWebStyles } from '../lib/webStyles';
+
+installWebStyles();
 
 function RootStack() {
   const { user, ready } = useAuth();
-  if (!ready) return <Loading />;
+  if (!ready) return <View style={{ flex: 1, backgroundColor: colors.bg, padding: 24 }}><Loading /></View>;
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: colors.primary },
-        headerTintColor: '#fff',
-        headerTitleStyle: { fontWeight: '700' as any },
+        headerStyle: { backgroundColor: '#fff' },
+        headerTintColor: colors.text,
+        headerShadowVisible: false,
+        headerTitleStyle: { fontWeight: '600' as any, fontSize: 16 },
         contentStyle: { backgroundColor: colors.bg },
       }}
     >
@@ -45,7 +49,7 @@ export default function RootLayout() {
           <RootStack />
         </ErrorBoundary>
       </View>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
     </AuthProvider>
   );
 }

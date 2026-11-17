@@ -6,7 +6,7 @@ import { money, SECTOR } from '../../lib/format';
 import { HandshakeSummary } from '../../lib/types';
 import { useApi } from '../../lib/useApi';
 import { FilePreviewModal, FilePreviewTarget } from '../FilePreviewModal';
-import { colors, space, statusColor } from '../theme';
+import { colors, radius, space, statusColor, tint } from '../theme';
 import { Badge, Button, Card, Empty, ErrorView, Icon, IconBadge, Loading, Muted, Row, s, Title } from '../ui';
 import { WorkflowActions } from '../WorkflowActions';
 
@@ -159,9 +159,9 @@ export function Handshake({ siteId }: { siteId: string }) {
 
         <Text style={{ fontSize: 13.5, color: colors.text, lineHeight: 20 }}>
           {data.is_fba_locked ? (
-            '🔒 Final BOM Approved (FBA). The bill of materials and scope of work are locked and approved for construction.'
+            'Final BOM Approved (FBA). The bill of materials and scope of work are locked and approved for construction.'
           ) : data.workflow_state === 'SUBMITTED_FBA' ? (
-            '✓ Service Provider agreed to the Scope of Work and BOM. Ready for Final BOM Approval (FBA) by review lead.'
+            'Service Provider agreed to the Scope of Work and BOM. Ready for Final BOM Approval (FBA) by review lead.'
           ) : data.workflow_state === 'SP_HANDSHAKE' ? (
             data.has_bom && bomLines.length > 0 ? (
               isSp ? (
@@ -183,10 +183,10 @@ export function Handshake({ siteId }: { siteId: string }) {
             style={{
               marginTop: space(2),
               padding: space(3.5),
-              backgroundColor: '#eff6ff',
-              borderRadius: 10,
+              backgroundColor: tint.info.bg,
+              borderRadius: radius.lg,
               borderWidth: 1,
-              borderColor: '#bfdbfe',
+              borderColor: tint.info.line,
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -195,7 +195,7 @@ export function Handshake({ siteId }: { siteId: string }) {
             }}
           >
             <View style={{ flex: 1, minWidth: 260 }}>
-              <Text style={{ fontSize: 13.5, fontWeight: '700', color: '#1e40af' }}>
+              <Text style={{ fontSize: 13.5, fontWeight: '600', color: tint.info.fg }}>
                 {data.workflow_state === 'IN_RECONCILIATION'
                   ? 'BOM & Scope Generated — Ready to Enter Scoping'
                   : data.workflow_state === 'IN_SCOPING'
@@ -204,9 +204,9 @@ export function Handshake({ siteId }: { siteId: string }) {
                   ? `QA Review Approved — Ready to Submit to ${data.cx_sp || 'Service Provider'}`
                   : `Site in ${data.workflow_state.replace(/_/g, ' ')}`}
               </Text>
-              <Text style={{ fontSize: 12, color: '#3b82f6', marginTop: 2, lineHeight: 17 }}>
+              <Text style={{ fontSize: 12.5, color: colors.text, marginTop: 2, lineHeight: 18 }}>
                 {data.workflow_state === 'IN_RECONCILIATION'
-                  ? 'The pipeline has generated 66 BOM lines and reconciled drawing data. Advance to scoping to begin review.'
+                  ? `The pipeline has generated ${bomLines.length} BOM line${bomLines.length === 1 ? '' : 's'} and reconciled the drawing data. Advance to scoping to begin the review.`
                   : data.workflow_state === 'IN_SCOPING'
                   ? 'The scoping package is ready. Submit for QA Lead review before sending to the Construction Service Provider.'
                   : data.workflow_state === 'IN_REVIEW'
@@ -243,10 +243,10 @@ export function Handshake({ siteId }: { siteId: string }) {
             style={{
               marginTop: space(2),
               padding: space(3.5),
-              backgroundColor: '#fffbeb',
-              borderRadius: 10,
+              backgroundColor: tint.warn.bg,
+              borderRadius: radius.lg,
               borderWidth: 1,
-              borderColor: '#fde68a',
+              borderColor: tint.warn.line,
               flexDirection: 'row',
               alignItems: 'center',
               gap: space(3),
@@ -256,19 +256,19 @@ export function Handshake({ siteId }: { siteId: string }) {
               style={{
                 width: 36,
                 height: 36,
-                borderRadius: 18,
-                backgroundColor: '#fef3c7',
+                borderRadius: radius.md,
+                backgroundColor: '#fff',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Icon name="alert-triangle" size={18} color="#b45309" />
+              <Icon name="alert-triangle" size={18} color={tint.warn.fg} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 13.5, fontWeight: '700', color: '#92400e' }}>
+              <Text style={{ fontSize: 13.5, fontWeight: '600', color: tint.warn.fg }}>
                 Handshake Inactive — Bill of Materials (BOM) Required
               </Text>
-              <Text style={{ fontSize: 12.5, color: '#b45309', marginTop: 2, lineHeight: 18 }}>
+              <Text style={{ fontSize: 12.5, color: colors.text, marginTop: 2, lineHeight: 18 }}>
                 The Handshake tab is locked because no Bill of Materials (BOM) or Construction Drawings have been processed for this site. Ingest site documents and run the pipeline to enable the Handshake review.
               </Text>
             </View>
@@ -307,14 +307,14 @@ export function Handshake({ siteId }: { siteId: string }) {
                 paddingHorizontal: space(3),
                 paddingVertical: space(2),
                 borderRadius: 8,
-                backgroundColor: active ? colors.accent : '#fff',
+                backgroundColor: active ? colors.soft : '#fff',
                 borderWidth: 1,
-                borderColor: active ? colors.accent : colors.border,
+                borderColor: active ? '#BFD3FB' : colors.border,
                 opacity: pressed ? 0.8 : 1,
               })}
             >
-              <Icon name={t.icon} size={15} color={active ? '#fff' : colors.muted} />
-              <Text style={{ fontSize: 13, fontWeight: active ? '700' : '600', color: active ? '#fff' : colors.text }}>
+              <Icon name={t.icon} size={15} color={active ? colors.accent : colors.muted} />
+              <Text style={{ fontSize: 13, fontWeight: active ? '600' : '500', color: active ? colors.accent : colors.text }}>
                 {t.label}
               </Text>
             </Pressable>
@@ -380,7 +380,7 @@ export function Handshake({ siteId }: { siteId: string }) {
                     <Row style={{ gap: space(1.5) }}>
                       <Button
                         small
-                        title="👁 View Drawing"
+                        icon="eye" title="View drawing"
                         onPress={() =>
                           setPreviewTarget({
                             name: doc.FILE_NAME,
@@ -394,7 +394,7 @@ export function Handshake({ siteId }: { siteId: string }) {
                       <Button
                         small
                         kind="secondary"
-                        title="⬇ Download"
+                        icon="download" title="Download"
                         onPress={() =>
                           Linking.openURL(
                             authedUrl(
@@ -433,7 +433,7 @@ export function Handshake({ siteId }: { siteId: string }) {
             <Button
               small
               kind="secondary"
-              title="⬇ Export BOM (.xlsx)"
+              icon="download" title="Export BOM (.xlsx)"
               onPress={() => Linking.openURL(downloadBomUrl)}
             />
           </View>
@@ -456,12 +456,12 @@ export function Handshake({ siteId }: { siteId: string }) {
                     paddingHorizontal: space(2.5),
                     paddingVertical: space(1.5),
                     borderRadius: 6,
-                    backgroundColor: bomFilter === mode ? colors.accent : colors.bg,
+                    backgroundColor: bomFilter === mode ? colors.soft : '#fff',
                     borderWidth: 1,
-                    borderColor: bomFilter === mode ? colors.accent : colors.border,
+                    borderColor: bomFilter === mode ? '#BFD3FB' : colors.border,
                   }}
                 >
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: bomFilter === mode ? '#fff' : colors.text }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: bomFilter === mode ? colors.accent : colors.text }}>
                     {mode === 'ALL' ? 'All Items' : mode}
                   </Text>
                 </Pressable>
@@ -579,7 +579,7 @@ export function Handshake({ siteId }: { siteId: string }) {
                 return (
                   <View key={sec} style={{ borderRadius: 8, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' }}>
                     <View style={{ backgroundColor: colors.bg, paddingHorizontal: space(3), paddingVertical: space(2), borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                      <Text style={{ fontWeight: '800', fontSize: 13, color: colors.text }}>
+                      <Text style={{ fontWeight: '600', fontSize: 13, color: colors.text }}>
                         Sector {SECTOR[sec] ? `${SECTOR[sec]} (${sec})` : sec}
                       </Text>
                     </View>
@@ -629,7 +629,7 @@ export function Handshake({ siteId }: { siteId: string }) {
         <Card style={{ backgroundColor: colors.primary + '10', borderColor: colors.primary + '33', gap: space(2.5) }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: space(2) }}>
             <View>
-              <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>Completed reviewing CD & BOM?</Text>
+              <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text }}>Completed reviewing CD & BOM?</Text>
               <Text style={{ fontSize: 12.5, color: colors.muted }}>
                 Submit your official handshake decision below to proceed towards Final BOM Approval (FBA).
               </Text>
@@ -716,11 +716,11 @@ export function Handshake({ siteId }: { siteId: string }) {
         >
           <TouchableOpacity
             activeOpacity={1}
-            style={{ width: '100%', maxWidth: 480, backgroundColor: '#fff', borderRadius: 16, padding: space(5), gap: space(3) }}
+            style={{ width: '100%', maxWidth: 480, backgroundColor: '#fff', borderRadius: radius.xl, padding: space(5), gap: space(3) }}
           >
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View>
-                <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text }}>Assign Construction Provider (SP)</Text>
+                <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>Assign Construction Provider (SP)</Text>
                 <Text style={{ fontSize: 13, color: colors.muted, marginTop: 2 }}>
                   Select the Construction Service Provider hired to build this site.
                 </Text>

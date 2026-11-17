@@ -3,10 +3,11 @@
 //   Ericsson: open RFIs + SP-agreed BOMs awaiting FBA.  A&E: redlines sent.
 import { router } from 'expo-router';
 import React, { useState } from 'react';
-import { RefreshControl, ScrollView } from 'react-native';
+import { RefreshControl, ScrollView, Text, View } from 'react-native';
 import { colors, space } from '../../components/theme';
-import { Badge, Card, Chips, Empty, ErrorView, Loading, Muted, Row, s, Title } from '../../components/ui';
+import { Badge, Card, EmptyState, ErrorView, ListItem, Loading, PageHeader, s, Tabs } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
+import { label } from '../../lib/format';
 import { Row as R } from '../../lib/types';
 import { useApi } from '../../lib/useApi';
 
@@ -21,6 +22,10 @@ const DEFAULTS: Record<string, { q: Q; disc: string; bom: string }> = {
   EHS: { q: 'ehs', disc: 'OPEN', bom: 'DRAFT' },
 };
 
+const Site = ({ id, extra }: { id: string; extra?: string }) => (
+  <Text style={{ fontSize: 13.5, fontWeight: '600', color: colors.text }}>{id}{extra ? <Text style={{ color: colors.muted, fontWeight: '400' }}>{`  ·  ${extra}`}</Text> : null}</Text>
+);
+
 export default function Queue() {
   const { user } = useAuth();
   const d = DEFAULTS[user?.role ?? ''] ?? DEFAULTS.SCOPER;
@@ -28,61 +33,42 @@ export default function Queue() {
   const path = q === 'disc' ? `/discrepancies?status=${d.disc}` : q === 'bom' ? `/bom/revisions?status=${d.bom}` : q === 'rfi' ? '/rfis' : q === 'ehs' ? '/ehs-alerts' : '/redlines';
   const data = useApi<R[]>(path);
   const rows = (data.data ?? []).filter((x) => (q === 'rfi' ? !['ANSWERED', 'CLOSED'].includes(x.STATUS) : q === 'ehs' ? x.STATUS !== 'MITIGATED' : q === 'redline' ? !['COMPLETED', 'INCORPORATED', 'CLOSED', 'REJECTED'].includes(x.STATUS) : true));
+  const tabs: { key: Q; label: string }[] = user?.role === 'AE_ENGINEER'
+    ? [{ key: 'redline', label: 'Redlines to complete' }, { key: 'rfi', label: 'RFIs pending an answer' }]
+    : [{ key: 'disc', label: `Findings (${label(d.disc).toLowerCase()})` }, { key: 'bom', label: `BOMs (${label(d.bom).toLowerCase()})` },
+      { key: 'rfi', label: 'RFIs' }, { key: 'redline', label: 'Redlines' }, { key: 'ehs', label: 'EH&S alerts' }];
+
   return (
-    <ScrollView style={s.screen} contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={data.loading} onRefresh={data.reload} />}>
-      <Chips<Q>
-        value={q}
-        onChange={setQ}
-        options={
-          user?.role === 'AE_ENGINEER'
-            ? [
-                { key: 'redline', label: 'Redlines (work queue)' },
-                { key: 'rfi', label: 'RFIs (pending answer)' },
-              ]
-            : [
-                { key: 'disc', label: `Discrepancies (${d.disc.replace('_', ' ').toLowerCase()})` },
-                { key: 'bom', label: `BOMs (${d.bom.replace('_', ' ').toLowerCase()})` },
-                { key: 'rfi', label: 'RFIs' },
-                { key: 'redline', label: 'Redlines' },
-                { key: 'ehs', label: 'EH&S alerts' },
-              ]
-        }
-      />
-      {data.error ? <ErrorView error={data.error} onRetry={data.reload} /> : data.loading && !data.data ? <Loading /> : null}
-      {!data.loading && !rows.length ? <Empty text="Nothing waiting here." /> : null}
-      {rows.map((x, i) => {
-        if (q === 'disc') return (
-          <Card key={x.DISC_ID ?? i} onPress={() => router.push({ pathname: '/discrepancy/[id]', params: { id: x.DISC_ID } })}>
-            <Row style={{ justifyContent: 'space-between' }}><Title>{`${x.SITE_ID} - ${x.RULE_ID}`}</Title><Badge text={x.SEVERITY} /></Row>
-            <Muted numberOfLines={2}>{x.TITLE}</Muted>
-            <Row style={{ marginTop: space(1) }}><Badge text={x.STATUS} /><Badge text={x.OUTCOME} color={colors.primary} />{x.SECTOR ? <Badge text={`Sector ${x.SECTOR}`} color={colors.muted} /> : null}</Row>
-          </Card>);
-        if (q === 'bom') return (
-          <Card key={x.BOM_REV_ID ?? i} onPress={() => router.push({ pathname: '/bom/[revId]', params: { revId: x.BOM_REV_ID } })}>
-            <Row style={{ justifyContent: 'space-between' }}><Title>{`${x.SITE_ID} ${x.REV_LABEL}`}</Title><Badge text={x.STATUS} /></Row>
-            <Muted>{`${x.KIND} - created ${String(x.CREATED_AT ?? '').slice(0, 10)}`}</Muted>
-          </Card>);
-        if (q === 'rfi') return (
-          <Card key={x.RFI_ID ?? i} onPress={() => router.push({ pathname: '/site/[id]', params: { id: x.SITE_ID, tab: 'redlines' } })}>
-            <Row style={{ justifyContent: 'space-between' }}><Title>{x.SITE_ID}</Title><Badge text={x.STATUS} /></Row>
-            <Muted>{`To ${x.TO_PARTY === 'AE_ENGINEER' ? 'AE_ENGINEER' : 'Admin'}: ${x.SUBJECT}`}</Muted>
-          </Card>);
-        if (q === 'ehs') return (
-          <Card key={x.ALERT_ID ?? i} onPress={() => router.push({ pathname: '/site/[id]', params: { id: x.SITE_ID } })}>
-            <Row style={{ justifyContent: 'space-between' }}><Title>{`${x.SITE_ID} ${x.RULE_ID}`}</Title><Row><Badge text={x.SEVERITY} /><Badge text={x.STATUS} /></Row></Row>
-            <Muted>{x.ALERT_TEXT}</Muted>
-          </Card>);
-        const displaySt = x.STATUS === 'WORK_QUEUE' ? 'WORK QUEUE' : x.STATUS === 'IN_REVIEW' ? 'IN REVIEW' : x.STATUS;
-        const col = x.STATUS === 'WORK_QUEUE' ? colors.primary : colors.warn;
-        return (
-          <Card key={x.REDLINE_ID ?? i} onPress={() => router.push({ pathname: '/site/[id]', params: { id: x.SITE_ID, tab: 'redlines' } })}>
-            <Row style={{ justifyContent: 'space-between' }}>
-              <Title>{`${x.SITE_ID} ${x.DOC_TYPE} ${x.SHEET}`}</Title>
-              <Badge text={displaySt} color={col} />
-            </Row>
-            <Muted numberOfLines={2}>{x.MARKUP}</Muted>
-          </Card>);
-      })}
+    <ScrollView style={s.screen} contentContainerStyle={[s.content, { maxWidth: 1100, width: '100%', alignSelf: 'center' }]} refreshControl={<RefreshControl refreshing={data.loading} onRefresh={data.reload} />}>
+      <PageHeader title={user?.role === 'CX_SP' ? 'Handshake' : 'Work queue'} subtitle="Items waiting on your role right now. Open one to review it and take action." />
+      <Tabs<Q> value={q} onChange={setQ} style={{ marginBottom: space(4) }} tabs={tabs.map((t) => ({ ...t, count: t.key === q && data.data ? rows.length : undefined }))} />
+      {data.error ? <ErrorView error={data.error} onRetry={data.reload} /> : null}
+      {data.loading && !data.data ? <Loading rows={5} /> : (
+        <Card padded={false} style={{ overflow: 'hidden' }}>
+          {!rows.length ? <EmptyState icon="check-circle" title="Nothing waiting here" text="When an item needs your role it appears in this list." /> : rows.map((x, i) => {
+            const last = i === rows.length - 1;
+            if (q === 'disc') return (
+              <ListItem key={x.DISC_ID ?? i} last={last} icon="alert-triangle" iconColor={x.SEVERITY === 'HIGH' || x.SEVERITY === 'CRITICAL' ? colors.danger : colors.warn}
+                onPress={() => router.push({ pathname: '/discrepancy/[id]', params: { id: x.DISC_ID } })}
+                title={<Site id={x.SITE_ID} extra={x.RULE_ID} />} subtitle={x.TITLE}
+                meta={<View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 2 }}><Badge text={x.STATUS} /><Badge text={x.OUTCOME} color={colors.neutral} />{x.SECTOR ? <Badge text={`Sector ${x.SECTOR}`} color={colors.neutral} /> : null}</View>}
+                right={<Badge text={x.SEVERITY} dot />} />);
+            if (q === 'bom') return (
+              <ListItem key={x.BOM_REV_ID ?? i} last={last} icon="list" iconColor={colors.ok} onPress={() => router.push({ pathname: '/bom/[revId]', params: { revId: x.BOM_REV_ID } })}
+                title={<Site id={x.SITE_ID} extra={x.REV_LABEL} />} subtitle={`${label(x.KIND)}  ·  created ${String(x.CREATED_AT ?? '').slice(0, 10)}`} right={<Badge text={x.STATUS} dot />} />);
+            if (q === 'rfi') return (
+              <ListItem key={x.RFI_ID ?? i} last={last} icon="help-circle" iconColor={colors.info} onPress={() => router.push({ pathname: '/site/[id]', params: { id: x.SITE_ID, tab: 'redlines' } })}
+                title={<Site id={x.SITE_ID} extra={x.TO_PARTY === 'AE_ENGINEER' ? 'To A&E Engineer' : 'To Admin'} />} subtitle={x.SUBJECT} right={<Badge text={x.STATUS} dot />} />);
+            if (q === 'ehs') return (
+              <ListItem key={x.ALERT_ID ?? i} last={last} icon="shield" iconColor={colors.danger} onPress={() => router.push({ pathname: '/site/[id]', params: { id: x.SITE_ID } })}
+                title={<Site id={x.SITE_ID} extra={x.RULE_ID} />} subtitle={x.ALERT_TEXT} right={<><Badge text={x.SEVERITY} dot /><Badge text={x.STATUS} /></>} />);
+            return (
+              <ListItem key={x.REDLINE_ID ?? i} last={last} icon="edit-3" iconColor={colors.warn} onPress={() => router.push({ pathname: '/site/[id]', params: { id: x.SITE_ID, tab: 'redlines' } })}
+                title={<Site id={x.SITE_ID} extra={`${x.DOC_TYPE} · sheet ${x.SHEET}`} />} subtitle={x.MARKUP}
+                right={<Badge text={x.STATUS === 'WORK_QUEUE' ? 'Work queue' : x.STATUS === 'IN_REVIEW' ? 'In review' : x.STATUS} color={x.STATUS === 'WORK_QUEUE' ? colors.info : colors.warn} dot />} />);
+          })}
+        </Card>
+      )}
     </ScrollView>
   );
 }

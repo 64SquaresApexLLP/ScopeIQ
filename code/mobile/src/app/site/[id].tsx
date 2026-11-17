@@ -1,69 +1,60 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, Text, View } from 'react-native';
+import { AppShell } from '../../components/NavBar';
 import { BomView } from '../../components/site/BomView';
 import { Discrepancies } from '../../components/site/Discrepancies';
 import { Handshake } from '../../components/site/Handshake';
 import { Overview } from '../../components/site/Overview';
 import { Pipeline } from '../../components/site/Pipeline';
 import { Redlines } from '../../components/site/Redlines';
-import { brandGradient, colors, space } from '../../components/theme';
-import { ErrorView, Icon, Loading, s } from '../../components/ui';
-import { NavBar } from '../../components/NavBar';
+import { colors, space } from '../../components/theme';
+import { Badge, ErrorView, Icon, IconName, Loading, s, Tabs } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
 import { SiteDetail } from '../../lib/types';
 import { useApi } from '../../lib/useApi';
 
 type Tab = 'overview' | 'pipeline' | 'discrepancies' | 'redlines' | 'bom' | 'handshake';
+type TabDef = { key: Tab; label: string; icon: IconName };
 
-const ALL_TABS: { key: Tab; label: string; icon: any }[] = [
+const ALL_TABS: TabDef[] = [
   { key: 'overview', label: 'Overview', icon: 'info' },
-  { key: 'pipeline', label: 'Pipeline', icon: 'zap' },
+  { key: 'pipeline', label: 'Pipeline', icon: 'git-commit' },
   { key: 'handshake', label: 'Handshake & Scope', icon: 'check-circle' },
   { key: 'discrepancies', label: 'Discrepancies', icon: 'alert-triangle' },
   { key: 'redlines', label: 'Redlines & RFIs', icon: 'edit-3' },
-  { key: 'bom', label: 'BOM View', icon: 'table' },
+  { key: 'bom', label: 'Bill of materials', icon: 'list' },
 ];
+// A CX service provider starts on the handshake and does not run the pipeline.
+const SP_TABS: Tab[] = ['handshake', 'overview', 'bom', 'discrepancies', 'redlines'];
 
-function SiteTabBar({ tabs, tab, onChange }: { tabs: { key: Tab; label: string; icon: any }[]; tab: Tab; onChange: (t: Tab) => void }) {
+function SiteHeader({ id, d }: { id: string; d: SiteDetail | null }) {
+  const site = d?.site ?? {};
+  const where = [site.SITE_NAME, [site.CITY, site.STATE].filter(Boolean).join(', ')].filter(Boolean).join('  ·  ');
+  const facts: { icon: IconName; text?: string }[] = [
+    { icon: 'layers', text: site.STRUCTURE_TYPE },
+    { icon: 'arrow-up', text: site.HEIGHT_FT ? `${site.HEIGHT_FT} ft` : undefined },
+    { icon: 'briefcase', text: site.CX_SP },
+    { icon: 'file-text', text: d ? `${d.documents.length} document${d.documents.length === 1 ? '' : 's'}` : undefined },
+  ].filter((f) => f.text);
   return (
-    <View style={{ backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: colors.border }}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ flexDirection: 'row', paddingHorizontal: space(4), gap: space(1) }}
-      >
-        {tabs.map((t) => {
-          const active = tab === t.key;
-          return (
-            <Pressable
-              key={t.key}
-              onPress={() => onChange(t.key)}
-              style={({ pressed }: any) => ({
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: space(1.5),
-                paddingHorizontal: space(3.5),
-                paddingVertical: space(3),
-                borderBottomWidth: 2.5,
-                borderBottomColor: active ? colors.accent : 'transparent',
-                opacity: pressed ? 0.7 : 1,
-                marginBottom: -1,
-              })}
-            >
-              <Icon name={t.icon} size={14} color={active ? colors.accent : colors.muted} />
-              <Text style={{
-                fontSize: 13.5,
-                fontWeight: active ? '700' : '500',
-                color: active ? colors.accent : colors.muted,
-                letterSpacing: 0.1,
-              }}>
-                {t.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+    <View style={{ backgroundColor: '#fff', paddingHorizontal: space(6), paddingTop: space(5) }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space(3), flexWrap: 'wrap' }}>
+        <Text style={{ fontSize: 22, fontWeight: '600', color: colors.text, letterSpacing: -0.3 }}>{id}</Text>
+        {site.WORKFLOW_STATE ? <Badge text={site.WORKFLOW_STATE} color={colors.info} dot /> : null}
+        {site.STREAM ? <Badge text={site.STREAM} color={colors.neutral} /> : null}
+      </View>
+      <Text style={[s.muted, { marginTop: 4 }]}>{where || 'No location details'}</Text>
+      {facts.length ? (
+        <View style={{ flexDirection: 'row', gap: space(5), marginTop: space(3), flexWrap: 'wrap' }}>
+          {facts.map((f) => (
+            <View key={f.icon} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Icon name={f.icon} size={13} color={colors.faint} />
+              <Text style={{ fontSize: 12.5, color: colors.muted }}>{f.text}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -72,76 +63,50 @@ export default function Site() {
   const { user } = useAuth();
   const isAe = user?.role === 'AE_ENGINEER';
   const isSp = user?.role === 'CX_SP';
-
-  let tabs: { key: Tab; label: string; icon: any }[] = ALL_TABS;
-  if (isAe) {
-    tabs = ALL_TABS.filter((t) => t.key === 'redlines');
-  } else if (isSp) {
-    tabs = [
-      { key: 'handshake', label: 'Handshake & Scope', icon: 'check-circle' },
-      { key: 'overview', label: 'Overview', icon: 'info' },
-      { key: 'bom', label: 'BOM View', icon: 'table' },
-      { key: 'discrepancies', label: 'Discrepancies', icon: 'alert-triangle' },
-      { key: 'redlines', label: 'Redlines & RFIs', icon: 'edit-3' },
-    ];
-  }
-
+  const tabs: TabDef[] = isAe
+    ? ALL_TABS.filter((t) => t.key === 'redlines')
+    : isSp
+      ? SP_TABS.map((k) => ALL_TABS.find((t) => t.key === k)!)
+      : ALL_TABS;
   const { id, tab: initial } = useLocalSearchParams<{ id: string; tab?: Tab }>();
-
   const defaultTab: Tab = isAe
     ? 'redlines'
     : isSp
       ? 'handshake'
-      : initial && ['overview', 'pipeline', 'discrepancies', 'redlines', 'bom', 'handshake'].includes(initial as Tab)
-        ? (initial as Tab)
-        : 'overview';
-
+      : initial && ALL_TABS.some((t) => t.key === initial) ? (initial as Tab) : 'overview';
   const [tab, setTab] = useState<Tab>(defaultTab);
   const activeTab: Tab = isAe ? 'redlines' : tab;
   const [key, setKey] = useState(0);
   const d = useApi<SiteDetail>(`/sites/${id}`);
 
   return (
-    <View style={[s.screen, { flex: 1 }]}>
-      <NavBar />
-
-      {/* Site header breadcrumb */}
-      <View style={[{ paddingHorizontal: space(5), paddingVertical: space(3), flexDirection: 'row', alignItems: 'center', gap: space(2) }, brandGradient]}>
-        <Pressable onPress={() => router.back()} style={{ flexDirection: 'row', alignItems: 'center', gap: space(1) }}>
-          <Icon name="chevron-left" size={16} color="rgba(255,255,255,0.75)" />
-          <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 13, fontWeight: '500' }}>Sites</Text>
-        </Pressable>
-        <Icon name="chevron-right" size={13} color="rgba(255,255,255,0.4)" />
-        <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>{id}</Text>
+    <AppShell crumbs={isAe ? [{ label: 'Redlines & RFIs', href: '/(tabs)/rfis' }, { label: id }]
+      : [{ label: 'Sites', href: '/(tabs)/sites' }, { label: id }, { label: activeTab === 'pipeline' ? 'Pipeline run' : tabs.find((t) => t.key === activeTab)?.label ?? '' }]}>
+      <View style={[s.screen, { flex: 1 }]}>
+        <View style={{ backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <SiteHeader id={id} d={d.data} />
+          <Tabs tabs={tabs} value={activeTab} onChange={setTab} style={{ paddingHorizontal: space(6), marginTop: space(4), marginBottom: space(4) }} />
+        </View>
+        <ScrollView
+          contentContainerStyle={[s.content, { maxWidth: activeTab === 'pipeline' ? 1640 : activeTab === 'bom' || activeTab === 'handshake' ? 1440 : 1240, width: '100%', alignSelf: 'center' }]}
+          refreshControl={<RefreshControl refreshing={d.loading} onRefresh={() => { void d.reload(); setKey((k) => k + 1); }} />}
+        >
+          {d.error ? (
+            <ErrorView error={d.error} onRetry={d.reload} />
+          ) : !d.data ? (
+            <Loading />
+          ) : (
+            <View key={`${activeTab}-${key}`}>
+              {!isAe && activeTab === 'overview' && <Overview d={d.data} reload={d.reload} />}
+              {!isAe && !isSp && activeTab === 'pipeline' && <Pipeline siteId={id} siteName={d.data.site?.SITE_NAME} onFinished={d.reload} onOpenTab={(t) => setTab(t)} />}
+              {!isAe && activeTab === 'handshake' && <Handshake siteId={id} />}
+              {!isAe && activeTab === 'discrepancies' && <Discrepancies siteId={id} />}
+              {activeTab === 'redlines' && <Redlines siteId={id} />}
+              {!isAe && activeTab === 'bom' && <BomView siteId={id} />}
+            </View>
+          )}
+        </ScrollView>
       </View>
-
-      {/* Sub tab bar */}
-      <SiteTabBar tabs={tabs} tab={activeTab} onChange={setTab} />
-
-      <ScrollView
-        contentContainerStyle={[s.content, { maxWidth: activeTab === 'bom' ? 1280 : 1100, width: '100%', alignSelf: 'center' }]}
-        refreshControl={
-          <RefreshControl
-            refreshing={d.loading}
-            onRefresh={() => { void d.reload(); setKey((k) => k + 1); }}
-          />
-        }
-      >
-        {d.error ? (
-          <ErrorView error={d.error} onRetry={d.reload} />
-        ) : !d.data ? (
-          <Loading />
-        ) : (
-          <View key={`${activeTab}-${key}`}>
-            {!isAe && activeTab === 'overview' && <Overview d={d.data} reload={d.reload} />}
-            {!isAe && !isSp && activeTab === 'pipeline' && <Pipeline siteId={id} onFinished={d.reload} />}
-            {!isAe && activeTab === 'handshake' && <Handshake siteId={id} />}
-            {!isAe && activeTab === 'discrepancies' && <Discrepancies siteId={id} />}
-            {activeTab === 'redlines' && <Redlines siteId={id} />}
-            {!isAe && activeTab === 'bom' && <BomView siteId={id} />}
-          </View>
-        )}
-      </ScrollView>
-    </View>
+    </AppShell>
   );
 }

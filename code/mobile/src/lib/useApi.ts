@@ -25,10 +25,16 @@ export function mutateApi(pattern?: MutatePattern) {
 }
 
 export function useApi<T>(path: string | null, poll?: PollOptions<T>) {
-  const [data, setData] = useState<T | null>(null);
+  // Data is kept together with the path it was read for, and only returned for that path. When the path changes,
+  // callers get null (not the previous path's data) until the new read arrives, and a late answer for an old path
+  // is ignored instead of overwriting the new one.
+  const [state, setState] = useState<{ path: string | null; data: T | null }>({ path: null, data: null });
+  const data = state.path === path ? state.data : null;
   const [error, setError] = useState<ApiError | null>(null);
   const [loading, setLoading] = useState(!!path);
   const alive = useRef(true);
+  const currentPath = useRef(path);
+  currentPath.current = path;
   const lastLoadTime = useRef(Date.now());
   const pollRef = useRef(poll);
   pollRef.current = poll;
@@ -38,21 +44,21 @@ export function useApi<T>(path: string | null, poll?: PollOptions<T>) {
     if (!silent) setLoading(true);
     try {
       const d = await api.get<T>(path);
-      if (alive.current) {
+      if (alive.current && currentPath.current === path) {
         lastLoadTime.current = Date.now();
-        setData(d);
+        setState({ path, data: d });
         setError(null);
       }
     } catch (e) {
-      if (alive.current) setError(e instanceof ApiError ? e : new ApiError(0, 'CLIENT', String(e)));
+      if (alive.current && currentPath.current === path) setError(e instanceof ApiError ? e : new ApiError(0, 'CLIENT', String(e)));
     } finally {
-      if (alive.current && !silent) setLoading(false);
+      if (alive.current && currentPath.current === path && !silent) setLoading(false);
     }
   }, [path]);
 
   useEffect(() => {
     alive.current = true;
-    setData(null);
+    setError(null);
     void load(false);
     return () => {
       alive.current = false;

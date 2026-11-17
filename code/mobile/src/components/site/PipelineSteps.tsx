@@ -7,7 +7,9 @@ import { authedUrl } from '../../lib/api';
 import { label, money, num, SECTOR, show } from '../../lib/format';
 import { PipelineStep, Row as R } from '../../lib/types';
 import { useApi } from '../../lib/useApi';
-import { colors, space } from '../theme';
+import { Feather } from '@expo/vector-icons';
+import { colors, font, radius, space, tint } from '../theme';
+import { StageNode, STAGE_INFO } from './StageTimeline';
 import { Badge, Button, Card, Empty, ErrorView, IconBadge, KV, Loading, Muted, Row, Section, Stat, Title } from '../ui';
 import { WorkflowActions } from '../WorkflowActions';
 import { Delta } from './Delta';
@@ -15,40 +17,8 @@ import { FindingCard } from './FindingView';
 
 const seconds = (ms: number | null) => (ms == null ? '' : ms < 950 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`);
 
-function Marker({ status, isAborted }: { status: PipelineStep['status']; isAborted?: boolean }) {
-  if (status === 'RUNNING') {
-    return (
-      <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#E8F0FE', alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="small" color={colors.info} />
-      </View>
-    );
-  }
-  if (status === 'DONE') {
-    return (
-      <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#E6F4EA', alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ fontSize: 13, fontWeight: '800', color: '#137333' }}>✓</Text>
-      </View>
-    );
-  }
-  if (status === 'FAILED') {
-    return (
-      <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#FCE8E6', alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ fontSize: 13, fontWeight: '800', color: colors.danger }}>✕</Text>
-      </View>
-    );
-  }
-  if (isAborted || status === 'SKIPPED') {
-    return (
-      <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#F1F3F4', alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ fontSize: 13, fontWeight: '800', color: colors.muted }}>⊘</Text>
-      </View>
-    );
-  }
-  return (
-    <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border }}>
-      <Text style={{ fontSize: 11, fontWeight: '700', color: colors.muted }}>○</Text>
-    </View>
-  );
+function Marker({ status, isAborted, n }: { status: PipelineStep['status']; isAborted?: boolean; n: number }) {
+  return <StageNode view={isAborted && status !== 'SKIPPED' ? 'BLOCKED' : status} n={n} size={26} />;
 }
 
 /** All steps of a run; `detail` renders what a finished step produced (omit for jobs whose steps have no detail view). */
@@ -86,63 +56,38 @@ export function PipelineSteps({ runId, siteId, steps, detail = true, onChanged }
             key={st.key}
             style={{
               marginBottom: space(2),
-              ...(isStepFailed
-                ? { borderColor: colors.danger, borderWidth: 2, backgroundColor: '#FFFDFD' }
-                : isRunning
-                ? { borderColor: colors.info, borderWidth: 2, backgroundColor: '#F8FAFF' }
-                : isAborted
-                ? { opacity: 0.7 }
-                : {}),
+              ...(isStepFailed ? { borderColor: tint.danger.line } : isRunning ? { borderColor: tint.info.line } : {}),
             }}
           >
             <Pressable disabled={!can} onPress={() => toggle(st.key)} accessibilityRole="button" accessibilityLabel={`${st.label}, ${st.status}`}>
-              <Row style={{ flexWrap: 'nowrap', alignItems: 'center' }}>
-                <Marker status={st.status} isAborted={isAborted} />
-                <View style={{ flex: 1, marginLeft: space(2) }}>
+              <Row style={{ flexWrap: 'nowrap', alignItems: 'flex-start', gap: space(3) }}>
+                <Marker status={st.status} isAborted={isAborted} n={i + 1} />
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <Row style={{ justifyContent: 'space-between', flexWrap: 'nowrap', alignItems: 'center' }}>
-                    <Row style={{ alignItems: 'center', gap: space(1) }}>
-                      <Title style={st.status === 'PENDING' || isSkipped ? { color: colors.muted } : isStepFailed ? { color: colors.danger } : undefined}>
-                        {`Stage ${i + 1}: ${st.label}`}
+                    <Row style={{ alignItems: 'center', gap: space(2) }}>
+                      <Title style={st.status === 'PENDING' || isSkipped || isAborted ? { color: colors.muted } : undefined}>
+                        {`${i + 1}. ${st.label}`}
                       </Title>
-                      {isSkipped ? <Badge text="NOT RUN" color={colors.muted} /> : isRunning ? <Badge text="RUNNING..." color={colors.info} /> : isStepFailed ? <Badge text="FAILED" color={colors.danger} /> : isAborted ? <Badge text="ABORTED" color={colors.muted} /> : null}
+                      {isSkipped ? <Badge text="Skipped" color={colors.neutral} /> : isRunning ? <Badge text="Running" color={colors.info} dot /> : isStepFailed ? <Badge text="Failed" color={colors.danger} dot /> : isAborted ? <Badge text="Not run" color={colors.neutral} /> : st.status === 'DONE' ? <Badge text="Completed" color={colors.ok} /> : null}
                     </Row>
-                    <Muted>{isRunning ? 'Processing...' : seconds(st.duration_ms)}</Muted>
+                    <Muted style={{ fontSize: 12 }}>{isRunning ? 'In progress' : seconds(st.duration_ms)}</Muted>
                   </Row>
-
-                  {/* Stage-by-stage live progress explanation */}
-                  {isRunning ? (
-                    <View style={{ marginTop: 4 }}>
-                      <Muted style={{ color: colors.info, fontSize: 12 }}>
-                        {i === 0 ? 'Intaking site engineering documents and checking revision ranks...' : i === 1 ? 'Extracting LiDAR point cloud & CAD drawing vectors in parallel...' : 'Processing consistency rules and engineering checks...'}
-                      </Muted>
-                    </View>
-                  ) : null}
-
-                  {st.message && !isStepFailed ? <Muted>{st.message}</Muted> : null}
-
-                  {isAborted ? (
-                    <Muted style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
-                      Execution stopped: Stage skipped due to failure in Stage {failedIndex + 1}.
-                    </Muted>
-                  ) : null}
+                  <Muted style={{ fontSize: 12.5, marginTop: 2 }}>{STAGE_INFO[st.key] ?? ''}</Muted>
+                  {st.message && !isStepFailed ? <Text style={{ fontSize: 13, color: colors.text, marginTop: 6, lineHeight: 19 }}>{st.message}</Text> : null}
+                  {isAborted ? <Muted style={{ fontSize: 12, marginTop: 4 }}>{`Not run: stage ${failedIndex + 1} failed.`}</Muted> : null}
                 </View>
-                {can ? <Text style={{ color: isStepFailed ? colors.danger : colors.primary, fontSize: 18, fontWeight: '700', paddingLeft: space(2) }}>{isOpen ? '▾' : '▸'}</Text> : null}
+                {can ? <View style={{ paddingTop: 2 }}><Feather name={isOpen ? 'chevron-up' : 'chevron-down'} size={18} color={colors.muted} /></View> : null}
               </Row>
             </Pressable>
 
-            {/* Stage failure alert with exact error message */}
+            {/* Stage failure: the exact error message */}
             {isStepFailed ? (
-              <View style={{ marginTop: space(2), padding: space(2.5), backgroundColor: '#FEF2F2', borderRadius: 8, borderWidth: 1, borderColor: '#FCA5A5' }}>
-                <Row style={{ alignItems: 'center', gap: space(1), marginBottom: 4 }}>
-                  <Text style={{ fontSize: 16 }}>⚠️</Text>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.danger }}>Stage Error (Execution Halted)</Text>
-                </Row>
-                <Text style={{ fontSize: 13, color: colors.text, fontFamily: 'monospace' }}>
+              <View style={{ marginTop: space(3), marginLeft: 38, padding: space(3), backgroundColor: tint.danger.bg, borderRadius: radius.md, borderWidth: 1, borderColor: tint.danger.line }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: tint.danger.fg, marginBottom: 4 }}>Error</Text>
+                <Text style={{ fontSize: 12.5, color: colors.text, fontFamily: font.mono, lineHeight: 18 }} selectable>
                   {st.message || 'Error occurred while executing this stage.'}
                 </Text>
-                <Text style={{ fontSize: 11, color: colors.danger, marginTop: 4 }}>
-                  Subsequent stages were halted to protect data integrity.
-                </Text>
+                <Text style={{ fontSize: 12, color: colors.muted, marginTop: 6 }}>Later stages did not run.</Text>
               </View>
             ) : null}
 
@@ -165,7 +110,11 @@ function StepDetail({ runId, siteId, stepKey, stepStatus, onChanged }: { runId: 
   );
   if (d.error) return <ErrorView error={d.error} onRetry={d.reload} />;
   if (!d.data) return <Loading />;
-  const x = d.data;
+  return <StepDetailView x={d.data} runId={runId} siteId={siteId} stepKey={stepKey} stepStatus={stepStatus} reload={() => { void d.reload(); onChanged?.(); }} />;
+}
+
+/** What a finished step produced, from data already loaded from /pipeline/runs/{run}/steps/{key}. */
+export function StepDetailView({ x, runId, siteId, stepKey, stepStatus, reload }: { x: any; runId: string; siteId: string; stepKey: string; stepStatus: string; reload: () => void }) {
   switch (stepKey) {
     case 'INGEST': return <Documents data={x} rows={x.documents ?? []} />;
     case 'EXTRACT': return <Extracted x={x} isRunning={stepStatus === 'RUNNING'} />;
@@ -175,7 +124,7 @@ function StepDetail({ runId, siteId, stepKey, stepStatus, onChanged }: { runId: 
     case 'BOM': return <BomStage x={x} runId={runId} />;
     case 'GENERATE': return <Bom x={x} />;
     case 'ESTIMATE': return <Estimate x={x} />;
-    case 'REDLINES': return <RedlinesAndRfis siteId={siteId} x={x} reload={() => { void d.reload(); onChanged?.(); }} />;
+    case 'REDLINES': return <RedlinesAndRfis siteId={siteId} x={x} reload={reload} />;
     case 'FILES': return <Files files={x.files} />;
     default: return <Empty text="Nothing to show for this step." />;
   }
@@ -844,7 +793,8 @@ function RedlineDecisionCard({ d }: { d: any }) {
 
 function RedlinesAndRfis({ siteId, x, reload }: { siteId: string; x: { redlines: R[]; rfis: R[]; decision?: any; files?: Record<string, string> }; reload: () => void }) {
   const live = useApi<R[]>(`/redlines?site_id=${siteId}`);        // carries the role-specific workflow buttons and the PDF link
-  const redlines = live.data ?? x.redlines;
+  const redlines: R[] = (Array.isArray(live.data) ? live.data : null) ?? x.redlines ?? [];
+  x = { ...x, rfis: x.rfis ?? [] };
   const pdf = x.files?.redlined_cd_pdf ?? redlines.find((r) => r.PDF_PATH)?.PDF_PATH;
   const needed = x.decision ? x.decision.required : redlines.length > 0;
   return (

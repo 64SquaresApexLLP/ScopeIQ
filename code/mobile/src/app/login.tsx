@@ -78,12 +78,15 @@ export default function Login() {
   const brand = (
     <View style={[{ padding: space(wide ? 12 : 6), justifyContent: 'center', flex: wide ? 1 : undefined }, brandGradient]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space(3), marginBottom: space(6) }}>
-        <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' }}>
-          <Icon name="layers" size={24} color="#fff" />
+        <View style={{ width: 40, height: 40, borderRadius: 9, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}>
+          <Icon name="radio" size={20} color="#fff" />
         </View>
-        <Text style={{ color: '#fff', fontSize: 32, fontWeight: '900', letterSpacing: -1 }}>ScopeIQ</Text>
+        <View>
+          <Text style={{ color: '#fff', fontSize: 24, fontWeight: '600', letterSpacing: -0.4 }}>ScopeIQ</Text>
+          <Text style={{ color: 'rgba(203,213,225,0.75)', fontSize: 12.5, fontWeight: '500' }}>Cell-site scoping and engineering operations</Text>
+        </View>
       </View>
-      <Text style={{ color: '#fff', fontSize: wide ? 34 : 24, fontWeight: '800', letterSpacing: -0.8, lineHeight: wide ? 42 : 30 }}>Telecom site scoping, automated.</Text>
+      <Text style={{ color: '#fff', fontSize: wide ? 32 : 24, fontWeight: '600', letterSpacing: -0.6, lineHeight: wide ? 40 : 30 }}>Telecom site scoping, automated.</Text>
       <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 15, marginTop: space(3), marginBottom: space(8), maxWidth: 440, lineHeight: 22 }}>
         From documents to a reviewed bill of materials, with every finding backed by evidence.
       </Text>
