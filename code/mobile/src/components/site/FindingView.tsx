@@ -96,7 +96,7 @@ export const eventLabel = (h: R, revLabel: string) => {
   if (act === 'CREATE_REDLINE') return `Redline markup drafted by ${user}`;
   if (act === 'CONFIRM') return `Confirmed by ${user}`;
   if (act === 'DISMISS') return `Dismissed by ${user}`;
-  return `${h.FROM_STATE ? `${h.FROM_STATE} ➔ ` : ''}${h.TO_STATE || act} by ${user}`;
+  return `${h.FROM_STATE ? `${h.FROM_STATE} → ` : ''}${h.TO_STATE || act} by ${user}`;
 };
 
 /** One finding in a list. */
@@ -349,14 +349,14 @@ export function FindingCard({ x, onReload }: { x: R; onReload?: () => void }) {
                 <Text style={{ fontSize: 11, color: colors.muted }}>CD REV 1:</Text>
                 <Text style={{ fontSize: 12, fontWeight: '700', color: colors.danger }}>{show(x.EXPECTED)}</Text>
               </View>
-              <Text style={{ color: colors.muted, fontSize: 11 }}>➔</Text>
+              <Text style={{ color: colors.muted, fontSize: 11 }}>→</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Text style={{ fontSize: 11, color: colors.muted }}>Drone measured:</Text>
                 <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }}>{show(x.FOUND)}</Text>
               </View>
               {isAeRevised || isRedlineRemoved ? (
                 <>
-                  <Text style={{ color: colors.muted, fontSize: 11 }}>➔</Text>
+                  <Text style={{ color: colors.muted, fontSize: 11 }}>→</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                     <Text style={{ fontSize: 11, color: colors.muted }}>CD {revLabel}:</Text>
                     <Text style={{ fontSize: 12, fontWeight: '700', color: '#15803d' }}>{show(x.FOUND)} (Corrected)</Text>

@@ -259,7 +259,7 @@ export default function Admin() {
 
           const details = [exactCity, exactState, res.zip].filter(Boolean).join(', ');
           setGeoFeedback({
-            message: `📍 Geolocation resolved: ${details}${res.county && res.county !== exactCity ? ` (${res.county})` : ''}`,
+            message: `Location found: ${details}${res.county && res.county !== exactCity ? ` (${res.county})` : ''}`,
             isSuccess: true,
           });
         } else {
@@ -371,7 +371,7 @@ export default function Admin() {
   };
 
   return (
-    <ScrollView style={s.screen} contentContainerStyle={[s.content, { maxWidth: 820, width: '100%', alignSelf: 'center' }]}
+    <ScrollView style={s.screen} contentContainerStyle={[s.content, { maxWidth: 1100, width: '100%', alignSelf: 'center' }]}
       refreshControl={<RefreshControl refreshing={sites.loading} onRefresh={sites.reload} />}>
       <View style={{ marginBottom: space(4) }}>
         <Chips value={section} onChange={setSection} options={[{ key: 'sites', label: 'Sites' }, { key: 'logins', label: 'User logins' }]} />

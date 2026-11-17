@@ -192,7 +192,7 @@ export function Overview({ d }: { d: SiteDetail; reload: () => void }) {
                           </View>
                         ) : null}
                         <Badge
-                          text={isCurrent ? '✓ Picked (Latest)' : isSuperseded ? '⚠ Superseded (Older)' : x.STATUS}
+                          text={isCurrent ? 'Latest (picked)' : isSuperseded ? 'Superseded' : x.STATUS}
                           color={isCurrent ? colors.ok : isSuperseded ? colors.warn : colors.muted}
                         />
                       </Row>

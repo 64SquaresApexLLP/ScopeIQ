@@ -80,7 +80,7 @@ export function RfiCard({ r, reload }: { r: R; reload: () => void }) {
 }
 
 /** The drone footage that backs a redline: the video frame (or still) that looks at the place the redline is about. */
-function ProofStrip({ proof }: { proof: R[] }) {
+export function ProofStrip({ proof }: { proof: R[] }) {
   const [big, setBig] = useState<R | null>(null);
   const sheet = proof.find((p) => p.KIND === 'SHEET');       // the drawing sheet with this redline marked
   const drone = proof.filter((p) => p.KIND !== 'SHEET');
@@ -121,7 +121,7 @@ function ProofStrip({ proof }: { proof: R[] }) {
 }
 
 /** The red-marked drawing shown in the page, so it does not have to be downloaded to be read. */
-function PdfPreview({ path }: { path: string }) {
+export function PdfPreview({ path }: { path: string }) {
   const [open, setOpen] = useState(true);
   const url = authedUrl(path);
   const name = decodeURIComponent(path.split('/').pop()?.split('?')[0] ?? 'Redlined drawing');
@@ -244,7 +244,7 @@ export function Redlines({ siteId }: { siteId: string }) {
                   </Row>
                   <Text style={{ fontSize: 12, color: colors.text }}>
                     Action: <Text style={{ fontWeight: '700' }}>{x.LAST_RESPONSE.ACTION.replace('_', ' ')}</Text>
-                    {`  ➔  Status: `}<Text style={{ fontWeight: '700', color: statusCol }}>{st.replace('_', ' ')}</Text>
+                    {`  ·  Status: `}<Text style={{ fontWeight: '700', color: statusCol }}>{st.replace('_', ' ')}</Text>
                   </Text>
                   {x.LAST_RESPONSE.REASON_CODE ? (
                     <Text style={{ fontSize: 12, color: colors.danger, fontWeight: '600' }}>

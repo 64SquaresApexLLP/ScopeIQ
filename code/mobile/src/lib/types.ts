@@ -98,3 +98,52 @@ export interface SiteDetail {
   last_run: Row[];
   workflow_history: Row[];
 }
+
+export interface SpQuote {
+  QUOTE_ID: string;
+  SITE_ID: string;
+  SP_NAME: string;
+  QUOTE_AMOUNT: number;
+  BASELINE_AMOUNT: number;
+  VARIANCE_AMOUNT: number;
+  VARIANCE_PCT: number;
+  STATUS: string;
+  NOTES: string;
+  BREAKDOWN: any[];
+  SUBMITTED_BY: string;
+  SUBMITTED_AT: string;
+}
+
+export interface HandshakeSummary {
+  site_id: string;
+  site_name: string;
+  market: string;
+  cx_sp: string;
+  workflow_state: string;
+  current_bom_rev: string;
+  is_fba_locked: boolean;
+  actions: WorkflowAction[];
+  can_handshake: boolean;
+  has_bom?: boolean;
+  has_run_pipeline?: boolean;
+  delta: Row[];
+  cd_documents?: Row[];
+  bom_lines?: Row[];
+  bom_summary: {
+    lines_count: number;
+    install_count: number;
+    remove_count: number;
+    total_material_cost: number;
+    revision: string;
+    file_name: string;
+    is_locked: boolean;
+  };
+  workflow_history: Row[];
+  drivers?: Row[];
+  requirements?: Row | null;
+  estimate?: Row | null;
+  baseline_services_usd?: number;
+  bom_items_count?: number;
+  latest_quote?: SpQuote | null;
+  quotes?: SpQuote[];
+}

@@ -163,6 +163,9 @@ table("CORE", "BOM_OUTPUT_LINE", "LINE_ID S PK, RUN_ID S, SITE_ID S NN, MARKET S
       "Stage 6: the BOM generated from the stage 5 data and the BOM rules, one row per kit line, rebuilt on every run")
 table("CORE", "RFI", "RFI_ID S PK, SITE_ID S NN, TO_PARTY S, SUBJECT S, QUESTION S, PROPOSED_ANSWER S, ANSWER S, DISC_IDS V, STATUS S, CREATED_AT T, "
       "UPDATED_AT T, UPDATED_BY S", "Requests for information")
+table("CORE", "SP_QUOTE", "QUOTE_ID S PK, SITE_ID S NN, SP_NAME S, QUOTE_AMOUNT N, BASELINE_AMOUNT N, "
+      "VARIANCE_AMOUNT N, VARIANCE_PCT N, STATUS S, NOTES S, BREAKDOWN V, SUBMITTED_BY S, SUBMITTED_AT T",
+      "Construction service provider quote submissions and variance check against driver baseline")
 table("CORE", "USER_LOGIN", "USERNAME S PK, ROLE_CODE S NN, DISPLAY_NAME S, ORGANISATION S, PASSWORD_HASH S NN, ACTIVE B, CREATED_AT T, "
       "CREATED_BY S, UPDATED_AT T, UPDATED_BY S", "Sign-in credentials created by the admin (salted PBKDF2 hash, never the password)")
 

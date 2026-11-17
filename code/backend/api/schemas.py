@@ -29,6 +29,12 @@ class TransitionIn(BaseModel):
     comment: str | None = None
 
 
+class SpQuoteIn(BaseModel):
+    quote_amount: float = Field(ge=0, description="Total construction quote amount in USD")
+    notes: str | None = Field(default=None, max_length=1000, description="Explanatory notes from the CX SP")
+    breakdown: list[dict] | None = Field(default=None, description="Optional line-item driver breakdown")
+
+
 class CommentIn(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
 

@@ -368,7 +368,7 @@ export default function SharePoint() {
   const dupCount = results.filter((r) => r.isDuplicate).length;
 
   return (
-    <ScrollView style={s.screen} contentContainerStyle={[s.content, { maxWidth: 820, width: '100%', alignSelf: 'center' }]}
+    <ScrollView style={s.screen} contentContainerStyle={[s.content, { maxWidth: 1100, width: '100%', alignSelf: 'center' }]}
       refreshControl={<RefreshControl refreshing={sites.loading} onRefresh={sites.reload} />}>
       <Hero icon="upload-cloud" title="SharePoint documents" subtitle={sites.data?.location ?? 'Connecting...'} />
       {sites.error ? <ErrorView error={sites.error} onRetry={sites.reload} /> : null}
@@ -444,15 +444,15 @@ export default function SharePoint() {
                           </Row>
                           {isBlockedAe ? (
                             <Text style={{ fontSize: 12, color: colors.danger, fontWeight: '600', marginTop: 2 }}>
-                              ⚠️ {f.notAllowedReason || 'A&E Engineers can only upload CD and SA_MA documents.'}
+                              {f.notAllowedReason || 'A&E Engineers can only upload CD and SA_MA documents.'}
                             </Text>
                           ) : isDup ? (
                             <Text style={{ fontSize: 12, color: colors.danger, fontWeight: '600', marginTop: 2 }}>
-                              ⚠️ File already exists with identical data (matches &quot;{f.duplicateOf || f.name}&quot;) — upload blocked
+                              File already exists with identical data (matches &quot;{f.duplicateOf || f.name}&quot;) — upload blocked
                             </Text>
                           ) : isUpd ? (
                             <Text style={{ fontSize: 12, color: '#1E40AF', fontWeight: '600', marginTop: 2 }}>
-                              ✨ Changes detected compared to &quot;{f.updatedFrom || f.name}&quot; ({f.diffSummary || 'modified content'})
+                              Changes detected compared to &quot;{f.updatedFrom || f.name}&quot; ({f.diffSummary || 'modified content'})
                             </Text>
                           ) : f.hash ? (
                             <Text style={{ fontSize: 11, fontFamily: 'monospace', color: colors.muted, marginTop: 2 }}>

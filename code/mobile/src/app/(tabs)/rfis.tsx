@@ -2,13 +2,14 @@
 // Allows reviewing drawings, tracking markups, answering RFIs, and executing workflow actions across all sites.
 import { router } from 'expo-router';
 import React, { useMemo, useState } from 'react';
-import { Linking, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
-import { colors, space } from '../../components/theme';
-import { Badge, Button, Card, Chips, Empty, ErrorView, Hero, IconBadge, KV, Loading, Muted, Row, s, Title } from '../../components/ui';
+import { Linking, Pressable, RefreshControl, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ProofStrip } from '../../components/site/Redlines';
+import { colors, font, radius, space, tint } from '../../components/theme';
+import { Badge, Button, Card, Chips, EmptyState, ErrorView, Icon, IconBadge, KV, Loading, Muted, PageHeader, Row, s, SearchBox, Select, Tabs, Title } from '../../components/ui';
 import { WorkflowActions } from '../../components/WorkflowActions';
 import { api, ApiError, authedUrl } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
-import { when } from '../../lib/format';
+import { label, when } from '../../lib/format';
 import { Row as R } from '../../lib/types';
 import { useApi } from '../../lib/useApi';
 
@@ -40,7 +41,7 @@ function RfiListItem({ r, reload }: { r: R; reload: () => void }) {
     r.STATUS;
 
   const statusColor =
-    r.STATUS === 'SUBMITTED' ? colors.primary :
+    r.STATUS === 'SUBMITTED' ? colors.info :
     r.STATUS === 'IN_REVIEW' ? colors.warn :
     r.STATUS === 'ANSWERED' || r.STATUS === 'CLOSED' ? colors.ok :
     colors.muted;
@@ -58,26 +59,18 @@ function RfiListItem({ r, reload }: { r: R; reload: () => void }) {
         <Row style={{ gap: space(2), alignItems: 'center' }}>
           <Pressable
             onPress={() => router.push({ pathname: '/site/[id]', params: { id: r.SITE_ID, tab: 'redlines' } })}
-            style={({ pressed }) => ({
-              backgroundColor: colors.primary + '18',
-              paddingHorizontal: 8,
-              paddingVertical: 4,
-              borderRadius: 6,
-              opacity: pressed ? 0.7 : 1,
-            })}
+            style={({ pressed, hovered }: any) => ({ flexDirection: 'row', alignItems: 'center', gap: 4, opacity: pressed ? 0.7 : 1 })}
           >
-            <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>{r.SITE_ID}</Text>
+            <Icon name="map-pin" size={13} color={colors.accent} />
+            <Text style={{ color: colors.accent, fontWeight: '600', fontSize: 13 }}>{r.SITE_ID}</Text>
           </Pressable>
-          <Badge
-            text={r.TO_PARTY === 'AE_ENGINEER' ? 'For A&E ENGINEER' : 'For Admin'}
-            color={r.TO_PARTY === 'AE_ENGINEER' ? colors.accent : colors.primary}
-          />
+          <Badge text={r.TO_PARTY === 'AE_ENGINEER' ? 'To A&E Engineer' : 'To Admin'} color={colors.neutral} />
         </Row>
         <Badge text={displayStatus} color={statusColor} />
       </Row>
 
-      <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>{r.SUBJECT}</Text>
-      <Muted style={{ color: colors.text }}>{r.QUESTION}</Muted>
+      <Text style={{ color: colors.text, fontWeight: '600', fontSize: 15, marginTop: space(1) }}>{r.SUBJECT}</Text>
+      <Text style={{ color: colors.text, fontSize: 13.5, lineHeight: 20 }}>{r.QUESTION}</Text>
 
       {r.UPDATED_BY ? (
         <KV k="Submitted by" v={`${r.UPDATED_BY}${r.UPDATED_AT ? ` (${when(r.UPDATED_AT)})` : ''}`} />
@@ -87,8 +80,8 @@ function RfiListItem({ r, reload }: { r: R; reload: () => void }) {
 
       {/* Answer box for the designated target party */}
       {canAnswer ? (
-        <View style={{ marginTop: space(2), padding: space(3), backgroundColor: colors.bg, borderRadius: 8, gap: space(2) }}>
-          <Text style={{ fontWeight: '700', fontSize: 13, color: colors.text }}>Respond to RFI</Text>
+        <View style={{ marginTop: space(2), padding: space(3), backgroundColor: colors.surfaceAlt, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, gap: space(2) }}>
+          <Text style={{ fontWeight: '600', fontSize: 13, color: colors.text }}>Respond to RFI</Text>
           <TextInput
             style={[s.input, { minHeight: 65, backgroundColor: colors.card }]}
             multiline
@@ -102,10 +95,9 @@ function RfiListItem({ r, reload }: { r: R; reload: () => void }) {
           {err ? <ErrorView error={err} /> : null}
         </View>
       ) : r.STATUS === 'IN_REVIEW' ? (
-        <View style={{ marginTop: space(2), padding: space(2.5), backgroundColor: colors.bg, borderRadius: 8 }}>
-          <Muted style={{ fontStyle: 'italic' }}>
-            Awaiting response from {r.TO_PARTY === 'AE_ENGINEER' ? 'A&E Engineer' : 'Admin'}...
-          </Muted>
+        <View style={{ marginTop: space(2), padding: space(3), backgroundColor: tint.info.bg, borderRadius: radius.md, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+          <Icon name="clock" size={14} color={tint.info.fg} />
+          <Text style={{ fontSize: 12.5, color: tint.info.fg }}>Awaiting a response from {r.TO_PARTY === 'AE_ENGINEER' ? 'the A&E Engineer' : 'the Admin'}.</Text>
         </View>
       ) : null}
 
@@ -131,7 +123,7 @@ function RedlineListItem({ x, reload }: { x: R; reload: () => void }) {
 
   const statusCol =
     displayStatus === 'IN_REVIEW' ? colors.warn :
-    displayStatus === 'WORK_QUEUE' ? colors.primary :
+    displayStatus === 'WORK_QUEUE' ? colors.info :
     displayStatus === 'COMPLETED' ? colors.ok :
     displayStatus === 'REJECTED' ? colors.danger : colors.muted;
 
@@ -150,34 +142,38 @@ function RedlineListItem({ x, reload }: { x: R; reload: () => void }) {
         <Row style={{ gap: space(2), alignItems: 'center', flexWrap: 'wrap', flex: 1 }}>
           <Pressable
             onPress={() => router.push({ pathname: '/site/[id]', params: { id: x.SITE_ID, tab: 'redlines' } })}
-            style={({ pressed }) => ({
-              backgroundColor: colors.primary + '18',
-              paddingHorizontal: 8,
-              paddingVertical: 4,
-              borderRadius: 6,
-              opacity: pressed ? 0.7 : 1,
-            })}
+            style={({ pressed }: any) => ({ flexDirection: 'row', alignItems: 'center', gap: 4, opacity: pressed ? 0.7 : 1 })}
           >
-            <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>{x.SITE_ID}</Text>
+            <Icon name="map-pin" size={13} color={colors.accent} />
+            <Text style={{ color: colors.accent, fontWeight: '600', fontSize: 13 }}>{x.SITE_ID}</Text>
           </Pressable>
-          <Title>{`${x.DOC_TYPE} ${x.DOC_REVISION ?? ''} sheet ${x.SHEET}`}</Title>
+          <Title>{`${x.DOC_TYPE} ${x.DOC_REVISION ?? ''} · sheet ${x.SHEET}`}</Title>
 
           {/* Attribution badge: indicates who responded, or if it is pending for Admin & A&E */}
           {x.LAST_RESPONSE ? (
             <Badge
               text={`Responded by ${formatRole(x.LAST_RESPONSE.ACTOR_ROLE)} (${x.LAST_RESPONSE.ACTOR_USER_ID})`}
-              color={x.LAST_RESPONSE.ACTOR_ROLE === 'ADMIN' ? colors.primary : colors.accent}
+              color={colors.neutral}
             />
           ) : (
-            <Badge text="For Admin & A&E" color={colors.muted} />
+            <Badge text="For Admin and A&E" color={colors.neutral} />
           )}
         </Row>
         <Badge text={displayStatus.replace('_', ' ')} color={statusCol} />
       </Row>
 
-      <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13.5 }}>{x.MARKUP}</Text>
-      <KV k="Was" v={x.CHANGE_FROM} />
-      <KV k="Now" v={x.CHANGE_TO} />
+      <Text style={{ color: colors.text, fontWeight: '600', fontSize: 14.5, marginTop: space(1) }}>{x.MARKUP}</Text>
+      <View style={{ flexDirection: 'row', gap: space(3), flexWrap: 'wrap', marginTop: space(1) }}>
+        <View style={{ flex: 1, minWidth: 200, padding: space(3), borderRadius: radius.md, backgroundColor: tint.danger.bg, borderWidth: 1, borderColor: tint.danger.line }}>
+          <Text style={{ fontSize: 11.5, fontWeight: '600', color: tint.danger.fg }}>DRAWING SHOWS</Text>
+          <Text style={{ fontSize: 13.5, color: colors.text, marginTop: 4 }}>{x.CHANGE_FROM || '-'}</Text>
+        </View>
+        <View style={{ flex: 1, minWidth: 200, padding: space(3), borderRadius: radius.md, backgroundColor: tint.ok.bg, borderWidth: 1, borderColor: tint.ok.line }}>
+          <Text style={{ fontSize: 11.5, fontWeight: '600', color: tint.ok.fg }}>FIELD (DRONE) SHOWS</Text>
+          <Text style={{ fontSize: 13.5, color: colors.text, marginTop: 4 }}>{x.CHANGE_TO || '-'}</Text>
+        </View>
+      </View>
+      {Array.isArray(x.PROOF) && x.PROOF.length ? <ProofStrip proof={x.PROOF} /> : null}
 
       <KV
         k="Submitted by"
@@ -211,10 +207,10 @@ function RedlineListItem({ x, reload }: { x: R; reload: () => void }) {
           style={{
             marginTop: space(2),
             padding: space(2.5),
-            backgroundColor: (x.LAST_RESPONSE.ACTOR_ROLE === 'ADMIN' ? colors.primary : colors.accent) + '12',
-            borderRadius: 8,
+            backgroundColor: colors.surfaceAlt,
+            borderRadius: radius.md,
             borderLeftWidth: 3,
-            borderLeftColor: x.LAST_RESPONSE.ACTOR_ROLE === 'ADMIN' ? colors.primary : colors.accent,
+            borderLeftColor: colors.accent,
             gap: 4,
           }}
         >
@@ -228,7 +224,7 @@ function RedlineListItem({ x, reload }: { x: R; reload: () => void }) {
           </Row>
           <Text style={{ fontSize: 12, color: colors.text }}>
             Action: <Text style={{ fontWeight: '700' }}>{x.LAST_RESPONSE.ACTION.replace('_', ' ')}</Text>
-            {`  ➔  Status: `}<Text style={{ fontWeight: '700', color: statusCol }}>{displayStatus.replace('_', ' ')}</Text>
+            {`  ·  Status: `}<Text style={{ fontWeight: '700', color: statusCol }}>{displayStatus.replace('_', ' ')}</Text>
           </Text>
           {x.LAST_RESPONSE.REASON_CODE ? (
             <Text style={{ fontSize: 12, color: colors.danger, fontWeight: '600' }}>
@@ -248,7 +244,8 @@ function RedlineListItem({ x, reload }: { x: R; reload: () => void }) {
           <Button
             small
             kind="secondary"
-            title="Open red-marked CD (PDF)"
+            icon="file-text"
+            title="Open redlined CD (PDF)"
             onPress={() => Linking.openURL(authedUrl(x.PDF_URL))}
           />
         ) : null}
@@ -287,11 +284,14 @@ export default function RfisScreen() {
   const rfis = useApi<R[]>(allowed ? '/rfis' : null);
   const redlines = useApi<R[]>(allowed ? '/redlines' : null);
 
-  const [section, setSection] = useState<'RFIS' | 'REDLINES'>('RFIS');
+  const [section, setSection] = useState<'RFIS' | 'REDLINES'>('REDLINES');
   const [rfiScope, setRfiScope] = useState<RfiScope>('ALL');
   const [rfiFilter, setRfiFilter] = useState<RfiFilter>('ALL');
   const [redFilter, setRedFilter] = useState<RedFilter>('ALL');
   const [query, setQuery] = useState('');
+  const [selRfi, setSelRfi] = useState<string | null>(null);
+  const [selRed, setSelRed] = useState<string | null>(null);
+  const { width } = useWindowDimensions();
 
   if (!allowed) {
     return (
@@ -410,131 +410,86 @@ export default function RfisScreen() {
 
   const loading = (rfis.loading && !rfis.data) || (redlines.loading && !redlines.data);
   const error = rfis.error || redlines.error;
+  const wide = width >= 1100;
+  const curRfi = filteredRfis.find((x) => x.RFI_ID === selRfi) ?? filteredRfis[0];
+  const curRed = filteredRedlines.find((x) => x.REDLINE_ID === selRed) ?? filteredRedlines[0];
+
+  const listRow = (key: string, on: boolean, onPress: () => void, site: string, title: string, sub: string, badge: React.ReactNode) => (
+    <Pressable key={key} onPress={onPress} accessibilityRole="button" accessibilityState={{ selected: on }}
+      style={({ hovered }: any) => ({ paddingHorizontal: space(4), paddingVertical: space(3), borderBottomWidth: 1, borderBottomColor: colors.border,
+        backgroundColor: on ? colors.soft : hovered ? colors.surfaceAlt : '#fff', borderLeftWidth: 3, borderLeftColor: on ? colors.accent : 'transparent' })}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.accent }}>{site}</Text>
+        {badge}
+      </View>
+      <Text style={{ fontSize: 13.5, fontWeight: '600', color: colors.text, marginTop: 4 }} numberOfLines={2}>{title}</Text>
+      <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }} numberOfLines={1}>{sub}</Text>
+    </Pressable>
+  );
+  const rfiStatus = (st: string) => st === 'SUBMITTED' ? { t: 'Request', c: colors.info } : st === 'IN_REVIEW' ? { t: 'In review', c: colors.warn } : st === 'ANSWERED' || st === 'CLOSED' ? { t: label(st), c: colors.ok } : { t: label(st), c: colors.neutral };
+  const redStatus = (st: string) => ['IN_REVIEW', 'APPROVED', 'SENT_TO_AE', 'DRAFT'].includes(st) ? { t: 'In review', c: colors.warn } : ['WORK_QUEUE', 'ACKNOWLEDGED'].includes(st) ? { t: 'Work queue', c: colors.info } : ['COMPLETED', 'INCORPORATED', 'CLOSED'].includes(st) ? { t: 'Completed', c: colors.ok } : st === 'REJECTED' ? { t: 'Rejected', c: colors.danger } : { t: label(st), c: colors.neutral };
+  const emptyText = (what: string, f: string) => query ? `No ${what} match your search.` : f === 'ALL' ? `No ${what} yet.` : `No ${what} with this status.`;
 
   return (
     <ScrollView
       style={s.screen}
-      contentContainerStyle={[s.content, { maxWidth: 860, width: '100%', alignSelf: 'center' }]}
+      contentContainerStyle={[s.content, { maxWidth: 1440, width: '100%', alignSelf: 'center' }]}
       refreshControl={<RefreshControl refreshing={rfis.loading || redlines.loading} onRefresh={reloadAll} />}
     >
-      <Hero
-        icon="edit-3"
-        title="Redlines & RFIs"
-        subtitle="Review drawing redlines, acknowledge markups, and answer Requests for Information across sites."
-      />
+      <PageHeader title="Redlines & RFIs" subtitle="Review drawing corrections with their drone evidence, and answer requests for information across sites." />
 
-      {/* Primary Section Switcher */}
-      <Chips<'RFIS' | 'REDLINES'>
-        value={section}
-        onChange={setSection}
-        options={[
-          { key: 'RFIS', label: `RFIs (${isAe ? scopeCounts.SENT_TO_AE : scopeCounts.ALL})` },
-          { key: 'REDLINES', label: `Redlines (${redCounts.ALL})` },
-        ]}
-      />
+      <Tabs<'RFIS' | 'REDLINES'> value={section} onChange={setSection} style={{ marginBottom: space(4) }}
+        tabs={[{ key: 'REDLINES', label: 'Redlines', icon: 'edit-3', count: redCounts.ALL }, { key: 'RFIS', label: 'RFIs', icon: 'help-circle', count: isAe ? scopeCounts.SENT_TO_AE : scopeCounts.ALL }]} />
 
-      {/* Admin Workstream Switcher for RFIs */}
-      {section === 'RFIS' && !isAe ? (
-        <View style={{ padding: space(3), backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, gap: space(2) }}>
-          <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ fontWeight: '700', fontSize: 13, color: colors.text }}>RFI Workstream</Text>
-            <Muted style={{ fontSize: 12 }}>Filter by recipient</Muted>
-          </Row>
-          <Chips<RfiScope>
-            value={rfiScope}
-            onChange={(scope) => {
-              setRfiScope(scope);
-              setRfiFilter('ALL');
-            }}
-            options={[
-              { key: 'ALL', label: `All RFIs (${scopeCounts.ALL})` },
-              { key: 'ADMIN', label: `For Admin (${scopeCounts.ADMIN})` },
-              { key: 'SENT_TO_AE', label: `Sent to A&E (${scopeCounts.SENT_TO_AE})` },
-            ]}
-          />
-        </View>
-      ) : null}
-
-      {/* Highlight banner when Sent to A&E scope is active */}
-      {section === 'RFIS' && !isAe && rfiScope === 'SENT_TO_AE' ? (
-        <View
-          style={{
-            padding: space(2.5),
-            backgroundColor: colors.accent + '14',
-            borderRadius: 8,
-            borderLeftWidth: 3,
-            borderLeftColor: colors.accent,
-            gap: 2,
-          }}
-        >
-          <Row style={{ alignItems: 'center', gap: space(2) }}>
-            <Text style={{ fontWeight: '700', fontSize: 13, color: colors.text }}>
-              Sent to A&E Engineering
-            </Text>
-            <Badge text={`${scopeCounts.SENT_TO_AE} RFIs`} color={colors.accent} />
-          </Row>
-          <Muted style={{ fontSize: 12 }}>
-            These RFIs are assigned to A&E Engineers for drawing elevation / technical confirmation.
-          </Muted>
-        </View>
-      ) : null}
-
-      {/* Sub filters and search */}
-      <Row style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: space(2) }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space(3), flexWrap: 'wrap', marginBottom: space(3), zIndex: 5 }}>
+        <SearchBox value={query} onChangeText={setQuery} placeholder={section === 'RFIS' ? 'Search site, subject or question' : 'Search site, sheet or markup'} style={{ flex: 1, minWidth: 260 }} />
+        {section === 'RFIS' && !isAe ? (
+          <Select<RfiScope> value={rfiScope} width={220} onChange={(v) => { setRfiScope(v); setRfiFilter('ALL'); }}
+            options={[{ key: 'ALL', label: `All recipients (${scopeCounts.ALL})` }, { key: 'ADMIN', label: `To Admin (${scopeCounts.ADMIN})` }, { key: 'SENT_TO_AE', label: `To A&E Engineer (${scopeCounts.SENT_TO_AE})` }]} />
+        ) : null}
+      </View>
+      <View style={{ marginBottom: space(4) }}>
         {section === 'RFIS' ? (
-          <Chips<RfiFilter>
-            value={rfiFilter}
-            onChange={setRfiFilter}
-            options={[
-              { key: 'ALL', label: `All (${rfiCounts.ALL})` },
-              { key: 'IN_REVIEW', label: `In Review (${rfiCounts.IN_REVIEW})` },
-              { key: 'REQUEST', label: `Request (${rfiCounts.REQUEST})` },
-              { key: 'ANSWERED', label: `Answered (${rfiCounts.ANSWERED})` },
-            ]}
-          />
+          <Chips<RfiFilter> value={rfiFilter} onChange={setRfiFilter} options={[
+            { key: 'ALL', label: 'All', count: rfiCounts.ALL }, { key: 'REQUEST', label: 'Request', count: rfiCounts.REQUEST },
+            { key: 'IN_REVIEW', label: 'In review', count: rfiCounts.IN_REVIEW }, { key: 'ANSWERED', label: 'Answered', count: rfiCounts.ANSWERED }]} />
         ) : (
-          <Chips<RedFilter>
-            value={redFilter}
-            onChange={setRedFilter}
-            options={[
-              { key: 'ALL', label: `All (${redCounts.ALL})` },
-              { key: 'IN_REVIEW', label: `In Review (${redCounts.IN_REVIEW})` },
-              { key: 'WORK_QUEUE', label: `Work Queue (${redCounts.WORK_QUEUE})` },
-              { key: 'COMPLETED', label: `Completed (${redCounts.COMPLETED})` },
-              { key: 'REJECTED', label: `Rejected (${redCounts.REJECTED})` },
-            ]}
-          />
+          <Chips<RedFilter> value={redFilter} onChange={setRedFilter} options={[
+            { key: 'ALL', label: 'All', count: redCounts.ALL }, { key: 'IN_REVIEW', label: 'In review', count: redCounts.IN_REVIEW },
+            { key: 'WORK_QUEUE', label: 'Work queue', count: redCounts.WORK_QUEUE }, { key: 'COMPLETED', label: 'Completed', count: redCounts.COMPLETED },
+            { key: 'REJECTED', label: 'Rejected', count: redCounts.REJECTED }]} />
         )}
-        <TextInput
-          style={[s.input, { minWidth: 200, maxWidth: 300 }]}
-          placeholder="Search site, sheet, subject..."
-          value={query}
-          onChangeText={setQuery}
-        />
-      </Row>
+      </View>
 
       {error ? <ErrorView error={error} onRetry={reloadAll} /> : null}
-      {loading ? <Loading /> : null}
+      {loading ? <Loading rows={5} /> : null}
 
-      {section === 'RFIS' ? (
-        <>
-          {!loading && !filteredRfis.length ? (
-            <Empty text={query ? 'No RFIs match your search.' : `No ${rfiFilter === 'ALL' ? '' : rfiFilter.replace('_', ' ').toLowerCase() + ' '}RFIs found.`} />
+      {!loading && section === 'RFIS' && !filteredRfis.length ? <Card><EmptyState icon="help-circle" title={emptyText('RFIs', rfiFilter)} text="RFIs are raised from findings that need an answer from the A&E Engineer or the Admin." /></Card> : null}
+      {!loading && section === 'REDLINES' && !filteredRedlines.length ? <Card><EmptyState icon="edit-3" title={emptyText('redlines', redFilter)} text="Redlines appear after a pipeline run finds a difference between the drawing and the drone survey." /></Card> : null}
+
+      {wide && !loading ? (
+        <View style={{ flexDirection: 'row', gap: space(4), alignItems: 'flex-start' }}>
+          {(section === 'RFIS' ? filteredRfis.length : filteredRedlines.length) ? (
+            <View style={[s.card, { width: 360, padding: 0, overflow: 'hidden' }]}>
+              <View style={{ paddingHorizontal: space(4), paddingVertical: space(2.5), backgroundColor: colors.surfaceAlt, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                <Text style={s.thText}>{section === 'RFIS' ? `${filteredRfis.length} RFI${filteredRfis.length === 1 ? '' : 's'}` : `${filteredRedlines.length} redline${filteredRedlines.length === 1 ? '' : 's'}`}</Text>
+              </View>
+              {section === 'RFIS'
+                ? filteredRfis.map((r) => { const b = rfiStatus(r.STATUS); return listRow(r.RFI_ID, r === curRfi, () => setSelRfi(r.RFI_ID), r.SITE_ID, r.SUBJECT ?? '-', r.TO_PARTY === 'AE_ENGINEER' ? 'To A&E Engineer' : 'To Admin', <Badge text={b.t} color={b.c} />); })
+                : filteredRedlines.map((x) => { const b = redStatus(x.STATUS); return listRow(x.REDLINE_ID, x === curRed, () => setSelRed(x.REDLINE_ID), x.SITE_ID, x.MARKUP ?? '-', `${x.DOC_TYPE} ${x.DOC_REVISION ?? ''} · sheet ${x.SHEET}`, <Badge text={b.t} color={b.c} />); })}
+            </View>
           ) : null}
-          {filteredRfis.map((r) => (
-            <RfiListItem key={r.RFI_ID} r={r} reload={rfis.reload} />
-          ))}
-        </>
-      ) : (
-        <>
-          {!loading && !filteredRedlines.length ? (
-            <Empty text={query ? 'No redlines match your search.' : `No ${redFilter === 'ALL' ? '' : redFilter.replace('_', ' ').toLowerCase() + ' '}redlines found.`} />
-          ) : null}
-          {filteredRedlines.map((x) => (
-            <RedlineListItem key={x.REDLINE_ID} x={x} reload={redlines.reload} />
-          ))}
-        </>
-      )}
+          <View style={{ flex: 1, minWidth: 0 }}>
+            {section === 'RFIS'
+              ? curRfi ? <RfiListItem key={curRfi.RFI_ID} r={curRfi} reload={rfis.reload} /> : null
+              : curRed ? <RedlineListItem key={curRed.REDLINE_ID} x={curRed} reload={redlines.reload} /> : null}
+          </View>
+        </View>
+      ) : !loading ? (
+        section === 'RFIS'
+          ? filteredRfis.map((r) => <RfiListItem key={r.RFI_ID} r={r} reload={rfis.reload} />)
+          : filteredRedlines.map((x) => <RedlineListItem key={x.REDLINE_ID} x={x} reload={redlines.reload} />)
+      ) : null}
     </ScrollView>
   );
 }
