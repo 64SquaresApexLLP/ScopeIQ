@@ -1148,7 +1148,7 @@ class PipelineService:
         state = self.repo.get("CORE.SITE", SITE_ID=site_id)["WORKFLOW_STATE"]
         path = {"ASSIGNED": ["INGEST", "EXTRACT", "RECONCILE", "GENERATE"], "DOCS_INGESTED": ["EXTRACT", "RECONCILE", "GENERATE"],
                 "EXTRACTED": ["RECONCILE", "GENERATE"], "IN_RECONCILIATION": ["GENERATE"], "REWORK": ["GENERATE"]}.get(state, [])
-        if not stage_on("GENERATE"):                    # no BOM is generated yet, so the site does not move on to scoping
+        if not (stage_on("GENERATE") or stage_on("BOM")):                    # no BOM is generated yet, so the site does not move on to scoping
             path = [a for a in path if a != "GENERATE"]
         with bind(user_id="system", role="SYSTEM"):
             for action in path:

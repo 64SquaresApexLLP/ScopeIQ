@@ -577,11 +577,14 @@ def _build_file_preview(
         pdf_pages = []
         total_pages = 0
         try:
-            import fitz
+            try:
+                import pymupdf as fitz
+            except ImportError:
+                import fitz
             doc = fitz.open(str(path))
             total_pages = len(doc)
-            # Render up to 12 pages for instantaneous preview
-            max_render = min(total_pages, 12)
+            # Render up to 50 pages for smooth scrollable preview
+            max_render = min(total_pages, 50)
             for p_idx in range(max_render):
                 page = doc[p_idx]
                 pix = page.get_pixmap(dpi=130)

@@ -357,8 +357,15 @@ def _tesseract():
 
     cmd = get_settings().get("engine.tesseract_cmd")
     if not cmd:
-        default = Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
-        cmd = str(default) if default.exists() else None
+        for cand in [
+            Path("/opt/homebrew/bin/tesseract"),
+            Path("/usr/local/bin/tesseract"),
+            Path("/usr/bin/tesseract"),
+            Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe"),
+        ]:
+            if cand.exists():
+                cmd = str(cand)
+                break
     if cmd:
         pytesseract.pytesseract.tesseract_cmd = str(cmd)
     return pytesseract
@@ -448,17 +455,26 @@ def write_redlined_cd(*, facts: SiteFacts, discs: list[Discrepancy], redlines: l
         reader = PdfReader(str(tmp))
         page_index = {s: 1 + i for i, s in enumerate(SHEETS)}          # page 0 of the written PDF is the summary
         files["redlined_cd_dxf"] = str(rv.save(out_dir / f"{name}.dxf"))
+        p0 = reader.pages[0]
+        writer.add_page(_summary_page(float(p0.mediabox.width), float(p0.mediabox.height), facts.site_id, facts.cd_revision, numbered, stamp).pages[0])
+        for pg in reader.pages:
+            writer.add_page(pg)
     else:
         reader = PdfReader(str(source))
         page_of = detect_sheet_pages(source)
         locator.pdf = (source, page_of)
         import pymupdf
 
+        p0 = reader.pages[0]
+        writer.add_page(_summary_page(float(p0.mediabox.width), float(p0.mediabox.height), facts.site_id, facts.cd_revision, numbered, stamp).pages[0])
+        for pg in reader.pages:
+            writer.add_page(pg)
+
         base = pymupdf.open(str(source))
         for sheet, items in by_sheet.items():
             if not items or sheet not in page_of:
                 continue
-            page = reader.pages[page_of[sheet]]
+            page = writer.pages[1 + page_of[sheet]]
             pw, ph = float(page.mediabox.width), float(page.mediabox.height)
             buf = io.BytesIO()
             c = canvas.Canvas(buf, pagesize=(pw, ph))
@@ -471,10 +487,6 @@ def write_redlined_cd(*, facts: SiteFacts, discs: list[Discrepancy], redlines: l
         page_index = {s: 1 + i for s, i in page_of.items()}
     if pages is not None:
         pages.update(page_index)
-    p0 = reader.pages[0]
-    writer.add_page(_summary_page(float(p0.mediabox.width), float(p0.mediabox.height), facts.site_id, facts.cd_revision, numbered, stamp).pages[0])
-    for pg in reader.pages:
-        writer.add_page(pg)
     pdf_out = out_dir / f"{name}.pdf"
     with open(pdf_out, "wb") as fh:
         writer.write(fh)

@@ -122,10 +122,10 @@ def write_redlined_pdf(cd_pdf: Path, out_path: Path, redlines: list[Redline], *,
     for i, page in enumerate(reader.pages):
         sheet = next((s for s, idx in SHEET_PAGE.items() if idx == i), None)
         items = [(n, r) for n, r in numbered if r.sheet == sheet]
+        page = writer.add_page(page)
         if items:
             pw, ph = float(page.mediabox.width), float(page.mediabox.height)
             page.merge_page(_overlay(pw, ph, items, stamp).pages[0])
-        writer.add_page(page)
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "wb") as f:

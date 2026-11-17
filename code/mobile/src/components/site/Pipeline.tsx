@@ -100,10 +100,9 @@ export function Pipeline({ siteId, onFinished }: { siteId: string; onFinished?: 
               />
               {running && (
                 <Button
-                  kind="outline"
+                  kind="danger"
                   title="✕ Cancel / Reset"
                   onPress={cancel}
-                  style={{ borderColor: colors.danger }}
                 />
               )}
             </Row>

@@ -1,10 +1,13 @@
 """Sites: list (scoped per persona), detail with everything the site screen needs, dashboard counts."""
 from collections import Counter
+from pydantic import BaseModel, Field
 
 from fastapi import APIRouter, Depends
 
-from api.deps import current_user, finished_sites, repo, require, site_scope, workflow
+from api.deps import current_user, finished_sites, ref, repo, require, site_scope, workflow
+from scopeiq.common.audit import AuditTrail
 from scopeiq.common.errors import NotFound, PermissionDenied
+from scopeiq.db.repository import now_iso
 from scopeiq.integrations.sharepoint import get_store
 from scopeiq.services.site_management import delete_site_cascade
 
@@ -84,6 +87,17 @@ def dashboard(user: dict = Depends(current_user)):
             "rfis": Counter(x["STATUS"] for x in r.query("SELECT STATUS, SITE_ID FROM CORE.RFI") if x["SITE_ID"] in ids & ready),
             "ehs_open": sum(1 for x in r.query("SELECT STATUS, SITE_ID FROM CORE.EHS_ALERT") if x["SITE_ID"] in ids and x["STATUS"] == "OPEN"),
             "estimate_total_usd": round(sum(x["TOTAL_USD"] or 0 for x in est), 2), "inbox_unread": inbox}
+
+
+@router.get("/service-providers")
+def list_service_providers(user: dict = Depends(current_user)):
+    """List registered Construction Service Providers (CX_SP)."""
+    users = ref().rows("users")
+    return [
+        {"user_id": u["USER_ID"], "name": u["ORGANISATION"], "market": u.get("MARKET", "")}
+        for u in users
+        if u.get("ROLE_CODE") == "CX_SP" and u.get("ACTIVE", "Y") == "Y"
+    ]
 
 
 @router.get("/{site_id}")
@@ -189,3 +203,21 @@ def delete_site(site_id: str, user: dict = Depends(require("ADMIN"))):
         raise NotFound(f"Site {sid} not found")
     res = delete_site_cascade(r, sid, delete_files=True, deleted_by=user.get("sub", "admin"))
     return {"status": "ok", "site_id": sid, **res}
+
+
+class AssignSpIn(BaseModel):
+    cx_sp: str = Field(min_length=1, max_length=120)
+
+
+@router.post("/{site_id}/assign-sp")
+def assign_sp(site_id: str, body: AssignSpIn, user: dict = Depends(require("ADMIN", "SCOPER", "REVIEWER"))):
+    """Assign or change the Construction Service Provider (CX_SP) for a site."""
+    sid = site_id.strip().upper()
+    r = repo()
+    site = r.select("CORE.SITE", {"SITE_ID": sid})
+    if not site:
+        raise NotFound(f"Site {sid} not found")
+    sp = body.cx_sp.strip()
+    r.update("CORE.SITE", {"CX_SP": sp, "UPDATED_AT": now_iso(), "UPDATED_BY": user.get("sub", "admin")}, {"SITE_ID": sid})
+    AuditTrail.record(entity_type="SITE", entity_id=sid, action="ASSIGN_SP", after={"cx_sp": sp}, site_id=sid, source="api")
+    return {"site_id": sid, "cx_sp": sp}

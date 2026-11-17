@@ -770,10 +770,7 @@ function PdfViewer({
   fileUrl?: string;
   fileName: string;
 }) {
-  const [currentPage, setCurrentPage] = useState(1);
-  const [zoomLevel, setZoomLevel] = useState<'fit' | '100%' | '150%' | '200%'>('fit');
-
-  const page = pages.find((p) => p.page_number === currentPage) || pages[0];
+  const [zoom, setZoom] = useState(100);
 
   if (!pages || pages.length === 0) {
     if (Platform.OS === 'web' && fileUrl) {
@@ -805,126 +802,155 @@ function PdfViewer({
     );
   }
 
-  const zoomScale = zoomLevel === 'fit' ? 1 : zoomLevel === '100%' ? 1 : zoomLevel === '150%' ? 1.5 : 2;
-
   return (
-    <View style={{ flex: 1, gap: space(3) }}>
-      {/* Controls Bar */}
+    <View style={{ flex: 1, gap: space(2) }}>
+      {/* Clean Minimal Controls Bar with ONLY + and - for zoom */}
       <View
         style={{
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: space(2),
           backgroundColor: '#F8FAFC',
-          padding: space(2.5),
-          borderRadius: 10,
+          paddingVertical: space(1.5),
+          paddingHorizontal: space(3),
+          borderRadius: 8,
           borderWidth: 1,
           borderColor: '#E2E8F0',
         }}
       >
-        {/* Sheet navigation */}
-        <Row style={{ alignItems: 'center', gap: space(2), flexWrap: 'wrap' }}>
-          <Button
-            small
-            kind="secondary"
-            title="◀ Prev"
-            disabled={currentPage <= 1}
-            onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
-          />
-          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
-            Sheet {currentPage} of {pages.length}
-          </Text>
-          <Button
-            small
-            kind="secondary"
-            title="Next ▶"
-            disabled={currentPage >= pages.length}
-            onPress={() => setCurrentPage((p) => Math.min(pages.length, p + 1))}
-          />
+        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.muted }}>
+          {pages.length} {pages.length === 1 ? 'Sheet' : 'Sheets'} · Scrollable
+        </Text>
 
-          {/* Quick sheet pill tabs */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 4, marginLeft: 8 }}>
-            {pages.map((p) => {
-              const active = p.page_number === currentPage;
-              return (
-                <Pressable
-                  key={p.page_number}
-                  onPress={() => setCurrentPage(p.page_number)}
-                  style={{
-                    paddingHorizontal: 10,
-                    paddingVertical: 5,
-                    borderRadius: 6,
-                    backgroundColor: active ? '#1E3A8A' : '#E2E8F0',
-                  }}
-                >
-                  <Text style={{ fontSize: 11.5, fontWeight: '700', color: active ? '#fff' : colors.text }}>
-                    {p.sheet_name ? `Sheet ${p.sheet_name}` : `Sheet ${p.page_number}`}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </Row>
-
-        {/* Zoom controls */}
         <Row style={{ alignItems: 'center', gap: space(1.5) }}>
-          <Text style={{ fontSize: 12, color: colors.muted, fontWeight: '600', marginRight: 4 }}>Zoom:</Text>
-          {(['fit', '100%', '150%', '200%'] as const).map((z) => {
-            const active = zoomLevel === z;
-            return (
-              <Pressable
-                key={z}
-                onPress={() => setZoomLevel(z)}
-                style={{
-                  paddingHorizontal: 9,
-                  paddingVertical: 4,
-                  borderRadius: 6,
-                  backgroundColor: active ? '#1E3A8A' : '#E2E8F0',
-                }}
-              >
-                <Text style={{ fontSize: 11.5, fontWeight: '700', color: active ? '#fff' : colors.text }}>
-                  {z === 'fit' ? 'Fit Width' : z}
-                </Text>
-              </Pressable>
-            );
-          })}
+          <Pressable
+            onPress={() => setZoom((z) => Math.max(50, z - 20))}
+            disabled={zoom <= 50}
+            style={({ pressed }) => ({
+              width: 30,
+              height: 30,
+              borderRadius: 6,
+              backgroundColor: pressed ? '#CBD5E1' : '#E2E8F0',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: zoom <= 50 ? 0.4 : 1,
+            })}
+            accessibilityLabel="Zoom Out"
+          >
+            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, lineHeight: 20 }}>−</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => setZoom(100)}
+            style={{
+              paddingHorizontal: 10,
+              paddingVertical: 5,
+              borderRadius: 6,
+              backgroundColor: '#FFFFFF',
+              borderWidth: 1,
+              borderColor: '#CBD5E1',
+              minWidth: 58,
+              alignItems: 'center',
+            }}
+            accessibilityLabel="Reset Zoom"
+          >
+            <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }}>
+              {zoom}%
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => setZoom((z) => Math.min(250, z + 20))}
+            disabled={zoom >= 250}
+            style={({ pressed }) => ({
+              width: 30,
+              height: 30,
+              borderRadius: 6,
+              backgroundColor: pressed ? '#CBD5E1' : '#E2E8F0',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: zoom >= 250 ? 0.4 : 1,
+            })}
+            accessibilityLabel="Zoom In"
+          >
+            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, lineHeight: 20 }}>+</Text>
+          </Pressable>
         </Row>
       </View>
 
-      {/* Sheet Image Container */}
-      <ScrollView
-        horizontal={zoomLevel !== 'fit'}
-        contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center' }}
-        style={{
-          flex: 1,
-          backgroundColor: '#1E293B',
-          borderRadius: 10,
-          overflow: 'hidden',
-          minHeight: 520,
-        }}
-      >
-        <ScrollView
-          nestedScrollEnabled
-          contentContainerStyle={{ padding: space(3), alignItems: 'center', justifyContent: 'center', minWidth: '100%' }}
-        >
-          {page && Platform.OS === 'web' ? (
-            React.createElement('img', {
-              src: page.image,
-              alt: `Sheet ${currentPage} - ${fileName}`,
-              style: {
-                width: zoomLevel === 'fit' ? '100%' : `${zoomScale * 100}%`,
-                maxWidth: zoomLevel === 'fit' ? '100%' : undefined,
-                height: 'auto',
-                boxShadow: '0 8px 30px rgba(0,0,0,0.4)',
-                borderRadius: 4,
-                display: 'block',
+      {/* Continuous Scrollable View Area */}
+      {Platform.OS === 'web' ? (
+        React.createElement(
+          'div',
+          {
+            style: {
+              flex: 1,
+              width: '100%',
+              height: '100%',
+              minHeight: 520,
+              overflowY: 'auto',
+              overflowX: zoom > 100 ? 'auto' : 'hidden',
+              backgroundColor: '#0F172A',
+              borderRadius: 10,
+              padding: '24px 20px',
+              boxSizing: 'border-box',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '28px',
+              WebkitOverflowScrolling: 'touch',
+            },
+          },
+          pages.map((p) =>
+            React.createElement(
+              'div',
+              {
+                key: p.page_number,
+                style: {
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  width: `${zoom}%`,
+                  maxWidth: zoom === 100 ? '1140px' : `${(1140 * zoom) / 100}px`,
+                  transition: 'width 0.15s ease, max-width 0.15s ease',
+                },
               },
-            })
-          ) : null}
+              React.createElement('img', {
+                src: p.image,
+                alt: `Sheet ${p.page_number} - ${fileName}`,
+                style: {
+                  width: '100%',
+                  height: 'auto',
+                  boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
+                  borderRadius: 4,
+                  backgroundColor: '#FFFFFF',
+                  display: 'block',
+                },
+              }),
+            )
+          )
+        )
+      ) : (
+        <ScrollView
+          contentContainerStyle={{
+            padding: space(3),
+            alignItems: 'center',
+            gap: space(4),
+          }}
+          style={{
+            flex: 1,
+            backgroundColor: '#0F172A',
+            borderRadius: 10,
+            minHeight: 520,
+          }}
+        >
+          {pages.map((p) => (
+            <View key={p.page_number} style={{ width: `${zoom}%`, maxWidth: 1140, alignItems: 'center' }}>
+              <Text style={{ color: '#fff' }}>Sheet {p.page_number}</Text>
+            </View>
+          ))}
         </ScrollView>
-      </ScrollView>
+      )}
     </View>
   );
 }
@@ -1144,7 +1170,8 @@ const styles = StyleSheet.create({
   },
   container: {
     width: '100%',
-    maxWidth: 1240,
+    maxWidth: 1320,
+    height: Platform.OS === 'web' ? ('92vh' as any) : '94%',
     maxHeight: '94%',
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
@@ -1173,8 +1200,9 @@ const styles = StyleSheet.create({
   },
   body: {
     flex: 1,
-    padding: space(5),
+    padding: space(3.5),
     minHeight: 450,
+    overflow: 'hidden',
   },
   centered: {
     flex: 1,

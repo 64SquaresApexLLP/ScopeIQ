@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { BomView } from '../../components/site/BomView';
 import { Discrepancies } from '../../components/site/Discrepancies';
+import { Handshake } from '../../components/site/Handshake';
 import { Overview } from '../../components/site/Overview';
 import { Pipeline } from '../../components/site/Pipeline';
 import { Redlines } from '../../components/site/Redlines';
@@ -13,17 +14,18 @@ import { useAuth } from '../../lib/auth';
 import { SiteDetail } from '../../lib/types';
 import { useApi } from '../../lib/useApi';
 
-type Tab = 'overview' | 'pipeline' | 'discrepancies' | 'redlines' | 'bom';
+type Tab = 'overview' | 'pipeline' | 'discrepancies' | 'redlines' | 'bom' | 'handshake';
 
 const ALL_TABS: { key: Tab; label: string; icon: any }[] = [
   { key: 'overview', label: 'Overview', icon: 'info' },
   { key: 'pipeline', label: 'Pipeline', icon: 'zap' },
+  { key: 'handshake', label: 'Handshake & Scope', icon: 'check-circle' },
   { key: 'discrepancies', label: 'Discrepancies', icon: 'alert-triangle' },
   { key: 'redlines', label: 'Redlines & RFIs', icon: 'edit-3' },
   { key: 'bom', label: 'BOM View', icon: 'table' },
 ];
 
-function SiteTabBar({ tabs, tab, onChange }: { tabs: typeof ALL_TABS; tab: Tab; onChange: (t: Tab) => void }) {
+function SiteTabBar({ tabs, tab, onChange }: { tabs: { key: Tab; label: string; icon: any }[]; tab: Tab; onChange: (t: Tab) => void }) {
   return (
     <View style={{ backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: colors.border }}>
       <ScrollView
@@ -69,15 +71,30 @@ function SiteTabBar({ tabs, tab, onChange }: { tabs: typeof ALL_TABS; tab: Tab; 
 export default function Site() {
   const { user } = useAuth();
   const isAe = user?.role === 'AE_ENGINEER';
-  const tabs = isAe ? ALL_TABS.filter((t) => t.key === 'redlines') : ALL_TABS;
+  const isSp = user?.role === 'CX_SP';
+
+  let tabs: { key: Tab; label: string; icon: any }[] = ALL_TABS;
+  if (isAe) {
+    tabs = ALL_TABS.filter((t) => t.key === 'redlines');
+  } else if (isSp) {
+    tabs = [
+      { key: 'handshake', label: 'Handshake & Scope', icon: 'check-circle' },
+      { key: 'overview', label: 'Overview', icon: 'info' },
+      { key: 'bom', label: 'BOM View', icon: 'table' },
+      { key: 'discrepancies', label: 'Discrepancies', icon: 'alert-triangle' },
+      { key: 'redlines', label: 'Redlines & RFIs', icon: 'edit-3' },
+    ];
+  }
 
   const { id, tab: initial } = useLocalSearchParams<{ id: string; tab?: Tab }>();
 
   const defaultTab: Tab = isAe
     ? 'redlines'
-    : initial && ['overview', 'pipeline', 'discrepancies', 'redlines', 'bom'].includes(initial as Tab)
-      ? (initial as Tab)
-      : 'overview';
+    : isSp
+      ? 'handshake'
+      : initial && ['overview', 'pipeline', 'discrepancies', 'redlines', 'bom', 'handshake'].includes(initial as Tab)
+        ? (initial as Tab)
+        : 'overview';
 
   const [tab, setTab] = useState<Tab>(defaultTab);
   const activeTab: Tab = isAe ? 'redlines' : tab;
@@ -117,7 +134,8 @@ export default function Site() {
         ) : (
           <View key={`${activeTab}-${key}`}>
             {!isAe && activeTab === 'overview' && <Overview d={d.data} reload={d.reload} />}
-            {!isAe && activeTab === 'pipeline' && <Pipeline siteId={id} onFinished={d.reload} />}
+            {!isAe && !isSp && activeTab === 'pipeline' && <Pipeline siteId={id} onFinished={d.reload} />}
+            {!isAe && activeTab === 'handshake' && <Handshake siteId={id} />}
             {!isAe && activeTab === 'discrepancies' && <Discrepancies siteId={id} />}
             {activeTab === 'redlines' && <Redlines siteId={id} />}
             {!isAe && activeTab === 'bom' && <BomView siteId={id} />}
