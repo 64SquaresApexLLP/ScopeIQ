@@ -42,7 +42,7 @@ def no_issued_drawings_left_behind():
 
 TEST_PASSWORD = "test-password-1"
 ADMIN_TEST_PASSWORD = "admin-test-password-1"
-PASSWORD_USERS = {"scoper": "SCOPER", "ae": "AE_ENGINEER"}      # demo user id prefix -> role that signs in with a password
+PASSWORD_USERS = {"scoper": "SCOPER", "ae": "AE_ENGINEER", "sp_": "CX_SP"}      # demo user id prefix -> role that signs in with a password
 
 
 def login(client, user_id):
@@ -57,7 +57,11 @@ def login(client, user_id):
         r = client.post("/auth/login", json={"username": "admin", "password": ADMIN_TEST_PASSWORD})
     elif role:
         admin = login(client, "admin")
-        client.post("/admin/logins", json={"username": user_id, "display_name": user_id, "password": TEST_PASSWORD, "role": role}, headers=admin)
+        body = {"username": user_id, "display_name": user_id, "password": TEST_PASSWORD, "role": role}
+        if role == "CX_SP":                 # a CX SP login belongs to the service provider of the demo account with the same id
+            from api.deps import ref
+            body["service_provider"] = next(u["ORGANISATION"] for u in ref().rows("users") if u["USER_ID"] == user_id)
+        client.post("/admin/logins", json=body, headers=admin)
         r = client.post("/auth/login", json={"username": user_id, "password": TEST_PASSWORD})
     else:
         r = client.post("/auth/login", json={"user_id": user_id, "password": "demo"})
@@ -71,7 +75,7 @@ def test_health_and_auth(client):
     assert client.get("/sites").json()["error"]["code"] == "SIQ-AUTH-401"
     users = client.get("/auth/users").json()
     assert {u["role"] for u in users} >= {"SCOPER", "REVIEWER", "CX_SP", "ERICSSON", "ADMIN"}
-    assert {u["role"] for u in users if u["password_required"]} == {"SCOPER", "AE_ENGINEER", "ADMIN"}
+    assert {u["role"] for u in users if u["password_required"]} == {"SCOPER", "AE_ENGINEER", "CX_SP", "ADMIN"}
 
 
 def test_one_admin_signs_in_with_password(client):
