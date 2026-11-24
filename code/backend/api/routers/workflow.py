@@ -1,13 +1,38 @@
 """Workflow: available actions, generic transition (site scoping and any entity), history, role inbox."""
 from fastapi import APIRouter, Depends
 
-from api.deps import check_site_scope, current_user, repo, workflow
+from api.deps import check_site_scope, current_user, internal_only, my_notifications, repo, workflow
 from api.schemas import TransitionIn
+from scopeiq.common.context import current
 from scopeiq.common.errors import ValidationError
 from scopeiq.db.repository import now_iso
 from scopeiq.workflow.engine import ENTITY_TABLES
 
 router = APIRouter(prefix="/workflow", tags=["workflow"])
+
+# Site actions after which the BOM revision moves with the site. The revision is locked while the provider reviews it, so what the provider agrees to
+# is what is approved; a change request or a rework ends in the next revision (the pipeline creates it on the next run).
+HANDSHAKE_ACTIONS = ("SUBMIT_TO_SP", "AGREE", "REQUEST_CHANGES", "APPROVE_FBA")
+# older sites only: a revision made before revisions followed the site is moved straight to the state these lead to
+LEGACY_CATCH_UP = ("AGREE", "APPROVE_FBA")
+
+
+def _follow_site(site_id: str, action: str, reason_code: str | None, comment: str | None) -> None:
+    """Move the site's latest generated BOM revision to the state the workflow reference gives this action (never REV 0)."""
+    wf, r = workflow(), repo()
+    revs = [x for x in r.select("CORE.BOM_REVISION", {"SITE_ID": site_id}, order_by="REV_NO DESC") if x.get("KIND") != "TOOL_REV0"]
+    rows = [t for t in wf.transitions if t["ENTITY_TYPE"] == "BOM_REVISION" and t["ACTION"] == action]
+    if not revs or not rows:
+        return
+    rev = revs[0]
+    if any(t["FROM_STATE"] == rev["STATUS"] for t in rows):
+        wf.transition("BOM_REVISION", rev["BOM_REV_ID"], action, reason_code=reason_code, comment=comment)
+    elif action in LEGACY_CATCH_UP and rev["STATUS"] != rows[0]["TO_STATE"] and not (wf.state_row("BOM_REVISION", rev["STATUS"]) or {}).get("IS_TERMINAL") == "Y":
+        # an older revision that never followed the site: move it straight to the state this action leads to. A locked final revision is never touched.
+        updates = {"STATUS": rows[0]["TO_STATE"]}
+        if wf.is_locked("BOM_REVISION", updates["STATUS"]):
+            updates.update(LOCKED=True, APPROVED_AT=now_iso(), APPROVED_BY=current().user_id)
+        r.update("CORE.BOM_REVISION", updates, {"BOM_REV_ID": rev["BOM_REV_ID"]})
 
 
 def _entity(entity: str) -> str:
@@ -46,7 +71,7 @@ def transition(entity: str, entity_id: str, body: TransitionIn, user: dict = Dep
         check_site_scope(user, site_id)
 
     # Validation: Cannot perform SP Handshake or FBA without a generated BOM
-    if e == "SITE_SCOPING" and body.action in ("SP_AGREE", "SP_REQUEST_CHANGES", "APPROVE_FBA"):
+    if e == "SITE_SCOPING" and body.action in ("SUBMIT_TO_SP", "AGREE", "APPROVE_FBA"):
         r = repo()
         boms = r.select("CORE.BOM_OUTPUT_LINE", {"SITE_ID": site_id})
         revs = [x for x in r.select("CORE.BOM_REVISION", {"SITE_ID": site_id}) if x.get("KIND") != "TOOL_REV0"]
@@ -58,32 +83,15 @@ def transition(entity: str, entity_id: str, body: TransitionIn, user: dict = Dep
 
     result = workflow().transition(e, entity_id, body.action, reason_code=body.reason_code, comment=body.comment)
 
-    # Synchronization between SITE_SCOPING and BOM_REVISION for Handshake and FBA:
-    if e == "SITE_SCOPING" and site_id:
-        r = repo()
-        site_revs = r.select("CORE.BOM_REVISION", {"SITE_ID": site_id})
-        sp_revs = [s for s in site_revs if s.get("STATUS") == "SP_REVIEW"]
-        if sp_revs:
-            rev_id = sp_revs[0]["BOM_REV_ID"]
-            if body.action == "SP_AGREE":
-                workflow().transition("BOM_REVISION", rev_id, "SP_AGREE")
-            elif body.action == "SP_REQUEST_CHANGES":
-                workflow().transition("BOM_REVISION", rev_id, "SP_REQUEST_CHANGES", reason_code=body.reason_code, comment=body.comment)
-        if body.action == "APPROVE_FBA":
-            for srev in site_revs:
-                if srev.get("STATUS") in ("SP_AGREED", "DRAFT", "SP_REVIEW", "RECEIVED"):
-                    r.update("CORE.BOM_REVISION", {
-                        "STATUS": "FBA",
-                        "LOCKED": 1,
-                        "APPROVED_AT": now_iso(),
-                        "APPROVED_BY": user.get("user_id") or user.get("username") or "admin"
-                    }, {"BOM_REV_ID": srev["BOM_REV_ID"]})
+    # the BOM revision follows the site through the handshake and FBA
+    if e == "SITE_SCOPING" and site_id and body.action.upper() in HANDSHAKE_ACTIONS:
+        _follow_site(site_id, body.action.upper(), body.reason_code, body.comment)
 
     return result
 
 
 @router.get("/{entity}/{entity_id}/history")
-def history(entity: str, entity_id: str, user: dict = Depends(current_user)):
+def history(entity: str, entity_id: str, user: dict = Depends(internal_only)):
     e = _entity(entity)
     table, id_col, _ = ENTITY_TABLES[e]
     row = repo().get(table, **{id_col: entity_id})
@@ -95,9 +103,7 @@ def history(entity: str, entity_id: str, user: dict = Depends(current_user)):
 
 @router.get("/inbox")
 def inbox(unread_only: bool = True, limit: int = 100, user: dict = Depends(current_user)):
-    sql = "SELECT * FROM WF.NOTIFICATION WHERE (ROLE_CODE = %s OR USER_ID = %s)" + (" AND READ_AT IS NULL" if unread_only else "")
-    rows = repo().query(sql + " ORDER BY CREATED_AT DESC", [user["role"], user["sub"]])
-    return rows[:limit]
+    return my_notifications(user, unread_only)[:limit]
 
 
 @router.post("/inbox/{notification_id}/read")

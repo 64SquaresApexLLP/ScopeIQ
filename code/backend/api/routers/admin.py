@@ -4,7 +4,7 @@ import logging
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from api.deps import current_user, ref, reload_reference, repo, require
+from api.deps import current_user, internal_only, ref, reload_reference, repo, require
 from api.schemas import LoginCreateIn, LoginUpdateIn
 from scopeiq.common.audit import AuditTrail
 from scopeiq.common.errors import Conflict, NotFound, ValidationError
@@ -27,7 +27,7 @@ def reference_tables(user: dict = Depends(current_user)):
 
 
 @router.get("/reference/{table}")
-def reference_rows(table: str, user: dict = Depends(current_user)):
+def reference_rows(table: str, user: dict = Depends(internal_only)):
     if table not in TABLES:
         raise NotFound(f"Reference table {table} not found")
     return ref().rows(table)
@@ -99,10 +99,11 @@ def create_login(body: LoginCreateIn, user: dict = Depends(require("ADMIN"))):
     if r.select("CORE.USER_LOGIN", {"USERNAME": username}):
         raise Conflict(f"Username {username} already exists")
     if role == "CX_SP":
-        providers = sorted({u["ORGANISATION"] for u in ref().rows("users") if u["ROLE_CODE"] == "CX_SP" and u.get("ACTIVE", "Y") == "Y"})
         org = (body.service_provider or "").strip()
-        if org not in providers:          # the login only ever sees this provider's sites, so it must be one the platform knows
-            raise ValidationError("Choose the service provider this login belongs to", details={"service_providers": providers})
+        if len(org) < 2:
+            raise ValidationError("Enter the company this login belongs to")
+        known = {x["ORGANISATION"].lower(): x["ORGANISATION"] for x in r.select("CORE.USER_LOGIN", {"ROLE_CODE": "CX_SP"}) if x.get("ORGANISATION")}
+        org = known.get(org.lower(), org)           # one company is always spelled the same, so its sites match every one of its logins
     else:
         org = next((u["ORGANISATION"] for u in ref().rows("users") if u["ROLE_CODE"] == role), "")
     row = {"USERNAME": username, "ROLE_CODE": role, "DISPLAY_NAME": body.display_name.strip(), "ORGANISATION": org,

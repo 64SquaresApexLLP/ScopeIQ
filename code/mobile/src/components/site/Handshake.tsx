@@ -2,20 +2,20 @@ import React, { useMemo, useState } from 'react';
 import { Linking, Modal, Pressable, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { api, authedUrl } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
-import { money, SECTOR } from '../../lib/format';
+import { clean, label, money, roleLabel, SECTOR } from '../../lib/format';
 import { HandshakeSummary } from '../../lib/types';
 import { useApi } from '../../lib/useApi';
 import { FilePreviewModal, FilePreviewTarget } from '../FilePreviewModal';
-import { colors, radius, space, statusColor, tint } from '../theme';
-import { Badge, Button, Card, Empty, ErrorView, Icon, IconBadge, Loading, Muted, Row, s, Title } from '../ui';
-import { WorkflowActions } from '../WorkflowActions';
+import { colors, radius, space, statusColor } from '../theme';
+import { Badge, Banner, Button, Card, Empty, ErrorView, humanize, Icon, IconBadge, Loading, Muted, Row, s, Title } from '../ui';
+import { useReasonCodes, WorkflowActions } from '../WorkflowActions';
 
 type SectionTab = 'review' | 'cd' | 'bom' | 'delta';
 
 export function Handshake({ siteId }: { siteId: string }) {
   const { user } = useAuth();
   const { data, loading, error, reload } = useApi<HandshakeSummary>(`/sites/${siteId}/handshake`);
-  const spsApi = useApi<{ user_id: string; name: string; market: string }[]>('/sites/service-providers');
+  const spsApi = useApi<{ name: string }[]>('/sites/service-providers');
 
   const [activeSection, setActiveSection] = useState<SectionTab>('review');
   const [previewTarget, setPreviewTarget] = useState<FilePreviewTarget | null>(null);
@@ -23,9 +23,8 @@ export function Handshake({ siteId }: { siteId: string }) {
   const [bomSearch, setBomSearch] = useState('');
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assigningSp, setAssigningSp] = useState(false);
-  const [advancingWf, setAdvancingWf] = useState(false);
 
-  const isSp = user?.role === 'CX_SP';
+  const reasons = useReasonCodes();
   const isAdmin = user?.role === 'ADMIN';
 
   const handleAssignSp = async (spName: string) => {
@@ -38,18 +37,6 @@ export function Handshake({ siteId }: { siteId: string }) {
       alert(e?.message || 'Could not assign Service Provider');
     } finally {
       setAssigningSp(false);
-    }
-  };
-
-  const handleAdvanceWorkflow = async (action: string) => {
-    setAdvancingWf(true);
-    try {
-      await api.post(`/workflow/SITE_SCOPING/${siteId}/transition`, { action });
-      reload();
-    } catch (e: any) {
-      alert(e?.message || `Could not advance workflow (${action})`);
-    } finally {
-      setAdvancingWf(false);
     }
   };
 
@@ -80,12 +67,12 @@ export function Handshake({ siteId }: { siteId: string }) {
     return list;
   }, [bomLines, bomFilter, bomSearch]);
 
+  const hasCost = useMemo(() => bomLines.some((b: any) => b.TOTAL_COST_USD), [bomLines]);
   const cdDocs = useMemo(() => data?.cd_documents || [], [data?.cd_documents]);
 
   if (loading) return <Loading />;
   if (error) return <ErrorView error={error} onRetry={reload} />;
   if (!data) return <Empty text="No handshake data available for this site." />;
-
   const getActionColor = (action: string) => {
     switch (action) {
       case 'NEW':
@@ -105,7 +92,7 @@ export function Handshake({ siteId }: { siteId: string }) {
   };
 
   const downloadBomUrl = authedUrl(
-    `/sites/${siteId}/files/download?folder=bom&file_name=${encodeURIComponent(data.bom_summary.file_name)}`
+    `/sites/${siteId}/files/download?folder=bom&file_name=${encodeURIComponent(data.bom_summary?.file_name ?? '')}`
   );
 
   return (
@@ -120,13 +107,13 @@ export function Handshake({ siteId }: { siteId: string }) {
               color={data.is_fba_locked ? colors.ok : data.workflow_state === 'SUBMITTED_FBA' ? colors.info : colors.accent}
             />
             <View>
-              <Title>Site Build BOM Scoping (6.2)</Title>
+              <Title>Scope of work and BOM</Title>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: space(2), flexWrap: 'wrap' }}>
                 <Text style={{ fontSize: 13, color: colors.muted }}>
-                  Construction Provider: <Text style={{ fontWeight: '700', color: colors.text }}>{data.cx_sp || 'Not Assigned'}</Text>
-                  {data.market ? ` · Market: ${data.market}` : ''}
+                  Service provider: <Text style={{ fontWeight: '700', color: colors.text }}>{clean(data.cx_sp) || 'Not assigned'}</Text>
+                  {data.market ? ` · ${data.market}` : ''}
                 </Text>
-                {(isAdmin || user?.role === 'SCOPER' || user?.role === 'REVIEWER') ? (
+                {(isAdmin || user?.role === 'SCOPER' || user?.role === 'REVIEWER') && !data.package_out ? (
                   <Pressable
                     onPress={() => setShowAssignModal(true)}
                     style={{
@@ -139,7 +126,7 @@ export function Handshake({ siteId }: { siteId: string }) {
                     }}
                   >
                     <Text style={{ fontSize: 11.5, fontWeight: '700', color: colors.accent }}>
-                      {data.cx_sp ? 'Change SP' : '+ Assign SP'}
+                      {data.cx_sp ? 'Change provider' : 'Assign provider'}
                     </Text>
                   </Pressable>
                 ) : null}
@@ -148,135 +135,25 @@ export function Handshake({ siteId }: { siteId: string }) {
           </View>
 
           <Row>
-            <Badge text={`State: ${data.workflow_state.replace(/_/g, ' ')}`} color={statusColor(data.workflow_state)} />
-            <Badge
-              text={data.has_bom && data.current_bom_rev && data.current_bom_rev !== '-' ? `BOM: ${data.current_bom_rev}` : 'No BOM'}
-              color={data.has_bom ? (data.is_fba_locked ? colors.ok : colors.accent) : colors.muted}
-            />
-            {data.is_fba_locked ? <Badge text="FBA LOCKED" color={colors.ok} /> : null}
+            {data.has_bom && data.current_bom_rev && data.current_bom_rev !== '-' ? (
+              <Badge text={data.current_bom_rev} color={data.is_fba_locked ? colors.ok : colors.accent} />
+            ) : null}
+            {data.is_fba_locked ? <Badge text="Approved and locked" color={colors.ok} /> : null}
           </Row>
         </View>
 
         <Text style={{ fontSize: 13.5, color: colors.text, lineHeight: 20 }}>
-          {data.is_fba_locked ? (
-            'Final BOM Approved (FBA). The bill of materials and scope of work are locked and approved for construction.'
-          ) : data.workflow_state === 'SUBMITTED_FBA' ? (
-            'Service Provider agreed to the Scope of Work and BOM. Ready for Final BOM Approval (FBA) by review lead.'
-          ) : data.workflow_state === 'SP_HANDSHAKE' ? (
-            data.has_bom && bomLines.length > 0 ? (
-              isSp ? (
-                'Review the CD Drawings, Equipment Delta (Scope of Work), and BOM below. When satisfied, click "SP AGREE" or "SP REQUEST CHANGES".'
-              ) : (
-                `Site is in SP Handshake with ${data.cx_sp || 'the Service Provider'}. Waiting for provider to review drawings and BOM to provide their agreement or change request.`
-              )
-            ) : (
-              'Site is in SP Handshake, but no Bill of Materials (BOM) has been generated yet.'
-            )
-          ) : (
-            `Workflow state: ${data.workflow_state.replace(/_/g, ' ')}. Handshake actions activate when site enters SP Handshake.`
-          )}
+          {data.state_description || data.workflow_state.replace(/_/g, ' ')}
         </Text>
 
-        {/* Workflow Progression Banner: Advance Scoping package towards Handshake */}
-        {data.has_bom && bomLines.length > 0 && data.workflow_state !== 'SP_HANDSHAKE' && data.workflow_state !== 'SUBMITTED_FBA' && !data.is_fba_locked && (isAdmin || user?.role === 'SCOPER' || user?.role === 'REVIEWER') ? (
-          <View
-            style={{
-              marginTop: space(2),
-              padding: space(3.5),
-              backgroundColor: tint.info.bg,
-              borderRadius: radius.lg,
-              borderWidth: 1,
-              borderColor: tint.info.line,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: space(2.5),
-            }}
-          >
-            <View style={{ flex: 1, minWidth: 260 }}>
-              <Text style={{ fontSize: 13.5, fontWeight: '600', color: tint.info.fg }}>
-                {data.workflow_state === 'IN_RECONCILIATION'
-                  ? 'BOM & Scope Generated — Ready to Enter Scoping'
-                  : data.workflow_state === 'IN_SCOPING'
-                  ? 'BOM Scoping Complete — Ready for QA Review'
-                  : data.workflow_state === 'IN_REVIEW'
-                  ? `QA Review Approved — Ready to Submit to ${data.cx_sp || 'Service Provider'}`
-                  : `Site in ${data.workflow_state.replace(/_/g, ' ')}`}
-              </Text>
-              <Text style={{ fontSize: 12.5, color: colors.text, marginTop: 2, lineHeight: 18 }}>
-                {data.workflow_state === 'IN_RECONCILIATION'
-                  ? `The pipeline has generated ${bomLines.length} BOM line${bomLines.length === 1 ? '' : 's'} and reconciled the drawing data. Advance to scoping to begin the review.`
-                  : data.workflow_state === 'IN_SCOPING'
-                  ? 'The scoping package is ready. Submit for QA Lead review before sending to the Construction Service Provider.'
-                  : data.workflow_state === 'IN_REVIEW'
-                  ? `Submit the approved package to ${data.cx_sp || 'the Construction Service Provider'} for official Handshake review & agreement.`
-                  : 'Advance the scoping workflow to proceed to the next stage.'}
-              </Text>
-            </View>
-
-            {data.workflow_state === 'IN_RECONCILIATION' ? (
-              <Button
-                title={advancingWf ? 'Advancing...' : 'Advance to Scoping'}
-                disabled={advancingWf}
-                onPress={() => handleAdvanceWorkflow('GENERATE')}
-              />
-            ) : data.workflow_state === 'IN_SCOPING' ? (
-              <Button
-                title={advancingWf ? 'Submitting...' : 'Submit for QA Review'}
-                disabled={advancingWf}
-                onPress={() => handleAdvanceWorkflow('SUBMIT_REVIEW')}
-              />
-            ) : data.workflow_state === 'IN_REVIEW' ? (
-              <Button
-                title={advancingWf ? 'Submitting...' : 'Submit to SP Handshake'}
-                disabled={advancingWf}
-                onPress={() => handleAdvanceWorkflow('SUBMIT_TO_SP')}
-              />
-            ) : null}
-          </View>
-        ) : null}
-
-        {/* Handshake Gate Banner: If BOM is missing */}
         {!data.has_bom || bomLines.length === 0 ? (
-          <View
-            style={{
-              marginTop: space(2),
-              padding: space(3.5),
-              backgroundColor: tint.warn.bg,
-              borderRadius: radius.lg,
-              borderWidth: 1,
-              borderColor: tint.warn.line,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: space(3),
-            }}
-          >
-            <View
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: radius.md,
-                backgroundColor: '#fff',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Icon name="alert-triangle" size={18} color={tint.warn.fg} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 13.5, fontWeight: '600', color: tint.warn.fg }}>
-                Handshake Inactive — Bill of Materials (BOM) Required
-              </Text>
-              <Text style={{ fontSize: 12.5, color: colors.text, marginTop: 2, lineHeight: 18 }}>
-                The Handshake tab is locked because no Bill of Materials (BOM) or Construction Drawings have been processed for this site. Ingest site documents and run the pipeline to enable the Handshake review.
-              </Text>
-            </View>
-          </View>
-        ) : data.actions && data.actions.length > 0 && (data.workflow_state === 'SP_HANDSHAKE' || data.workflow_state === 'SUBMITTED_FBA') ? (
-          <View style={{ marginTop: space(1), paddingTop: space(3), borderTopWidth: 1, borderTopColor: colors.border }}>
+          <Banner kind="warn" title="No BOM yet">
+            The scope of work and BOM appear here once the site has been scoped.
+          </Banner>
+        ) : data.workflow_actions.length > 0 ? (
+          <View style={{ marginTop: space(1), paddingTop: space(3), borderTopWidth: 1, borderTopColor: colors.border, gap: space(2) }}>
             <WorkflowActions
-              actions={data.actions}
+              actions={data.workflow_actions}
               endpoint={`/workflow/SITE_SCOPING/${siteId}/transition`}
               entity="SITE_SCOPING"
               onDone={reload}
@@ -288,10 +165,10 @@ export function Handshake({ siteId }: { siteId: string }) {
       {/* 2. Quick Navigation Tabs to Inspect CD / BOM / Delta */}
       <View style={{ flexDirection: 'row', gap: space(2), flexWrap: 'wrap' }}>
         {[
-          { key: 'review', label: 'Overview & Summary', icon: 'grid' as const },
-          { key: 'cd', label: `CD Drawings (${cdDocs.length})`, icon: 'file-text' as const },
-          { key: 'bom', label: `BOM Lines (${bomLines.length})`, icon: 'table' as const },
-          { key: 'delta', label: `Scope of Work (${deltas.length})`, icon: 'layers' as const },
+          { key: 'review', label: 'Overview', icon: 'grid' as const },
+          { key: 'cd', label: `Drawings (${cdDocs.length})`, icon: 'file-text' as const },
+          { key: 'bom', label: `BOM (${bomLines.length})`, icon: 'table' as const },
+          { key: 'delta', label: `Scope of work (${deltas.length})`, icon: 'layers' as const },
         ].map((t) => {
           const active = activeSection === t.key;
           return (
@@ -329,18 +206,15 @@ export function Handshake({ siteId }: { siteId: string }) {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: space(2.5) }}>
               <IconBadge name="file-text" size={32} color={colors.accent} />
               <View>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Construction Drawings (CD)</Text>
-                <Text style={{ fontSize: 12, color: colors.muted }}>
-                  Click "View Drawing" to inspect elevation, sector layout, and antenna mounts
-                </Text>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Construction drawings</Text>
               </View>
             </View>
 
-            <Badge text={`${cdDocs.length} Drawing(s)`} color={colors.accent} />
+            <Badge text={`${cdDocs.length} ${cdDocs.length === 1 ? 'drawing' : 'drawings'}`} color={colors.accent} />
           </View>
 
           {cdDocs.length === 0 ? (
-            <Empty text="No Construction Drawings (CD) registered for this site." />
+            <Empty text="No construction drawings for this site." />
           ) : (
             <View style={{ gap: space(2) }}>
               {cdDocs.map((doc: any) => {
@@ -367,12 +241,12 @@ export function Handshake({ siteId }: { siteId: string }) {
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space(1.5) }}>
                           <Text style={{ fontSize: 13.5, fontWeight: '700', color: colors.text }}>{doc.FILE_NAME}</Text>
                           <Badge
-                            text={doc.REVISION || (isCurrent ? 'CURRENT' : doc.STATUS)}
+                            text={doc.REVISION || 'Latest'}
                             color={isCurrent ? colors.ok : colors.muted}
                           />
                         </View>
                         <Text style={{ fontSize: 11.5, color: colors.muted, marginTop: 2 }}>
-                          {doc.SIZE_BYTES ? `${Math.round(doc.SIZE_BYTES / 1024)} KB` : ''} · {doc.STATUS}
+                          {doc.SIZE_BYTES ? `${Math.round(doc.SIZE_BYTES / 1024)} KB` : ''}
                         </Text>
                       </View>
                     </View>
@@ -380,7 +254,7 @@ export function Handshake({ siteId }: { siteId: string }) {
                     <Row style={{ gap: space(1.5) }}>
                       <Button
                         small
-                        icon="eye" title="View drawing"
+                        icon="eye" title="View"
                         onPress={() =>
                           setPreviewTarget({
                             name: doc.FILE_NAME,
@@ -425,7 +299,7 @@ export function Handshake({ siteId }: { siteId: string }) {
                   Bill of Materials ({data.current_bom_rev})
                 </Text>
                 <Text style={{ fontSize: 12, color: colors.muted }}>
-                  {data.bom_summary.lines_count} lines · Total Material Cost: {money(data.bom_summary.total_material_cost)}
+                  {data.bom_summary?.lines_count ?? bomLines.length} lines{data.bom_summary?.total_material_cost ? ` · Total Material Cost: ${money(data.bom_summary.total_material_cost)}` : ''}
                 </Text>
               </View>
             </View>
@@ -489,7 +363,7 @@ export function Handshake({ siteId }: { siteId: string }) {
                 <Text style={{ width: 65, fontSize: 11, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', textAlign: 'center' }}>Sec</Text>
                 <Text style={{ width: 60, fontSize: 11, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', textAlign: 'right' }}>Qty</Text>
                 <Text style={{ width: 85, fontSize: 11, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', textAlign: 'center' }}>Action</Text>
-                <Text style={{ width: 100, fontSize: 11, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', textAlign: 'right' }}>Cost</Text>
+                {hasCost ? <Text style={{ width: 100, fontSize: 11, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', textAlign: 'right' }}>Cost</Text> : null}
               </View>
 
               {/* Rows */}
@@ -526,9 +400,11 @@ export function Handshake({ siteId }: { siteId: string }) {
                   <View style={{ width: 85, alignItems: 'center' }}>
                     <Badge text={b.ACTION || 'Install'} color={getActionColor(b.ACTION || 'Install')} />
                   </View>
-                  <Text style={{ width: 100, fontSize: 12.5, fontWeight: '600', color: colors.text, textAlign: 'right' }}>
-                    {b.TOTAL_COST_USD ? money(b.TOTAL_COST_USD) : '-'}
-                  </Text>
+                  {hasCost ? (
+                    <Text style={{ width: 100, fontSize: 12.5, fontWeight: '600', color: colors.text, textAlign: 'right' }}>
+                      {b.TOTAL_COST_USD ? money(b.TOTAL_COST_USD) : ''}
+                    </Text>
+                  ) : null}
                 </View>
               ))}
 
@@ -554,10 +430,8 @@ export function Handshake({ siteId }: { siteId: string }) {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: space(2.5) }}>
               <IconBadge name="layers" size={32} color={colors.accent2} />
               <View>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Scope of Work (Equipment Delta)</Text>
-                <Text style={{ fontSize: 12, color: colors.muted }}>
-                  Physical changes verified between CD drawing and field conditions
-                </Text>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Scope of work</Text>
+                <Text style={{ fontSize: 12, color: colors.muted }}>Equipment to install, remove or keep, by sector</Text>
               </View>
             </View>
 
@@ -570,7 +444,7 @@ export function Handshake({ siteId }: { siteId: string }) {
           </View>
 
           {deltas.length === 0 ? (
-            <Empty text="No equipment delta recorded yet." />
+            <Empty text="No scope of work recorded yet." />
           ) : (
             <View style={{ gap: space(3) }}>
               {sectors.map((sec: string) => {
@@ -624,41 +498,20 @@ export function Handshake({ siteId }: { siteId: string }) {
         </Card>
       )}
 
-      {/* 3. Bottom Decision Call-to-Action Bar */}
-      {data.workflow_state === 'SP_HANDSHAKE' && isSp && (data.has_bom || bomLines.length > 0) && (
-        <Card style={{ backgroundColor: colors.primary + '10', borderColor: colors.primary + '33', gap: space(2.5) }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: space(2) }}>
-            <View>
-              <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text }}>Completed reviewing CD & BOM?</Text>
-              <Text style={{ fontSize: 12.5, color: colors.muted }}>
-                Submit your official handshake decision below to proceed towards Final BOM Approval (FBA).
-              </Text>
-            </View>
-          </View>
-
-          <WorkflowActions
-            actions={data.actions}
-            endpoint={`/workflow/SITE_SCOPING/${siteId}/transition`}
-            entity="SITE_SCOPING"
-            onDone={reload}
-          />
-        </Card>
-      )}
-
       {/* 4. Review History / Audit Trail */}
       <Card style={{ gap: space(2.5) }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space(2.5) }}>
           <IconBadge name="clock" size={28} color={colors.muted} />
           <View>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Handshake & Review History</Text>
-            <Text style={{ fontSize: 11.5, color: colors.muted }}>Audit trail of sign-offs, change requests, and approvals</Text>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>History</Text>
+            <Text style={{ fontSize: 11.5, color: colors.muted }}>Decisions and change requests for this site</Text>
           </View>
         </View>
 
         {(!data.workflow_history || data.workflow_history.length === 0) ? (
           <View style={{ marginTop: space(1), borderTopWidth: 1, borderTopColor: colors.border, paddingTop: space(2) }}>
             <Text style={{ fontSize: 13, color: colors.muted, fontStyle: 'italic' }}>
-              No handshake or review events recorded yet for this site.
+              Nothing recorded yet.
             </Text>
           </View>
         ) : (
@@ -678,13 +531,10 @@ export function Handshake({ siteId }: { siteId: string }) {
                 }}
               >
                 <View style={{ flex: 1, minWidth: 220 }}>
-                  <Row style={{ gap: space(1.5) }}>
-                    <Text style={{ fontWeight: '700', fontSize: 13, color: colors.text }}>{ev.ACTION.replace(/_/g, ' ')}</Text>
-                    <Badge text={`${ev.FROM_STATE} → ${ev.TO_STATE}`} color={statusColor(ev.TO_STATE)} />
-                  </Row>
+                  <Text style={{ fontWeight: '700', fontSize: 13, color: colors.text }}>{humanize(ev.ACTION)}</Text>
                   {ev.REASON_CODE ? (
                     <Text style={{ fontSize: 12, fontWeight: '600', color: colors.accent, marginTop: 2 }}>
-                      Reason: {ev.REASON_CODE}
+                      {reasons.find((c) => c.REASON_CODE === ev.REASON_CODE)?.DESCRIPTION || ev.REASON_CODE}
                     </Text>
                   ) : null}
                   {ev.COMMENT ? (
@@ -693,9 +543,9 @@ export function Handshake({ siteId }: { siteId: string }) {
                 </View>
 
                 <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={{ fontSize: 11, color: colors.muted }}>By {ev.ACTOR || 'system'}</Text>
+                  <Text style={{ fontSize: 11, color: colors.muted }}>{ev.ACTOR_USER_ID && ev.ACTOR_USER_ID === user?.user_id ? 'You' : ev.ACTOR_ROLE ? roleLabel(ev.ACTOR_ROLE) : ''}</Text>
                   <Text style={{ fontSize: 10.5, color: colors.muted }}>
-                    {ev.EVENT_TIME ? new Date(ev.EVENT_TIME).toLocaleString() : ''}
+                    {ev.EVENT_TS ? new Date(ev.EVENT_TS).toLocaleString() : ''}
                   </Text>
                 </View>
               </View>
@@ -720,9 +570,9 @@ export function Handshake({ siteId }: { siteId: string }) {
           >
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View>
-                <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>Assign Construction Provider (SP)</Text>
+                <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>Assign service provider</Text>
                 <Text style={{ fontSize: 13, color: colors.muted, marginTop: 2 }}>
-                  Select the Construction Service Provider hired to build this site.
+                  Choose the service provider that will build this site.
                 </Text>
               </View>
               <Pressable onPress={() => setShowAssignModal(false)}>
@@ -731,15 +581,12 @@ export function Handshake({ siteId }: { siteId: string }) {
             </View>
 
             <View style={{ gap: space(2), marginTop: space(2) }}>
-              {(spsApi.data || [
-                { user_id: 'sp_prairie', name: 'Prairie Tower Services (synthetic)', market: 'DFW' },
-                { user_id: 'sp_brazos', name: 'Brazos Wireless Construction (synthetic)', market: 'DFW' },
-                { user_id: 'sp_redline', name: 'Redline Constructors (synthetic)', market: 'DFW' },
-              ]).map((sp) => {
+              {spsApi.data && spsApi.data.length === 0 ? <Muted>No service providers yet. An admin creates them under User logins.</Muted> : null}
+              {(spsApi.data || []).map((sp) => {
                 const isCurrent = data.cx_sp === sp.name;
                 return (
                   <Pressable
-                    key={sp.user_id}
+                    key={sp.name}
                     disabled={assigningSp}
                     onPress={() => handleAssignSp(sp.name)}
                     style={({ pressed, hovered }: any) => [
@@ -757,13 +604,10 @@ export function Handshake({ siteId }: { siteId: string }) {
                     ]}
                   >
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 14.5, fontWeight: '700', color: colors.text }}>{sp.name}</Text>
-                      <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
-                        Market: {sp.market || 'DFW'} · Account: {sp.user_id}
-                      </Text>
+                      <Text style={{ fontSize: 14.5, fontWeight: '700', color: colors.text }}>{clean(sp.name)}</Text>
                     </View>
                     {isCurrent ? (
-                      <Badge text="ASSIGNED" color={colors.ok} />
+                      <Badge text="Assigned" color={colors.ok} />
                     ) : (
                       <Icon name="chevron-right" size={16} color={colors.muted} />
                     )}

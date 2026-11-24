@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 import { getLogger } from '../../lib/logger';
 import { api, ApiError } from '../../lib/api';
-import { roleLabel } from '../../lib/format';
+import { clean, roleLabel } from '../../lib/format';
 import { Row as R } from '../../lib/types';
 import { useApi } from '../../lib/useApi';
 import { colors, space } from '../theme';
@@ -41,7 +41,7 @@ export function ScoperLogins() {
 
   const userOk = /^[A-Za-z0-9._-]{3,40}$/.test(username);
   const isSp = role === 'CX_SP';
-  const valid = userOk && name.trim().length >= 2 && password.length >= MIN_PASSWORD && (!isSp || !!provider);
+  const valid = userOk && name.trim().length >= 2 && password.length >= MIN_PASSWORD && (!isSp || provider.trim().length >= 2);
 
   const create = async () => {
     setBusy(true);
@@ -51,7 +51,8 @@ export function ScoperLogins() {
       const res = await api.post<R>('/admin/logins', { username, display_name: name.trim(), password, role, ...(isSp ? { service_provider: provider } : {}) });
       setCreated(res.USERNAME);
       log.info(`created login ${res.USERNAME}`);
-      setUsername(''); setName(''); setPassword('');
+      setUsername(''); setName(''); setPassword(''); setProvider('');
+      providers.reload();
       logins.reload();
     } catch (e) {
       setError(e as ApiError);
@@ -82,13 +83,14 @@ export function ScoperLogins() {
           </View>
           {isSp ? (
             <View>
-              <Text style={{ fontSize: 12.5, fontWeight: '700', color: colors.text, marginBottom: 6 }}>Service provider</Text>
-              {providers.error ? <ErrorView error={providers.error} onRetry={providers.reload} /> : providerNames.length === 0 ? (
-                <Muted>{providers.loading ? 'Loading service providers...' : 'No service providers are registered.'}</Muted>
-              ) : (
-                <Chips value={provider} onChange={setProvider} options={providerNames.map((n) => ({ key: n, label: n }))} />
-              )}
-              <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>This login only sees the sites assigned to the chosen service provider.</Text>
+              <Text style={{ fontSize: 12.5, fontWeight: '700', color: colors.text, marginBottom: 6 }}>Company</Text>
+              <TextInput style={s.input} placeholder="The company this login belongs to" placeholderTextColor={PH} value={provider} onChangeText={setProvider} maxLength={120} />
+              {providerNames.length ? (
+                <View style={{ marginTop: 8 }}>
+                  <Chips value={provider} onChange={setProvider} options={providerNames.map((n) => ({ key: n, label: n }))} />
+                </View>
+              ) : null}
+              <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>This login only sees the sites assigned to this company.</Text>
             </View>
           ) : null}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space(4) }}>
@@ -131,7 +133,7 @@ export function ScoperLogins() {
           <IconBadge name="user" size={38} />
           <View style={{ flex: 1 }}>
             <Text style={{ fontWeight: '800', color: colors.text }}>{x.USERNAME}</Text>
-            <Muted>{[x.DISPLAY_NAME, roleLabel(x.ROLE_CODE), x.ROLE_CODE === 'CX_SP' ? x.ORGANISATION : null].filter(Boolean).join(' · ')}</Muted>
+            <Muted>{[x.DISPLAY_NAME, roleLabel(x.ROLE_CODE), x.ROLE_CODE === 'CX_SP' ? clean(x.ORGANISATION) : null].filter(Boolean).join(' · ')}</Muted>
           </View>
           <Badge text={x.ACTIVE ? 'Active' : 'Disabled'} color={x.ACTIVE ? colors.ok : colors.muted} />
           {x.ROLE_CODE === 'ADMIN' ? null : (

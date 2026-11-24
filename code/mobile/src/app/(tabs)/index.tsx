@@ -12,6 +12,7 @@ import { useAuth } from '../../lib/auth';
 import { roleLabel, when } from '../../lib/format';
 import { PipelineRun, PipelineStep, Row } from '../../lib/types';
 import { useApi } from '../../lib/useApi';
+import { ProviderHome } from '../../components/ProviderHome';
 
 interface Dash {
   sites: number; by_state: Record<string, number>; by_stream: Record<string, number>;
@@ -85,7 +86,12 @@ const Th = ({ children, w, flex, right }: { children: string; w?: number; flex?:
 // ------------------------------------------------------------------ screen
 type SiteFilter = 'ALL' | 'RUNNING' | 'COMPLETED' | 'FINDINGS' | 'STOPPED' | 'FAILED' | 'NOT_STARTED';
 
-export default function Dashboard() {
+export default function Home() {
+  const { user } = useAuth();
+  return user?.role === 'CX_SP' ? <ProviderHome /> : <Dashboard />;
+}
+
+function Dashboard() {
   const { user, can } = useAuth();
   const { width } = useWindowDimensions();
   const isAe = user?.role === 'AE_ENGINEER';

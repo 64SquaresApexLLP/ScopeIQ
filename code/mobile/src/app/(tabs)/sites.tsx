@@ -9,6 +9,7 @@ import { useAuth } from '../../lib/auth';
 import { label, when } from '../../lib/format';
 import { PipelineRun, PipelineStep, Row as R } from '../../lib/types';
 import { mutateApi, useApi } from '../../lib/useApi';
+import { ProviderHome } from '../../components/ProviderHome';
 
 type RunState = 'NONE' | 'RUNNING' | 'DONE' | 'WARN' | 'STOPPED' | 'FAILED';
 const RUN_STATE: Record<RunState, { text: string; color: string }> = {
@@ -52,7 +53,12 @@ function Docs({ item }: { item: R }) {
   return <Text style={{ fontSize: 13, color: colors.faint }}>No documents</Text>;
 }
 
-export default function Sites() {
+export default function SitesPage() {
+  const { user } = useAuth();
+  return user?.role === 'CX_SP' ? <ProviderHome /> : <Sites />;
+}
+
+function Sites() {
   const { user, can } = useAuth();
   const { width } = useWindowDimensions();
   const sites = useApi<R[]>('/sites');

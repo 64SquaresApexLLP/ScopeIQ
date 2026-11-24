@@ -22,7 +22,7 @@ from pathlib import Path
 
 from scopeiq.common.audit import AuditTrail
 from scopeiq.common.context import bind, current
-from scopeiq.common.errors import AppError, ErrorRecorder, NotFound, ValidationError
+from scopeiq.common.errors import AppError, ErrorRecorder, NotFound, ValidationError, WorkflowError
 from scopeiq.common.ids import stable_id
 from scopeiq.common.logging import get_logger, log_call
 from scopeiq.config import get_settings
@@ -167,11 +167,21 @@ class PipelineService:
         return sorted(p.name for p in self.sites_dir.iterdir() if p.is_dir()) if self.sites_dir.exists() else []
 
     # ------------------------------------------------------------------------------------ run
+    def _check_open_for_run(self, site_id: str) -> None:
+        """A run replaces the BOM, so it never starts while the package is with the SP or Ericsson, or after FBA (the workflow reference
+        says which states are locked and who owns each). Scoping and review states stay open; REWORK reopens an approved site."""
+        site = next(iter(self.repo.select("CORE.SITE", {"SITE_ID": site_id})), None)
+        state = self.wf.state_row("SITE_SCOPING", (site or {}).get("WORKFLOW_STATE"))
+        if state and self.wf.is_out_for_approval(state["STATE"]):
+            raise WorkflowError(f"{site_id} cannot be run again now. {state['DESCRIPTION']} It can be run again once it is back with scoping.",
+                                details={"site_id": site_id, "state": state["STATE"], "owner": state["OWNER_ROLE"]})
+
     def begin_run(self, site_id: str, *, triggered_by: str | None = None) -> str:
         """Create the RUNNING row (with every step PENDING) and return its id. The row is the progress record the app polls."""
         site_dir = self.sites_dir / site_id
         if not site_dir.is_dir():
             raise NotFound(f"Site folder {site_id} not found", details={"sites_dir": str(self.sites_dir)})
+        self._check_open_for_run(site_id)
         run_id = f"RUN-{site_id}-{uuid.uuid4().hex[:10]}"
         ctx = current()
         self.repo.insert("CORE.PIPELINE_RUN", [{"RUN_ID": run_id, "SITE_ID": site_id, "STARTED_AT": now_iso(), "STATUS": "RUNNING",
@@ -885,7 +895,7 @@ class PipelineService:
             "PROJECT_NAME": p.get("project_name") or ex.get("PROJECT_NAME"),
             "PROJECT_TYPE": p.get("project_type") or ex.get("PROJECT_TYPE"),
             "SERVICE_LINE": p.get("service_line") or ex.get("SERVICE_LINE"),
-            "CX_SP": p.get("cx_sp") or ex.get("CX_SP"),
+            "CX_SP": ex.get("CX_SP") or p.get("cx_sp"),
             "ASSIGNED_DATE": p.get("assigned_date") or ex.get("ASSIGNED_DATE"),
             "SCOPING_FORECAST": p.get("scoping_forecast") or ex.get("SCOPING_FORECAST"),
             "SCOPING_ACTUAL": p.get("scoping_actual") or ex.get("SCOPING_ACTUAL"),

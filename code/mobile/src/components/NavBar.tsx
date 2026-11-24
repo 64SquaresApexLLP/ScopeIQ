@@ -5,7 +5,7 @@ import { router, usePathname } from 'expo-router';
 import React, { useState } from 'react';
 import { Modal, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { useAuth } from '../lib/auth';
-import { roleLabel } from '../lib/format';
+import { clean, roleLabel } from '../lib/format';
 import { useApi } from '../lib/useApi';
 import { colors, radius, shadowPopover, space } from './theme';
 import { Avatar } from './ui';
@@ -20,6 +20,11 @@ function useNavItems(): NavItem[] {
   const isAe = user?.role === 'AE_ENGINEER';
   const isAdmin = user?.role === 'ADMIN';
   const items: NavItem[] = [];
+  if (user?.role === 'CX_SP') {
+    items.push({ name: 'index', href: '/(tabs)', icon: 'map-pin', label: 'Sites' });
+    items.push({ name: 'inbox', href: '/(tabs)/inbox', icon: 'inbox', label: 'Inbox' });
+    return items;
+  }
   if (!isAe) {
     items.push({ name: 'index', href: '/(tabs)', icon: 'grid', label: 'Dashboard' });
     items.push({ name: 'sites', href: '/(tabs)/sites', icon: 'map-pin', label: 'Sites' });
@@ -33,7 +38,7 @@ function useNavItems(): NavItem[] {
 }
 
 function isActive(item: NavItem, pathname: string) {
-  if (item.name === 'index') return pathname === '/' || pathname === '/(tabs)' || pathname === '/index';
+  if (item.name === 'index') return pathname === '/' || pathname === '/(tabs)' || pathname === '/index' || (item.label === 'Sites' && pathname.startsWith('/site/'));
   if (item.name === 'sites' && pathname.startsWith('/site/')) return true;
   return pathname === `/${item.name}` || pathname.startsWith(`/${item.name}/`);
 }
@@ -137,7 +142,7 @@ function UserMenu({ compact }: { compact?: boolean }) {
         <View style={[{ position: 'absolute', right: 0, top: 46, width: 220, backgroundColor: '#fff', borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingVertical: 6 }, shadowPopover as any]}>
           <View style={{ paddingHorizontal: space(3), paddingVertical: space(2), borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: 4 }}>
             <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>{name}</Text>
-            <Text style={{ fontSize: 12, color: colors.muted }}>{user.organisation || roleLabel(user.role)}</Text>
+            <Text style={{ fontSize: 12, color: colors.muted }}>{clean(user.organisation) || roleLabel(user.role)}</Text>
           </View>
           {[{ icon: 'user' as IconName, label: 'Profile', go: () => router.replace('/(tabs)/more') }, { icon: 'log-out' as IconName, label: 'Sign out', go: () => void logout() }].map((m) => (
             <Pressable key={m.label} onPress={() => { setOpen(false); m.go(); }} style={({ hovered }: any) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: space(3), height: 34, backgroundColor: hovered ? colors.surfaceAlt : 'transparent' })}>
