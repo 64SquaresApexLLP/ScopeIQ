@@ -6,6 +6,7 @@ import { Linking, Pressable, Text, View, useWindowDimensions } from 'react-nativ
 import { FilePreviewModal, FilePreviewTarget } from '../FilePreviewModal';
 import { api, ApiError, authedUrl } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { clean } from '../../lib/format';
 import { Row as R, SiteDetail } from '../../lib/types';
 import { mutateApi } from '../../lib/useApi';
 import { colors, radius, shadow, space } from '../theme';
@@ -84,13 +85,13 @@ function InfoCell({ icon, label, value, sub, missing, width, children }: {
   );
 }
 
-function SiteInfo({ d }: { d: SiteDetail }) {
+function SiteInfo({ d, forProvider }: { d: SiteDetail; forProvider?: boolean }) {
   const st = d.site;
   const run = d.last_run?.[0];
   const [w, setW] = useState(0);
   const cols = w >= 860 ? 3 : w >= 520 ? 2 : 1;
   const cellW = `${100 / cols}%`;
-  const place = [st.ADDRESS, [st.CITY, [st.STATE, st.ZIP].filter(Boolean).join(' ')].filter(Boolean).join(', ')].filter(Boolean).join(', ');
+  const place = [clean(st.ADDRESS), [st.CITY, [st.STATE, st.ZIP].filter(Boolean).join(' ')].filter(Boolean).join(', ')].filter(Boolean).join(', ');
   const structure = [st.STRUCTURE_TYPE, st.HEIGHT_FT ? `${Number(st.HEIGHT_FT).toLocaleString('en-US')} ft` : null].filter(Boolean).join(' · ');
   const coords = st.LATITUDE != null && st.LONGITUDE != null && st.LATITUDE !== '' && st.LONGITUDE !== ''
     ? `${Number(st.LATITUDE).toFixed(5)}, ${Number(st.LONGITUDE).toFixed(5)}` : null;
@@ -114,21 +115,25 @@ function SiteInfo({ d }: { d: SiteDetail }) {
               {st.STRUCTURE_OWNER ? <Text style={{ fontSize: 12.5, color: colors.muted }} numberOfLines={1}>Owner: {st.STRUCTURE_OWNER}</Text> : null}
             </View>
           </View>
-          <View style={{ alignItems: 'flex-end', gap: 4 }}>
-            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.muted, letterSpacing: 0.4, textTransform: 'uppercase' }}>Site status</Text>
-            <Badge text={st.WORKFLOW_STATE || 'ASSIGNED'} color={colors.info} dot />
-          </View>
+          {forProvider ? null : (
+            <View style={{ alignItems: 'flex-end', gap: 4 }}>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.muted, letterSpacing: 0.4, textTransform: 'uppercase' }}>Site status</Text>
+              <Badge text={st.WORKFLOW_STATE || 'ASSIGNED'} color={colors.info} dot />
+            </View>
+          )}
         </View>
       </View>
       <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingHorizontal: space(5), paddingVertical: space(2.5), flexDirection: 'row', flexWrap: 'wrap', backgroundColor: '#FCFDFE' }}>
-        <InfoCell width={cellW} icon="git-branch" label="Stream" value={st.STREAM ? humanize(st.STREAM) : null} sub={st.SERVICE_LINE} missing="Not assigned" />
+        {forProvider ? null : <InfoCell width={cellW} icon="git-branch" label="Stream" value={st.STREAM ? humanize(st.STREAM) : null} sub={st.SERVICE_LINE} missing="Not assigned" />}
         <InfoCell width={cellW} icon="briefcase" label="Project" value={st.PROJECT_NAME} sub={st.PROJECT_TYPE} missing="Not assigned" />
         <InfoCell width={cellW} icon="crosshair" label="Coordinates" value={coords} sub={coords ? 'Latitude, longitude' : null} missing="Not available" />
-        <InfoCell width={cellW} icon="users" label="CX Service Provider" value={st.CX_SP} missing="Not assigned" />
-        <InfoCell width={cellW} icon="list" label="Current BOM Revision" value={st.CURRENT_BOM_REV} missing="Not available" />
-        <InfoCell width={cellW} icon="play-circle" label="Last Pipeline Run" value={run ? fmtDateTime(run.STARTED_AT) ?? run.STARTED_AT : null} missing="Not run yet">
-          {run?.STATUS ? <View style={{ flexDirection: 'row', marginTop: 4 }}><Badge text={run.STATUS} dot /></View> : null}
-        </InfoCell>
+        <InfoCell width={cellW} icon="users" label="CX Service Provider" value={clean(st.CX_SP)} missing="Not assigned" />
+        {forProvider ? null : <InfoCell width={cellW} icon="list" label="Current BOM Revision" value={st.CURRENT_BOM_REV} missing="Not available" />}
+        {forProvider ? null : (
+          <InfoCell width={cellW} icon="play-circle" label="Last Pipeline Run" value={run ? fmtDateTime(run.STARTED_AT) ?? run.STARTED_AT : null} missing="Not run yet">
+            {run?.STATUS ? <View style={{ flexDirection: 'row', marginTop: 4 }}><Badge text={run.STATUS} dot /></View> : null}
+          </InfoCell>
+        )}
       </View>
     </Card>
   );
@@ -396,7 +401,8 @@ function Register({ d, docs, counts, filter, setFilter, onPreview }: {
 
 // ------------------------------------------------------------------ screen
 export function Overview({ d }: { d: SiteDetail; reload: () => void }) {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
+  const forProvider = user?.role === 'CX_SP';      // a provider is shown the site itself, no documents and no scoping status
   const st = d.site;
   const docs = d.documents ?? [];
   const check = d.revision_check;
@@ -430,6 +436,7 @@ export function Overview({ d }: { d: SiteDetail; reload: () => void }) {
     }
   };
 
+  if (forProvider) return <SiteInfo d={d} forProvider />;
   return (
     <View style={{ gap: space(4) }}>
       <SiteInfo d={d} />

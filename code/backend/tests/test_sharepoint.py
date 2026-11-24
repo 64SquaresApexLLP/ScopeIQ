@@ -47,6 +47,8 @@ def client(env):
 
 TEST_PASSWORD = "test-password-1"
 ADMIN_TEST_PASSWORD = "admin-test-password-1"
+SP_COMPANIES = {"sp_prairie": "Prairie Tower Services (synthetic)", "sp_brazos": "Brazos Wireless Construction (synthetic)",
+                "sp_redline": "Redline Constructors (synthetic)"}      # the companies the sample sites are assigned to; each login is created for one
 PASSWORD_USERS = {"scoper": "SCOPER", "ae": "AE_ENGINEER", "sp_": "CX_SP"}      # demo user id prefix -> role that signs in with a password
 
 
@@ -63,9 +65,8 @@ def login(client, user_id):
     elif role:
         admin = login(client, "admin")
         body = {"username": user_id, "display_name": user_id, "password": TEST_PASSWORD, "role": role}
-        if role == "CX_SP":                 # a CX SP login belongs to the service provider of the demo account with the same id
-            from api.deps import ref
-            body["service_provider"] = next(u["ORGANISATION"] for u in ref().rows("users") if u["USER_ID"] == user_id)
+        if role == "CX_SP":                 # a service-provider login is created for a company
+            body["service_provider"] = SP_COMPANIES[user_id]
         client.post("/admin/logins", json=body, headers=admin)
         r = client.post("/auth/login", json={"username": user_id, "password": TEST_PASSWORD})
     else:

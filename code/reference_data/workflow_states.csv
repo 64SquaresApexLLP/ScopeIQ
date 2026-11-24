@@ -1,15 +1,15 @@
 ENTITY_TYPE,STATE,SEQ,IS_INITIAL,IS_TERMINAL,IS_LOCKED,OWNER_ROLE,DESCRIPTION
-SITE_SCOPING,ASSIGNED,10,Y,N,N,SCOPER,Site assigned from tool of record; documents expected
-SITE_SCOPING,DOCS_INGESTED,20,N,N,N,SCOPER,All required documents registered (latest revisions resolved)
-SITE_SCOPING,EXTRACTED,30,N,N,N,SCOPER,Documents read; low-confidence fields queued for review
-SITE_SCOPING,IN_RECONCILIATION,40,N,N,N,SCOPER,Consistency rules run; discrepancies being confirmed
-SITE_SCOPING,IN_SCOPING,50,N,N,N,SCOPER,Delta + REV n BOM + drivers generated; scoper editing
-SITE_SCOPING,IN_REVIEW,60,N,N,N,REVIEWER,Scoping package with the reviewer
-SITE_SCOPING,SP_HANDSHAKE,70,N,N,N,CX_SP,BOM/SoW/drivers submitted to the CX SP
-SITE_SCOPING,SUBMITTED_FBA,80,N,N,N,ADMIN,Final revision submitted for Final BOM Approval
-SITE_SCOPING,FBA_APPROVED,90,N,N,Y,ADMIN,Final BOM Approval given - invoiceable; revision locked
-SITE_SCOPING,REWORK,95,N,N,N,SCOPER,Post-FBA change (material availability / GC change / rapid response)
-SITE_SCOPING,ON_HOLD,99,N,N,N,REVIEWER,Blocked (RFI outstanding or structure fails SA)
+SITE_SCOPING,ASSIGNED,10,Y,N,N,SCOPER,Assigned. Waiting for documents.
+SITE_SCOPING,DOCS_INGESTED,20,N,N,N,SCOPER,Documents received.
+SITE_SCOPING,EXTRACTED,30,N,N,N,SCOPER,Documents read. Some values need a check.
+SITE_SCOPING,IN_RECONCILIATION,40,N,N,N,SCOPER,Checking the documents against each other.
+SITE_SCOPING,IN_SCOPING,50,N,N,N,SCOPER,Scope of work and BOM ready. Being finalised.
+SITE_SCOPING,IN_REVIEW,60,N,N,N,REVIEWER,With the reviewer.
+SITE_SCOPING,SP_HANDSHAKE,70,N,N,N,CX_SP,With the service provider for review.
+SITE_SCOPING,SUBMITTED_FBA,80,N,N,N,ADMIN,Agreed by the service provider. Waiting for final approval.
+SITE_SCOPING,FBA_APPROVED,90,N,N,Y,ADMIN,Approved. The scope of work and BOM are locked.
+SITE_SCOPING,REWORK,95,N,N,N,SCOPER,Reopened after approval. A new revision is being prepared.
+SITE_SCOPING,ON_HOLD,99,N,N,N,REVIEWER,On hold until the open question is resolved.
 DISCREPANCY,OPEN,10,Y,N,N,SCOPER,Raised by a rule; awaiting scoper confirmation
 DISCREPANCY,CONFIRMED,20,N,N,N,SCOPER,Scoper confirmed it is real
 DISCREPANCY,DISMISSED,30,N,Y,N,SCOPER,Scoper dismissed it (reason code required)

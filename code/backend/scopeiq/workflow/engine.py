@@ -45,6 +45,15 @@ class WorkflowEngine:
     def is_locked(self, entity: str, state: str) -> bool:
         return any(r["ENTITY_TYPE"] == entity and r["STATE"] == state and r["IS_LOCKED"] == "Y" for r in self.states)
 
+    def state_row(self, entity: str, state: str | None) -> dict | None:
+        return next((r for r in self.states if r["ENTITY_TYPE"] == entity and r["STATE"] == state), None)
+
+    def is_out_for_approval(self, state: str | None) -> bool:
+        """True once a site's package has left the scoping team: with the SP or Ericsson, or approved (locked). Read from the workflow
+        reference (IS_LOCKED / OWNER_ROLE), so a change to the lifecycle there changes this too."""
+        s = self.state_row("SITE_SCOPING", state)
+        return bool(s and (s["IS_LOCKED"] == "Y" or s["OWNER_ROLE"] not in ("SCOPER", "REVIEWER")))
+
     def actions(self, entity: str, state: str, role: str | None = None) -> list[dict]:
         out = []
         for t in self.transitions:
@@ -128,7 +137,7 @@ class WorkflowEngine:
         resolved.discard(ctx.role)
         notify_roles = list(resolved)
 
-        msg = f"{entity.replace('_', ' ').title()} {entity_id} {state} -> {to_state} ({t['DESCRIPTION']}) by {ctx.user_id}"
+        msg = f"{site_id or entity_id}: {t['DESCRIPTION']}"
         if entity == "RFI":
             subj = row.get("SUBJECT") or ""
             to_p = row.get("TO_PARTY") or "Ericsson"

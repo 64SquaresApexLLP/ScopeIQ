@@ -22,9 +22,13 @@ def demo_users():
     """Accounts and personas for the login screen; `password_required` tells the screen to ask for a username + password."""
     personas = {p["ROLE_CODE"]: p for p in ref().rows("personas")}
     protected = password_roles()
-    return [{"user_id": u["USER_ID"], "name": u["DISPLAY_NAME"], "role": u["ROLE_CODE"], "organisation": u["ORGANISATION"],
-             "persona": personas.get(u["ROLE_CODE"], {}).get("PERSONA_NAME"), "password_required": u["ROLE_CODE"] in protected}
-            for u in ref().rows("users") if u.get("ACTIVE", "Y") == "Y"]
+    out = [{"user_id": u["USER_ID"], "name": u["DISPLAY_NAME"], "role": u["ROLE_CODE"], "organisation": u["ORGANISATION"],
+            "persona": personas.get(u["ROLE_CODE"], {}).get("PERSONA_NAME"), "password_required": u["ROLE_CODE"] in protected}
+           for u in ref().rows("users") if u.get("ACTIVE", "Y") == "Y"]
+    for role in sorted(protected - {u["role"] for u in out}):          # a role that signs in with a login needs no demo account to be offered
+        out.append({"user_id": role.lower(), "name": role, "role": role, "organisation": "", "persona": personas.get(role, {}).get("PERSONA_NAME"),
+                    "password_required": True})
+    return out
 
 
 def _credential_user(username: str, password: str, role: str | None = None) -> dict:

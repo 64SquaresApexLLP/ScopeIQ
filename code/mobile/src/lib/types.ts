@@ -120,16 +120,17 @@ export interface HandshakeSummary {
   market: string;
   cx_sp: string;
   workflow_state: string;
-  current_bom_rev: string;
+  state_description?: string | null;      // from the workflow reference
+  package_out: boolean;                   // the package has left the scoping team (with the SP, or approved)
+  current_bom_rev?: string;
   is_fba_locked: boolean;
-  actions: WorkflowAction[];
-  can_handshake: boolean;
+  workflow_actions: WorkflowAction[];     // the steps this user's role can take from this state
   has_bom?: boolean;
   has_run_pipeline?: boolean;
   delta: Row[];
   cd_documents?: Row[];
   bom_lines?: Row[];
-  bom_summary: {
+  bom_summary: null | {
     lines_count: number;
     install_count: number;
     remove_count: number;
@@ -139,11 +140,15 @@ export interface HandshakeSummary {
     is_locked: boolean;
   };
   workflow_history: Row[];
-  drivers?: Row[];
-  requirements?: Row | null;
-  estimate?: Row | null;
-  baseline_services_usd?: number;
-  bom_items_count?: number;
-  latest_quote?: SpQuote | null;
-  quotes?: SpQuote[];
+}
+
+/** What a service provider is given for a site. */
+export interface ProviderView {
+  site_id: string;
+  site_name?: string;
+  drawings: { DOC_ID: string; FILE_NAME: string; FILE_FORMAT?: string; REVISION?: string; SIZE_BYTES?: number }[];
+  requests: { when?: string; reason?: string; comment?: string }[];
+  phase: 'PENDING' | 'REVIEW' | 'AGREED' | 'APPROVED';
+  scope: { released: boolean; items: { SECTOR?: string; POSITION?: string; KIND?: string; CATALOG_KEY?: string; ACTION?: string; FROM_POSITION?: string }[] };
+  bom: { released: boolean; approved: boolean; lines: { SECTOR?: string; CATEGORY?: string; MANUFACTURER?: string; MODEL?: string; DESCRIPTION?: string; UOM?: string; TOTAL_QTY?: number; ACTION?: string; SUPPLY?: string }[] };
 }

@@ -4,12 +4,15 @@ import uuid
 
 from fastapi import APIRouter, Depends
 
-from api.deps import check_site_scope, current_user, ref, repo, require, workflow
+from api.deps import check_site_scope, current_user, ref, repo, require, shown_provider, workflow
 from api.schemas import SpQuoteIn, TransitionIn
 from scopeiq.common.audit import AuditTrail
 from scopeiq.db.repository import now_iso
 
 router = APIRouter(tags=["estimate"])
+
+# the handshake and review events shown on the Handshake tab (never pipeline steps)
+HANDSHAKE_EVENTS = {"SUBMIT_TO_SP", "AGREE", "REQUEST_CHANGES", "APPROVE_FBA", "REJECT_FBA", "RETURN_TO_SCOPER", "TRIGGER_REWORK", "SP_AGREE", "SP_REQUEST_CHANGES", "SUBMIT_FBA"}
 
 
 def _latest(site_id: str) -> str | None:
@@ -85,8 +88,10 @@ def get_handshake_detail(site_id: str, user: dict = Depends(current_user)):
     site = check_site_scope(user, site_id)
     r = repo()
     state = site.get("WORKFLOW_STATE") or "IN_SCOPING"
-    actions = workflow().actions("SITE_SCOPING", state, user["role"])
-
+    wf = workflow()
+    all_actions = wf.actions("SITE_SCOPING", state, user["role"])
+    header = {"site_id": site_id, "site_name": site.get("SITE_NAME"), "market": site.get("MARKET"), "cx_sp": shown_provider(site.get("CX_SP")), "workflow_state": state,
+              "state_description": (wf.state_row("SITE_SCOPING", state) or {}).get("DESCRIPTION"), "package_out": wf.is_out_for_approval(state)}
     # 6.2 Equipment Delta (SoW Summary)
     run_id = site.get("LAST_RUN_ID")
     deltas = r.select("CORE.EQUIPMENT_DELTA", {"SITE_ID": site_id, "RUN_ID": run_id}, order_by="SEQ") if run_id else []
@@ -133,7 +138,7 @@ def get_handshake_detail(site_id: str, user: dict = Depends(current_user)):
     total_cost = sum(float(b.get("TOTAL_COST_USD") or 0.0) for b in boms)
 
     # 6.2 CD Drawings
-    cds = r.select("CORE.DOCUMENT", {"SITE_ID": site_id, "DOC_TYPE": "CD"}, order_by="REVISION_RANK DESC")
+    cds = [d for d in r.select("CORE.DOCUMENT", {"SITE_ID": site_id, "DOC_TYPE": "CD"}, order_by="REVISION_RANK DESC") if d.get("STATUS") == "CURRENT"]
     redlines = r.select("CORE.REDLINE", {"SITE_ID": site_id})
     if redlines and any(x.get("PDF_PATH") for x in redlines):
         red_file = next((x["PDF_PATH"] for x in redlines if x.get("PDF_PATH")), None)
@@ -155,46 +160,22 @@ def get_handshake_detail(site_id: str, user: dict = Depends(current_user)):
     active_rev = revs[0] if revs else None
     has_bom = len(boms) > 0 or bool(active_rev and active_rev.get("KIND") != "TOOL_REV0")
     has_pipeline_run = bool(site.get("LAST_RUN_ID"))
-    rev_label = active_rev.get("REV_LABEL") if active_rev else (site.get("CURRENT_BOM_REV") or ("REV 1" if has_bom else "-"))
-    is_fba_locked = state == "FBA_APPROVED" or (bool(active_rev and (active_rev.get("STATUS") == "FBA" or active_rev.get("LOCKED") == 1)))
+    rev_label = active_rev.get("REV_LABEL") if active_rev else ("REV 1" if has_bom else "-")
+    is_fba_locked = state == "FBA_APPROVED" or bool(active_rev and active_rev.get("STATUS") == "FBA")
 
     # Audit history: Only show Handshake and Review events, never pipeline steps
-    handshake_history_actions = {"SUBMIT_TO_SP", "SP_AGREE", "SP_REQUEST_CHANGES", "APPROVE_FBA", "RETURN_TO_SCOPER"}
-    raw_history = workflow().history("SITE_SCOPING", site_id)
-    history = [h for h in raw_history if h.get("ACTION") in handshake_history_actions]
+    history = [h for h in wf.history("SITE_SCOPING", site_id) if h.get("ACTION") in HANDSHAKE_EVENTS]
     if not has_pipeline_run and len(cds) == 0 and not has_bom:
         history = []
 
-    # Handshake actions filter:
-    # Handshake actions ONLY exist during SP_HANDSHAKE or SUBMITTED_FBA, and ONLY when BOM has been generated
-    handshake_actions = {"SP_AGREE", "SP_REQUEST_CHANGES"}
-    if not has_bom or is_fba_locked:
-        actions = []
-    elif state == "SP_HANDSHAKE":
-        actions = [a for a in actions if a["action"] in handshake_actions]
-    elif state == "SUBMITTED_FBA":
-        actions = [a for a in actions if a["action"] == "APPROVE_FBA"]
-    else:
-        actions = []
-
-    run = site.get("LAST_RUN_ID")
-    where = {"SITE_ID": site_id, "RUN_ID": run} if run else {"SITE_ID": site_id}
-    drivers = r.select("CORE.DRIVER_LINE", where, order_by="DRIVER_CODE, SECTOR")
-    reqs = next(iter(r.select("CORE.SITE_REQUIREMENT", where)), None)
-    est = next(iter(r.select("CORE.ESTIMATE", where)), None)
-    quotes = r.select("CORE.SP_QUOTE", {"SITE_ID": site_id}, order_by="SUBMITTED_AT DESC")
-    baseline = float(est.get("SERVICES_USD") if est and est.get("SERVICES_USD") else sum(d.get("AMOUNT") or 0.0 for d in drivers))
+    # the steps this role can take from here (send for final approval, approve, return ...); a BOM must exist to move on
+    workflow_actions = all_actions if has_bom else []
 
     return {
-        "site_id": site_id,
-        "site_name": site.get("SITE_NAME"),
-        "market": site.get("MARKET"),
-        "cx_sp": site.get("CX_SP"),
-        "workflow_state": state,
+        **header,
         "current_bom_rev": rev_label,
         "is_fba_locked": is_fba_locked,
-        "actions": actions,
-        "can_handshake": state == "SP_HANDSHAKE" and has_bom,
+        "workflow_actions": workflow_actions,
         "has_bom": has_bom,
         "has_run_pipeline": has_pipeline_run,
         "delta": deltas,
@@ -210,13 +191,6 @@ def get_handshake_detail(site_id: str, user: dict = Depends(current_user)):
             "is_locked": is_fba_locked,
         },
         "workflow_history": history,
-        "drivers": drivers,
-        "requirements": reqs,
-        "estimate": est,
-        "baseline_services_usd": baseline,
-        "bom_items_count": len(boms),
-        "latest_quote": quotes[0] if quotes else None,
-        "quotes": quotes,
     }
 
 
