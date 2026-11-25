@@ -68,7 +68,8 @@ def test_an_ae_engineer_sees_its_redlines_and_the_rfis_addressed_to_the_firm(cli
 def test_an_ae_engineer_is_kept_out_of_the_scoping_workbench_and_other_files(client):
     ae, admin = login(client, "ae1"), login(client, "admin")
     for path in ("/sites/TXAE0001/handshake", "/sites/TXAE0001/delta", "/sites/TXAE0001/estimate", "/pipeline/runs", "/discrepancies", "/bom/revisions",
-                 "/reference/rate_card", "/workflow/SITE_SCOPING/TXAE0001/history", "/sites/service-providers", "/sites/TXAE0001/provider"):
+                 "/reference/rate_card", "/workflow/SITE_SCOPING/TXAE0001/history", "/sites/service-providers", "/sites/TXAE0001/provider",
+                 "/sites/TXAE0001/config", "/sites/TXAE0001/fields", "/sites/TXAE0001/evidence"):       # what was read from the documents and the drone survey is the scoping team's
         assert client.get(path, headers=ae).status_code == 403, path
     assert client.post("/pipeline/sites/TXAE0001/start", headers=ae).status_code == 403
     assert client.get("/redlines", headers=ae).status_code == 200 and client.get("/rfis", headers=ae).status_code == 200      # its own work still opens
