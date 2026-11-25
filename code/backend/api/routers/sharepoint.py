@@ -950,7 +950,7 @@ async def check_content(site_id: str, file: UploadFile = File(...), doc_type: st
 
 @router.post("/sharepoint/sites/{site_id}/upload")
 async def upload(site_id: str, file: UploadFile = File(...), doc_type: str | None = Form(default=None),
-                 replace_file: str | None = Form(default=None),
+                 replace_file: str | None = Form(default=None), confirm_duplicate: bool = Form(default=False),
                  user: dict = Depends(require("ADMIN", "AE_ENGINEER"))):
     """Upload one file into the selected site's folder. The site comes from the path, so a file can only go to that one site."""
     sid = validate_site_id(site_id)
@@ -982,6 +982,12 @@ async def upload(site_id: str, file: UploadFile = File(...), doc_type: str | Non
     if doc_type and doc_type not in TYPE_FOLDERS:
         raise ValidationError(f"Unknown document type {doc_type}", details={"allowed": list(TYPE_FOLDERS)})
     data = await file.read()
+    # A file whose content is already on the site is refused here, whatever the screen did, unless it replaces that file or the caller confirms it.
+    already = inspect_file_against_site(sid, file.filename or "", data, doc_type=doc_type, repo=repo()) if data else None
+    if already and already.status == "DUPLICATE" and not (replace_file or confirm_duplicate):
+        raise Conflict(f"Already exists! This file has identical content to '{already.existing_file}'. Upload is not required.",
+                       details={"status": "DUPLICATE", "is_duplicate": True, "already_exists": True, "duplicate_of": already.existing_file,
+                                "file_name": file.filename, "message": f"The content of this file is identical to '{already.existing_file}'."})
     saved = store.upload(sid, file.filename or "", data, doc_type or None, replace_file=replace_file)
     inspection = inspect_file_against_site(sid, file.filename or "", data, doc_type=doc_type, repo=repo(), exclude_filename=file.filename)
     AuditTrail.record(entity_type="SHAREPOINT_FILE", entity_id=f"{sid}/{saved['folder']}/{saved['name']}",
