@@ -5,6 +5,7 @@ import { RefreshControl, ScrollView, Text, View } from 'react-native';
 import { colors, space } from '../../components/theme';
 import { Badge, Button, Card, Chips, EmptyState, ErrorView, IconName, ListItem, Loading, PageHeader, s } from '../../components/ui';
 import { api } from '../../lib/api';
+import { useAuth } from '../../lib/auth';
 import { label, when } from '../../lib/format';
 import { Row as R } from '../../lib/types';
 import { useApi } from '../../lib/useApi';
@@ -22,11 +23,17 @@ function kindOf(n: R): { text: string; color: string; icon: IconName } {
 }
 
 export default function Inbox() {
+  const { user } = useAuth();
   const [unread, setUnread] = useState<'unread' | 'all'>('unread');
+  const limited = user?.role === 'CX_SP' || user?.role === 'AE_ENGINEER';      // these roles see their site page only, never the scoping screens
   const inbox = useApi<R[]>(`/workflow/inbox?unread_only=${unread === 'unread'}`);
   const open = async (n: R) => {
     if (!n.READ_AT) await api.post(`/workflow/inbox/${n.NOTIFICATION_ID}/read`).catch(() => undefined);
-    if (n.ENTITY_TYPE === 'DISCREPANCY') router.push({ pathname: '/discrepancy/[id]', params: { id: n.ENTITY_ID } });
+    if (limited) {
+      if (n.SITE_ID) router.push({ pathname: '/site/[id]', params: { id: n.SITE_ID, ...(user?.role === 'AE_ENGINEER' ? { tab: 'redlines' } : {}) } });
+    }
+    else if (n.ENTITY_TYPE === 'DISCREPANCY') router.push({ pathname: '/discrepancy/[id]', params: { id: n.ENTITY_ID } });
+    else if (n.ENTITY_TYPE === 'BOM_REVISION' && n.SITE_ID) router.push({ pathname: '/site/[id]', params: { id: n.SITE_ID, tab: 'handshake' } });
     else if (n.ENTITY_TYPE === 'BOM_REVISION') router.push({ pathname: '/bom/[revId]', params: { revId: n.ENTITY_ID } });
     else if (n.SITE_ID && (n.ENTITY_TYPE === 'RFI' || n.ENTITY_TYPE === 'REDLINE')) {
       router.push({ pathname: '/site/[id]', params: { id: n.SITE_ID, tab: 'redlines' } });
