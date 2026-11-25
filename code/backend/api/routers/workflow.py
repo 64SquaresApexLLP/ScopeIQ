@@ -6,6 +6,7 @@ from api.schemas import TransitionIn
 from scopeiq.common.context import current
 from scopeiq.common.errors import ValidationError
 from scopeiq.db.repository import now_iso
+from scopeiq.services import bom_revisions
 from scopeiq.workflow.engine import ENTITY_TABLES
 
 router = APIRouter(prefix="/workflow", tags=["workflow"])
@@ -70,16 +71,19 @@ def transition(entity: str, entity_id: str, body: TransitionIn, user: dict = Dep
     if site_id:
         check_site_scope(user, site_id)
 
-    # Validation: Cannot perform SP Handshake or FBA without a generated BOM
-    if e == "SITE_SCOPING" and body.action in ("SUBMIT_TO_SP", "AGREE", "APPROVE_FBA"):
+    # the handshake and the final approval work on a BOM revision: it has to exist, and what goes to the provider is a fresh one
+    if e == "SITE_SCOPING" and body.action.upper() in (*HANDSHAKE_ACTIONS, "SUBMIT_REVIEW"):
         r = repo()
-        boms = r.select("CORE.BOM_OUTPUT_LINE", {"SITE_ID": site_id})
-        revs = [x for x in r.select("CORE.BOM_REVISION", {"SITE_ID": site_id}) if x.get("KIND") != "TOOL_REV0"]
-        if not boms and not revs:
+        rev = bom_revisions.ensure(r, site_id, user["sub"])
+        if body.action.upper() in ("SUBMIT_TO_SP", "AGREE", "APPROVE_FBA") and not rev:
             raise ValidationError(
                 f"Cannot execute '{body.action}': No Bill of Materials (BOM) has been generated for site {site_id}. Please upload documents and run the pipeline first.",
-                details={"site_id": site_id, "action": body.action}
-            )
+                details={"site_id": site_id, "action": body.action})
+        if body.action.upper() == "SUBMIT_TO_SP" and not (r.get("CORE.SITE", SITE_ID=site_id).get("CX_SP") or "").strip():
+            raise ValidationError("Choose the service provider for this site before sending the BOM to them.", details={"site_id": site_id})
+        if body.action.upper() in ("SUBMIT_TO_SP", "SUBMIT_REVIEW") and rev and not bom_revisions.is_draft(rev):
+            raise ValidationError(f"{rev['REV_LABEL']} has already been sent. Start the next revision (or run the pipeline again) before sending the BOM again.",
+                                  details={"site_id": site_id, "revision": rev["REV_LABEL"], "status": rev["STATUS"]})
 
     result = workflow().transition(e, entity_id, body.action, reason_code=body.reason_code, comment=body.comment)
 

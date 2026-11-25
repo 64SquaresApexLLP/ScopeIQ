@@ -8,11 +8,31 @@ from api.deps import check_site_scope, current_user, ref, repo, require, shown_p
 from api.schemas import SpQuoteIn, TransitionIn
 from scopeiq.common.audit import AuditTrail
 from scopeiq.db.repository import now_iso
+from scopeiq.services import bom_revisions
 
 router = APIRouter(tags=["estimate"])
 
 # the handshake and review events shown on the Handshake tab (never pipeline steps)
-HANDSHAKE_EVENTS = {"SUBMIT_TO_SP", "AGREE", "REQUEST_CHANGES", "APPROVE_FBA", "REJECT_FBA", "RETURN_TO_SCOPER", "TRIGGER_REWORK", "SP_AGREE", "SP_REQUEST_CHANGES", "SUBMIT_FBA"}
+HANDSHAKE_EVENTS = {"SUBMIT_TO_SP", "AGREE", "REQUEST_CHANGES", "APPROVE_FBA", "REJECT_FBA", "RETURN_TO_SCOPER", "TRIGGER_REWORK", "SUBMIT_REVIEW", "HOLD", "RELEASE", "SP_AGREE", "SP_REQUEST_CHANGES", "SUBMIT_FBA"}
+
+
+# who may change the lines of a BOM that is still with the scoping team, and in which states of the site
+EDIT_ROLES = ("SCOPER", "REVIEWER", "ADMIN")
+EDIT_STATES = ("IN_SCOPING", "IN_REVIEW", "REWORK")
+
+
+def _changes(r, site_id: str, rev: dict, lines: list[dict]) -> list[dict]:
+    """What differs from the revision before, line by line, with the reason given for each change (empty for REV 1)."""
+    rows = r.select("CORE.BOM_CHANGE", {"TO_REV_ID": rev["BOM_REV_ID"]}, order_by="SECTOR, CATALOG_KEY")
+    names: dict = {}
+    for x in lines:
+        names.setdefault(x.get("CATALOG_KEY"), x)
+    prev = next((g for g in reversed(bom_revisions.generated(r, site_id)) if g["REV_NO"] < rev["REV_NO"]), None)
+    if prev:
+        for x in bom_revisions.lines_of(r, site_id, prev):
+            names.setdefault(x.get("CATALOG_KEY"), x)
+    return [{**c, "model": (names.get(c.get("CATALOG_KEY")) or {}).get("MODEL") or c.get("CATALOG_KEY"),
+             "description": (names.get(c.get("CATALOG_KEY")) or {}).get("DESCRIPTION"), "from_rev": prev["REV_LABEL"] if prev else None} for c in rows]
 
 
 def _latest(site_id: str) -> str | None:
@@ -84,58 +104,26 @@ def get_sp_quotes(site_id: str, user: dict = Depends(current_user)):
 
 
 @router.get("/sites/{site_id}/handshake")
-def get_handshake_detail(site_id: str, user: dict = Depends(current_user)):
+def get_handshake_detail(site_id: str, rev: str | None = None, user: dict = Depends(current_user)):
     site = check_site_scope(user, site_id)
     r = repo()
     state = site.get("WORKFLOW_STATE") or "IN_SCOPING"
     wf = workflow()
     all_actions = wf.actions("SITE_SCOPING", state, user["role"])
     header = {"site_id": site_id, "site_name": site.get("SITE_NAME"), "market": site.get("MARKET"), "cx_sp": shown_provider(site.get("CX_SP")), "workflow_state": state,
-              "state_description": (wf.state_row("SITE_SCOPING", state) or {}).get("DESCRIPTION"), "package_out": wf.is_out_for_approval(state)}
+              "state_description": (wf.state_row("SITE_SCOPING", state) or {}).get("DESCRIPTION"), "owner_role": (wf.state_row("SITE_SCOPING", state) or {}).get("OWNER_ROLE"), "package_out": wf.is_out_for_approval(state)}
     # 6.2 Equipment Delta (SoW Summary)
     run_id = site.get("LAST_RUN_ID")
-    deltas = r.select("CORE.EQUIPMENT_DELTA", {"SITE_ID": site_id, "RUN_ID": run_id}, order_by="SEQ") if run_id else []
+    deltas = bom_revisions.scope_items(r, site_id, run_id)
 
-    # 6.2 BOM Summary & Lines
-    boms = r.select("CORE.BOM_OUTPUT_LINE", {"SITE_ID": site_id, "RUN_ID": run_id}, order_by="CATEGORY, SECTOR") if run_id else []
-    if not boms and run_id:
-        revs_for_lines = [x for x in r.select("CORE.BOM_REVISION", {"SITE_ID": site_id}, order_by="REV_NO DESC") if x.get("KIND") != "TOOL_REV0"]
-        if revs_for_lines:
-            rev_fallback = revs_for_lines[0]
-            rev_lines = r.select("CORE.BOM_LINE", {"BOM_REV_ID": rev_fallback["BOM_REV_ID"]})
-            cat = ref().catalog
-            for l in rev_lines:
-                it = cat.items.get(l["CATALOG_KEY"])
-                qty = float(l.get("TOTAL_QTY") or l.get("DESIGN_QTY") or 1.0)
-                unit_cost = float(it.unit_cost if it and it.unit_cost else 0.0)
-                boms.append({
-                    "LINE_ID": l["LINE_ID"],
-                    "RUN_ID": rev_fallback.get("RUN_ID"),
-                    "SITE_ID": site_id,
-                    "MARKET": site.get("MARKET") or "",
-                    "SECTOR": l.get("SECTOR"),
-                    "TECHNOLOGY": it.technology if it else "",
-                    "BAND": (", ".join(it.bands) if isinstance(it.bands, (list, tuple)) else str(it.bands or "")) if it else "",
-                    "CATEGORY": it.category if it else "Materials",
-                    "SUBCATEGORY": it.subcategory if it else "",
-                    "MANUFACTURER": it.manufacturer if it else "",
-                    "MODEL": it.model if it else l.get("CATALOG_KEY"),
-                    "DESCRIPTION": it.description if it else "",
-                    "UOM": it.uom if it else "EA",
-                    "DESIGN_QTY": float(l.get("DESIGN_QTY") or qty),
-                    "SPARE_QTY": float(l.get("SPARE_QTY") or 0.0),
-                    "TOTAL_QTY": qty,
-                    "QTY": qty,
-                    "UNIT_COST_USD": unit_cost,
-                    "TOTAL_COST_USD": round(qty * unit_cost, 2),
-                    "ACTION": l.get("ACTION") or "Install",
-                    "SOURCE": l.get("SOURCE") or "",
-                    "RULE_ID": l.get("RULE_ID") or "",
-                    "CATALOG_KEY": l.get("CATALOG_KEY"),
-                })
-    install_count = sum(1 for b in boms if b.get("ACTION") == "Install" or (b.get("QTY") or 0) > 0)
-    remove_count = sum(1 for b in boms if b.get("ACTION") == "Remove")
-    total_cost = sum(float(b.get("TOTAL_COST_USD") or 0.0) for b in boms)
+    # the BOM: every generated BOM is a revision; the one shown is the one asked for, else the latest
+    revs = list(reversed(bom_revisions.generated(r, site_id)))
+    latest = revs[0] if revs else None
+    active_rev = next((x for x in revs if x["BOM_REV_ID"] == rev), latest) if rev else latest
+    boms = bom_revisions.lines_of(r, site_id, active_rev) if active_rev else bom_revisions.lines_of(r, site_id, None)
+    install_count = sum(1 for b in boms if str(b.get("ACTION") or "").lower() == "install")
+    remove_count = sum(1 for b in boms if str(b.get("ACTION") or "").lower() == "remove")
+    total_cost = sum(float(b.get("TOTAL_COST_USD") or 0.0) for b in boms if str(b.get("ACTION") or "").lower() == "install")
 
     # 6.2 CD Drawings
     cds = [d for d in r.select("CORE.DOCUMENT", {"SITE_ID": site_id, "DOC_TYPE": "CD"}, order_by="REVISION_RANK DESC") if d.get("STATUS") == "CURRENT"]
@@ -155,21 +143,23 @@ def get_handshake_detail(site_id: str, user: dict = Depends(current_user)):
                 "STATUS": "CURRENT",
             })
 
-    # 6.2 Active Revision & FBA Status
-    revs = r.select("CORE.BOM_REVISION", {"SITE_ID": site_id}, order_by="REV_NO DESC")
-    active_rev = revs[0] if revs else None
-    has_bom = len(boms) > 0 or bool(active_rev and active_rev.get("KIND") != "TOOL_REV0")
+    # the revision shown, and what changed from the one before
+    has_bom = len(boms) > 0 or bool(revs)
     has_pipeline_run = bool(site.get("LAST_RUN_ID"))
     rev_label = active_rev.get("REV_LABEL") if active_rev else ("REV 1" if has_bom else "-")
     is_fba_locked = state == "FBA_APPROVED" or bool(active_rev and active_rev.get("STATUS") == "FBA")
-
-    # Audit history: Only show Handshake and Review events, never pipeline steps
+    is_latest = bool(active_rev and latest and active_rev["BOM_REV_ID"] == latest["BOM_REV_ID"])
+    changes = _changes(r, site_id, active_rev, boms) if active_rev else []
+    editable = bool(is_latest and bom_revisions.is_draft(active_rev) and user["role"] in EDIT_ROLES and state in EDIT_STATES)
     history = [h for h in wf.history("SITE_SCOPING", site_id) if h.get("ACTION") in HANDSHAKE_EVENTS]
     if not has_pipeline_run and len(cds) == 0 and not has_bom:
         history = []
 
     # the steps this role can take from here (send for final approval, approve, return ...); a BOM must exist to move on
     workflow_actions = all_actions if has_bom else []
+    # a revision the provider has seen cannot change: after a change request or a rework, the next revision is started from it
+    can_start_next = bool(is_latest and active_rev and not bom_revisions.is_draft(active_rev) and user["role"] in EDIT_ROLES
+                          and state in ("IN_SCOPING", "REWORK"))
 
     return {
         **header,
@@ -181,6 +171,15 @@ def get_handshake_detail(site_id: str, user: dict = Depends(current_user)):
         "delta": deltas,
         "cd_documents": cds,
         "bom_lines": boms,
+        "revisions": [{"id": x["BOM_REV_ID"], "label": x["REV_LABEL"], "status": x["STATUS"], "locked": bool(x.get("LOCKED")), "created_at": x.get("CREATED_AT"),
+                       "created_by": x.get("CREATED_BY"), "approved_at": x.get("APPROVED_AT"), "approved_by": x.get("APPROVED_BY"), "notes": x.get("NOTES"),
+                       "totals": x.get("TOTALS") or {}, "is_latest": x["BOM_REV_ID"] == (latest or {}).get("BOM_REV_ID")} for x in revs],
+        "selected_rev": active_rev["BOM_REV_ID"] if active_rev else None,
+        "selected_rev_status": active_rev["STATUS"] if active_rev else None,
+        "is_latest_rev": is_latest,
+        "bom_editable": editable,
+        "can_start_next_rev": can_start_next,
+        "bom_changes": changes,
         "bom_summary": {
             "lines_count": len(boms),
             "install_count": install_count,

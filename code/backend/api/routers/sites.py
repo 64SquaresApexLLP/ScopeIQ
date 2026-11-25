@@ -9,6 +9,7 @@ from scopeiq.common.audit import AuditTrail
 from scopeiq.common.errors import NotFound, PermissionDenied, ValidationError
 from scopeiq.db.repository import now_iso
 from scopeiq.integrations.sharepoint import get_store
+from scopeiq.services import bom_revisions
 from scopeiq.services.site_management import delete_site_cascade
 
 router = APIRouter(prefix="/sites", tags=["sites"])
@@ -122,6 +123,7 @@ def provider_view(site_id: str, user: dict = Depends(current_user)):
     released = provider_package_released(site)
     phase = provider_phase(site)
     keep = lambda row, fields: {k: row.get(k) for k in fields}      # noqa: E731
+    bom_rev, bom_lines = bom_revisions.current(r, site_id) if released else (None, [])     # the revision the provider is given, never an older one
     mine = [e for e in workflow().history("SITE_SCOPING", site_id) if e.get("ACTION") in ("REQUEST_CHANGES", "SP_REQUEST_CHANGES")]
     return {"site_id": site_id, "site_name": site.get("SITE_NAME"), "phase": phase,
             "requests": [{"when": e.get("EVENT_TS"), "reason": next((c["DESCRIPTION"] for c in ref().rows("reason_codes") if c["REASON_CODE"] == e.get("REASON_CODE")), e.get("REASON_CODE")),
@@ -129,10 +131,10 @@ def provider_view(site_id: str, user: dict = Depends(current_user)):
             "drawings": [keep(d, ("DOC_ID", "FILE_NAME", "FILE_FORMAT", "REVISION", "SIZE_BYTES")) for d in provider_drawings(site_id)],
             "scope": {"released": released,
                       "items": [keep(x, ("SECTOR", "POSITION", "KIND", "CATALOG_KEY", "ACTION", "FROM_POSITION"))
-                                for x in r.select("CORE.EQUIPMENT_DELTA", {"SITE_ID": site_id, "RUN_ID": site.get("LAST_RUN_ID")}, order_by="SEQ")] if released and site.get("LAST_RUN_ID") else []},
-            "bom": {"released": released, "approved": phase == "APPROVED",
+                                for x in bom_revisions.scope_items(r, site_id, site.get("LAST_RUN_ID"))] if released else []},
+            "bom": {"released": released, "approved": phase == "APPROVED", "revision": (bom_rev or {}).get("REV_LABEL") if released else None,
                     "lines": [keep(b, ("SECTOR", "CATEGORY", "MANUFACTURER", "MODEL", "DESCRIPTION", "UOM", "TOTAL_QTY", "ACTION", "SUPPLY"))
-                              for b in r.select("CORE.BOM_OUTPUT_LINE", {"SITE_ID": site_id}, order_by="CATEGORY, SECTOR")] if released else []}}
+                              for b in bom_lines] if released else []}}
 
 
 @router.get("/{site_id}")

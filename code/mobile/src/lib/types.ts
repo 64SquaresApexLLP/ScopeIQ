@@ -114,6 +114,16 @@ export interface SpQuote {
   SUBMITTED_AT: string;
 }
 
+export interface BomRevisionInfo {
+  id: string; label: string; status: string; locked: boolean; created_at?: string | null; created_by?: string | null;
+  approved_at?: string | null; approved_by?: string | null; notes?: string | null; totals: Record<string, number>; is_latest: boolean;
+}
+
+export interface BomChange {
+  CHANGE_ID: string; SECTOR?: string; CATALOG_KEY?: string; ACTION?: string; FROM_QTY: number; TO_QTY: number; DELTA: number;
+  REASONS?: string[]; model?: string; description?: string; from_rev?: string | null;
+}
+
 export interface HandshakeSummary {
   site_id: string;
   site_name: string;
@@ -121,6 +131,7 @@ export interface HandshakeSummary {
   cx_sp: string;
   workflow_state: string;
   state_description?: string | null;      // from the workflow reference
+  owner_role?: string | null;             // whose turn it is in this state (workflow reference)
   package_out: boolean;                   // the package has left the scoping team (with the SP, or approved)
   current_bom_rev?: string;
   is_fba_locked: boolean;
@@ -130,6 +141,13 @@ export interface HandshakeSummary {
   delta: Row[];
   cd_documents?: Row[];
   bom_lines?: Row[];
+  revisions: BomRevisionInfo[];           // newest first
+  selected_rev: string | null;
+  selected_rev_status: string | null;
+  is_latest_rev: boolean;
+  bom_editable: boolean;                  // the shown revision is still a draft and this user may change it
+  can_start_next_rev: boolean;            // the latest revision has been sent: the next one can be started from it
+  bom_changes: BomChange[];               // what differs from the revision before
   bom_summary: null | {
     lines_count: number;
     install_count: number;
