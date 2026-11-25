@@ -46,6 +46,7 @@ from scopeiq.outputs.cd_revision import write_revised_cd
 from scopeiq.outputs.exports import write_bom_xlsx, write_site_package
 from scopeiq.outputs.redline_markup import remove_redlined_cd, render_sheet_previews, write_redlined_cd
 from scopeiq.reference.loader import ReferenceData
+from scopeiq.services import bom_revisions
 from scopeiq.workflow.engine import WorkflowEngine
 
 log = get_logger("pipeline")
@@ -296,7 +297,7 @@ class PipelineService:
                             design_summary["documents"] = docs
                         with prog.step("BOM"):
                             res = self._bom_stage(run_id, facts, rb, final_m)
-                            prog.finish("BOM", f"{len(res.lines)} BOM line(s) generated with rules {res.revision}; {len(res.issues)} issue(s) to review",
+                            prog.finish("BOM", f"{len(res.lines)} BOM line(s) saved as {res.rev_label} with rules {res.revision}; {len(res.issues)} issue(s) to review",
                                         {"lines": len(res.lines), "issues": len(res.issues), "needs_review": res.summary()["needs_review"]})
                             design_summary["bom"] = res.summary() | {"issue_list": [i.__dict__ for i in res.issues], "trunk": res.trunk,
                                                                      "rulebook": rb.summary()}
@@ -377,8 +378,8 @@ class PipelineService:
     # ------------------------------------------------------------------------------------ stages 5 and 6
     def _clear_design_outputs(self, site_id: str) -> None:
         """Remove the design items, the BOM rows and the BOM file left by an earlier run, so nothing old can be shown as this run's result."""
-        for table in ("CORE.DESIGN_ITEM", "CORE.BOM_OUTPUT_LINE"):
-            self.repo.delete_where(table, {"SITE_ID": site_id})
+        self.repo.delete_where("CORE.DESIGN_ITEM", {"SITE_ID": site_id})
+        bom_revisions.clear_draft(self.repo, site_id, current().user_id or "system")     # a revision the service provider has seen is never touched
         shutil.rmtree(self.output_dir / "sites" / site_id / "bom", ignore_errors=True)
 
     def _design_stage(self, run_id: str, facts: SiteFacts):
@@ -404,8 +405,14 @@ class PipelineService:
                  "UNIT_COST_USD": l.unit_cost, "TOTAL_COST_USD": l.total_cost, "SUPPLY": l.supply, "ACTION": l.action,
                  "SOURCE": l.source, "DRAWING": l.drawing, "RULE_ID": l.rule_id, "REVISION": l.revision, "STATUS": l.status,
                  "CATALOG_KEY": l.catalog_key, "PARENT_KEY": l.parent_key, "TRACE": l.trace, "CREATED_AT": ts} for i, l in enumerate(res.lines)]
-        self.repo.delete_where("CORE.BOM_OUTPUT_LINE", {"SITE_ID": facts.site_id})
+        rev = bom_revisions.register(self.repo, facts.site_id, run_id, current().user_id or "system")
+        for x in rows:
+            x["BOM_REV_ID"] = rev["BOM_REV_ID"]
+            x["LINE_ID"] = stable_id("BOM", rev["BOM_REV_ID"], x["LINE_ID"])
         self.repo.insert("CORE.BOM_OUTPUT_LINE", rows)
+        bom_revisions.finish(self.repo, facts.site_id, rev)
+        self.repo.update("CORE.SITE", {"CURRENT_BOM_REV": rev["REV_LABEL"]}, {"SITE_ID": facts.site_id})
+        res.rev_label = rev["REV_LABEL"]
         out = self.output_dir / "sites" / facts.site_id / "bom" / f"{facts.site_id}_BOM.xlsx"
         write_bom_workbook(out, facts.site_id, res)
         res.file = _rel(str(out), self.output_dir)

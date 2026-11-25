@@ -79,11 +79,12 @@ class BomResult:
     trunk: dict
     revision: str
     file: str = ""                # the workbook written for this run, relative to the output folder
+    rev_label: str = ""           # the BOM revision these lines were saved as (REV 1, REV 2 ...)
 
     def summary(self) -> dict:
         return {"lines": len(self.lines), "install_lines": sum(l.action == "Install" for l in self.lines),
                 "remove_lines": sum(l.action == "Remove" for l in self.lines), "needs_review": sum(l.status != "Applied" for l in self.lines),
-                "issues": len(self.issues), "revision": self.revision, "file": self.file,
+                "issues": len(self.issues), "revision": self.revision, "file": self.file, "rev_label": self.rev_label,
                 "total_cost": round(sum(l.total_cost for l in self.lines), 2)}
 
 
