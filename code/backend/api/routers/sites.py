@@ -201,7 +201,7 @@ def site_detail(site_id: str, user: dict = Depends(current_user)):
 
 
 @router.get("/{site_id}/config")
-def config_lines(site_id: str, source: str | None = None, user: dict = Depends(current_user)):
+def config_lines(site_id: str, source: str | None = None, user: dict = Depends(scoping_only)):
     r = repo()
     site = r.get("CORE.SITE", SITE_ID=site_id)
     _check_scope(user, site)
@@ -212,7 +212,7 @@ def config_lines(site_id: str, source: str | None = None, user: dict = Depends(c
 
 
 @router.get("/{site_id}/evidence")
-def evidence(site_id: str, selected_only: bool = False, user: dict = Depends(current_user)):
+def evidence(site_id: str, selected_only: bool = False, user: dict = Depends(scoping_only)):
     r = repo()
     _check_scope(user, r.get("CORE.SITE", SITE_ID=site_id))
     where = {"SITE_ID": site_id}
@@ -225,7 +225,7 @@ def evidence(site_id: str, selected_only: bool = False, user: dict = Depends(cur
 
 
 @router.get("/{site_id}/fields")
-def extracted_fields(site_id: str, needs_review: bool | None = None, user: dict = Depends(current_user)):
+def extracted_fields(site_id: str, needs_review: bool | None = None, user: dict = Depends(scoping_only)):
     r = repo()
     site = r.get("CORE.SITE", SITE_ID=site_id)
     where = {"SITE_ID": site_id, "RUN_ID": site["LAST_RUN_ID"]}

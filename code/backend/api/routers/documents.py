@@ -38,7 +38,7 @@ def list_documents(site_id: str, user: dict = Depends(current_user)):
 @router.get("/sites/{site_id}/documents/check-hash")
 def check_hash(site_id: str, hash: str, user: dict = Depends(current_user)):
     """Pre-upload check: detects if a document with the exact same SHA-256 hash exists on the site."""
-    repo().get("CORE.SITE", SITE_ID=site_id)
+    check_site_scope(user, site_id)
     h = hash.strip().lower()
     dup_docs = repo().select("CORE.DOCUMENT", {"SITE_ID": site_id, "FILE_HASH": h})
     dup_uploads = repo().select("CORE.UPLOAD", {"SITE_ID": site_id, "FILE_HASH": h})
