@@ -84,16 +84,17 @@ def make_document(site_id: str, path: Path, rel_path: str, *, source: str = "fol
 
 def resolve_current(docs: list[Document]) -> list[Document]:
     """Mark duplicates (same hash) and superseded revisions.
-    The highest revision per doc_type across all formats is CURRENT; any strictly lower revision rank is SUPERSEDED.
+    Files with identical content are one document: the highest revision of them is kept and the others are the duplicates, so a drawing re-issued
+    unchanged under a newer revision still counts as that newer revision (ties go to the first file name).
+    Then the highest revision per doc_type across all formats is CURRENT; any strictly lower revision rank is SUPERSEDED.
     Ensures that if CD REV 0 and CD REV 1 exist, REV 1 is picked and REV 0 is superseded.
     """
-    seen: dict[str, Document] = {}
-    for d in sorted(docs, key=lambda d: d.rel_path):
-        if d.file_hash in seen:
-            d.status = "DUPLICATE"
-            continue
-        seen[d.file_hash] = d
-        d.status = "CURRENT"
+    keep: dict[str, Document] = {}
+    for d in sorted(docs, key=lambda d: (-d.revision_rank, d.rel_path)):
+        if d.file_hash not in keep:
+            keep[d.file_hash] = d
+    for d in docs:
+        d.status = "CURRENT" if keep[d.file_hash] is d else "DUPLICATE"
     groups: dict[str, list[Document]] = {}
     for d in docs:
         if d.status == "CURRENT" and d.doc_type in ("RFDS", "CD", "MA_SA", "BOM_REV0"):
