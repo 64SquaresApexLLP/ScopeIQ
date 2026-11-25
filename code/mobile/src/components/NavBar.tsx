@@ -30,6 +30,7 @@ function useNavItems(): NavItem[] {
     items.push({ name: 'sites', href: '/(tabs)/sites', icon: 'map-pin', label: 'Sites' });
     items.push({ name: 'queue', href: '/(tabs)/queue', icon: 'list', label: user?.role === 'CX_SP' ? 'Handshake' : 'Work Queue' });
   }
+  if (isAe) items.push({ name: 'sites', href: '/(tabs)/sites', icon: 'map-pin', label: 'Sites' });
   if (isAdmin || isAe) items.push({ name: 'rfis', href: '/(tabs)/rfis', icon: 'edit-3', label: 'Redlines & RFIs' });
   if (!isAe) items.push({ name: 'inbox', href: '/(tabs)/inbox', icon: 'inbox', label: 'Inbox' });
   if (isAdmin || isAe) items.push({ name: 'sharepoint', href: '/(tabs)/sharepoint', icon: 'upload-cloud', label: 'SharePoint' });

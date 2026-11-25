@@ -132,8 +132,12 @@ def list_rfis(site_id: str | None = None, status: str | None = None, to_party: s
     # All authorized roles (ADMIN, AE_ENGINEER, SCOPER, REVIEWER) oversee all RFIs across sites
     # for full project context, while action/answer permissions are enforced per role.
 
+    if user["role"] == "AE_ENGINEER":                  # the RFIs addressed to the firm, not the ones for Admin, and not drafts nobody has sent yet
+        where["TO_PARTY"] = "AE_ENGINEER"
     ready = finished_sites()
     rows = [x for x in _scoped(repo().select("CORE.RFI", where or None, order_by="SITE_ID"), user) if x["SITE_ID"] in ready]
+    if user["role"] == "AE_ENGINEER":
+        rows = [x for x in rows if x.get("STATUS") != "DRAFT"]
     for x in rows:
         acts = [a["action"] for a in workflow().actions("RFI", x["STATUS"], user["role"])]
         # AE_ENGINEER only has action buttons on RFIs addressed to AE_ENGINEER:

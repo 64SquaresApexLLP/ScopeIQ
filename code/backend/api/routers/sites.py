@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 from fastapi import APIRouter, Depends
 
-from api.deps import current_user, finished_sites, my_notifications, provider_companies, provider_drawings, provider_package_released, provider_phase, ref, repo, require, shown_provider, site_scope, workflow
+from api.deps import ae_work, current_user, finished_sites, scoping_only, my_notifications, provider_companies, provider_drawings, provider_package_released, provider_phase, ref, repo, require, shown_provider, site_scope, workflow
 from scopeiq.common.audit import AuditTrail
 from scopeiq.common.errors import NotFound, PermissionDenied, ValidationError
 from scopeiq.db.repository import now_iso
@@ -12,6 +12,9 @@ from scopeiq.integrations.sharepoint import get_store
 from scopeiq.services.site_management import delete_site_cascade
 
 router = APIRouter(prefix="/sites", tags=["sites"])
+
+# what an A&E engineer is told about a site: where it is and what kind of structure, with its redline and RFI counts
+_AE_SITE_FIELDS = ("SITE_ID", "SITE_NAME", "ADDRESS", "CITY", "STATE", "ZIP", "MARKET", "STRUCTURE_TYPE", "HEIGHT_FT")
 
 # what a service provider is told about a site
 _PROVIDER_SITE_FIELDS = ("SITE_ID", "SITE_NAME", "ADDRESS", "CITY", "STATE", "ZIP", "MARKET", "LATITUDE", "LONGITUDE", "STRUCTURE_TYPE", "HEIGHT_FT",
@@ -28,6 +31,9 @@ def _check_scope(user: dict, site: dict) -> None:
 def list_sites(user: dict = Depends(current_user)):
     r = repo()
     sites = r.select("CORE.SITE", site_scope(user) or None, order_by="SITE_ID")
+    if user["role"] == "AE_ENGINEER":     # an A&E engineer's list: the sites that have redlines or RFIs for the firm, with the counts
+        work = ae_work()
+        return [{**{k: s.get(k) for k in _AE_SITE_FIELDS}, **{k.upper(): v for k, v in work[s["SITE_ID"]].items()}} for s in sites if s["SITE_ID"] in work]
     if user["role"] == "CX_SP":           # a service provider's list: the site and what it has been given, nothing of the scoping work
         return [{**{k: s.get(k) for k in _PROVIDER_SITE_FIELDS}, "DRAWINGS_READY": bool(provider_drawings(s["SITE_ID"])), "PHASE": provider_phase(s)} for s in sites]
 
@@ -84,7 +90,7 @@ def list_sites(user: dict = Depends(current_user)):
 def dashboard(user: dict = Depends(current_user)):
     r = repo()
     sites = r.select("CORE.SITE", site_scope(user) or None)
-    if user["role"] == "CX_SP":
+    if user["role"] in ("CX_SP", "AE_ENGINEER"):
         return {"sites": len(sites)}
     ids, ready = {s["SITE_ID"] for s in sites}, finished_sites()
     d = [x for x in r.query("SELECT SITE_ID, STATUS, SEVERITY, OUTCOME, RULE_ID FROM CORE.DISCREPANCY") if x["SITE_ID"] in ids]
@@ -100,7 +106,7 @@ def dashboard(user: dict = Depends(current_user)):
 
 
 @router.get("/service-providers")
-def list_service_providers(user: dict = Depends(current_user)):
+def list_service_providers(user: dict = Depends(scoping_only)):
     """The service-provider companies an admin has created a login for."""
     return [{"name": n} for n in provider_companies()]
 
@@ -108,6 +114,8 @@ def list_service_providers(user: dict = Depends(current_user)):
 @router.get("/{site_id}/provider")
 def provider_view(site_id: str, user: dict = Depends(current_user)):
     """What a service provider is given for a site: the final construction drawings, and from the handshake on the scope of work and the BOM."""
+    if user["role"] == "AE_ENGINEER":
+        raise PermissionDenied("Not available for your role")
     r = repo()
     site = r.get("CORE.SITE", SITE_ID=site_id)
     _check_scope(user, site)
@@ -133,9 +141,9 @@ def site_detail(site_id: str, user: dict = Depends(current_user)):
     site = r.get("CORE.SITE", SITE_ID=site_id)
     _check_scope(user, site)
     site["CX_SP"] = shown_provider(site.get("CX_SP"))
-    if user["role"] == "CX_SP":
+    if user["role"] in ("CX_SP", "AE_ENGINEER"):
         empty = {k: [] for k in ("actions", "milestones", "documents", "sectors", "trunks", "analyses", "delta", "requirements", "estimate", "ehs_alerts", "last_run", "workflow_history")}
-        return {**empty, "site": {k: site.get(k) for k in _PROVIDER_SITE_FIELDS}, "revision_check": None}
+        return {**empty, "site": {k: site.get(k) for k in (_AE_SITE_FIELDS if user["role"] == "AE_ENGINEER" else _PROVIDER_SITE_FIELDS)}, "revision_check": None}
     run_id = site.get("LAST_RUN_ID")
     by_run = lambda t: r.select(t, {"SITE_ID": site_id, "RUN_ID": run_id}) if run_id else []  # noqa: E731
     docs = r.select("CORE.DOCUMENT", {"SITE_ID": site_id}, order_by="DOC_TYPE, REVISION_RANK DESC")

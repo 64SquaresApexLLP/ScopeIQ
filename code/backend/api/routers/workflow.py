@@ -1,7 +1,7 @@
 """Workflow: available actions, generic transition (site scoping and any entity), history, role inbox."""
 from fastapi import APIRouter, Depends
 
-from api.deps import check_site_scope, current_user, internal_only, my_notifications, repo, workflow
+from api.deps import check_site_scope, current_user, my_notifications, repo, scoping_only, workflow
 from api.schemas import TransitionIn
 from scopeiq.common.context import current
 from scopeiq.common.errors import ValidationError
@@ -91,7 +91,7 @@ def transition(entity: str, entity_id: str, body: TransitionIn, user: dict = Dep
 
 
 @router.get("/{entity}/{entity_id}/history")
-def history(entity: str, entity_id: str, user: dict = Depends(internal_only)):
+def history(entity: str, entity_id: str, user: dict = Depends(scoping_only)):
     e = _entity(entity)
     table, id_col, _ = ENTITY_TABLES[e]
     row = repo().get(table, **{id_col: entity_id})

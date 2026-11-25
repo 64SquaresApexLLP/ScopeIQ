@@ -4,7 +4,7 @@ import logging
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from api.deps import current_user, internal_only, ref, reload_reference, repo, require
+from api.deps import current_user, ref, reload_reference, repo, require, scoping_only
 from api.schemas import LoginCreateIn, LoginUpdateIn
 from scopeiq.common.audit import AuditTrail
 from scopeiq.common.errors import Conflict, NotFound, ValidationError
@@ -27,7 +27,7 @@ def reference_tables(user: dict = Depends(current_user)):
 
 
 @router.get("/reference/{table}")
-def reference_rows(table: str, user: dict = Depends(internal_only)):
+def reference_rows(table: str, user: dict = Depends(scoping_only)):
     if table not in TABLES:
         raise NotFound(f"Reference table {table} not found")
     return ref().rows(table)

@@ -9,6 +9,7 @@ import { useAuth } from '../../lib/auth';
 import { label, when } from '../../lib/format';
 import { PipelineRun, PipelineStep, Row as R } from '../../lib/types';
 import { mutateApi, useApi } from '../../lib/useApi';
+import { AeSites } from '../../components/AeSites';
 import { ProviderHome } from '../../components/ProviderHome';
 
 type RunState = 'NONE' | 'RUNNING' | 'DONE' | 'WARN' | 'STOPPED' | 'FAILED';
@@ -55,7 +56,7 @@ function Docs({ item }: { item: R }) {
 
 export default function SitesPage() {
   const { user } = useAuth();
-  return user?.role === 'CX_SP' ? <ProviderHome /> : <Sites />;
+  return user?.role === 'CX_SP' ? <ProviderHome /> : user?.role === 'AE_ENGINEER' ? <AeSites /> : <Sites />;
 }
 
 function Sites() {
