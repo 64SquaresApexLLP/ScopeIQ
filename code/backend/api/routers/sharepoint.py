@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from api.deps import check_site_scope, current_user, repo, require, site_scope
+from api.deps import AE_FILE_TYPES, check_site_scope, current_user, repo, require, site_scope
 from scopeiq.common.audit import AuditTrail
 from scopeiq.common.errors import Conflict, NotFound, ValidationError
 from scopeiq.config import get_settings
@@ -448,6 +448,13 @@ def sync_site_documents_to_db(site_id: str, r=None) -> list[dict]:
         return []
 
 
+def _ae_folder_only(user: dict, folder: str) -> None:
+    """An A&E engineer may open files in the CD and SA/MA folders only."""
+    if user["role"] == "AE_ENGINEER" and folder not in {TYPE_FOLDERS[t] for t in AE_FILE_TYPES}:
+        from scopeiq.common.errors import PermissionDenied
+        raise PermissionDenied("An A&E engineer can open CD and SA/MA files only")
+
+
 def _resolve_sharepoint_file_path(site_id: str, folder: str, file_name: str) -> Path | None:
     st = get_settings()
     sp_local = st.path("sharepoint.local_root")
@@ -805,6 +812,7 @@ def download_sharepoint_file(
     sid = validate_site_id(site_id)
     if repo().select("CORE.SITE", {"SITE_ID": sid}):
         check_site_scope(user, sid)
+    _ae_folder_only(user, folder)
     path = _resolve_sharepoint_file_path(sid, folder, file_name)
     if not path or not path.is_file():
         raise NotFound(f"File '{file_name}' not found for site {sid}")
@@ -844,6 +852,7 @@ def preview_sharepoint_file(
     sid = validate_site_id(site_id)
     if repo().select("CORE.SITE", {"SITE_ID": sid}):
         check_site_scope(user, sid)
+    _ae_folder_only(user, folder)
     path = _resolve_sharepoint_file_path(sid, folder, file_name)
     if not path or not path.is_file():
         raise NotFound(f"File '{file_name}' not found for site {sid}")
@@ -881,6 +890,8 @@ def site_files(site_id: str, user: dict = Depends(require("ADMIN", "AE_ENGINEER"
     files = store.list_files(sid)
     for f in files:
         f["doc_type"] = detect_doc_type(f["name"])
+    if user["role"] == "AE_ENGINEER":                      # an A&E engineer sees the CD and SA/MA files, not the rest of the site's documents
+        files = [f for f in files if f["doc_type"] in AE_FILE_TYPES]
     return {"site_id": sid, "location": f"{store.location} / {sid}", "files": files}
 
 

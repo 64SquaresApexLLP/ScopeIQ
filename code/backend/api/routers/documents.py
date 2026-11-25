@@ -9,7 +9,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import FileResponse
 
-from api.deps import check_document_access, check_site_scope, current_user, provider_drawings, repo, require
+from api.deps import AE_FILE_TYPES, check_document_access, check_site_scope, current_user, provider_drawings, repo, require
 from scopeiq.common.audit import AuditTrail
 from scopeiq.common.errors import Conflict, NotFound, ValidationError
 from scopeiq.config import get_settings
@@ -29,6 +29,8 @@ MAX_BYTES = 400 * 1024 * 1024
 def list_documents(site_id: str, user: dict = Depends(current_user)):
     check_site_scope(user, site_id)
     docs = provider_drawings(site_id) if user["role"] == "CX_SP" else repo().select("CORE.DOCUMENT", {"SITE_ID": site_id}, order_by="DOC_TYPE, REVISION_RANK")
+    if user["role"] == "AE_ENGINEER":
+        docs = [d for d in docs if d.get("DOC_TYPE") in AE_FILE_TYPES]
     uploads = [] if user["role"] == "CX_SP" else repo().select("CORE.UPLOAD", {"SITE_ID": site_id}, order_by="UPLOADED_AT")
     return {"documents": docs, "uploads": uploads, "upload_types": list(UPLOAD_FOLDERS)}
 

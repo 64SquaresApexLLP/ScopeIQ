@@ -149,6 +149,37 @@ def internal_only(user: dict = Depends(current_user)) -> dict:
     return user
 
 
+def scoping_only(user: dict = Depends(current_user)) -> dict:
+    """The scoping workbench (pipeline, findings, BOM, estimates, handshake data) is for the scoping team, Admin and Ericsson. An A&E engineer is given the
+    redlines and RFIs addressed to its firm and the CD and SA/MA files; a service provider its handshake."""
+    if user["role"] in ("CX_SP", "AE_ENGINEER"):
+        raise PermissionDenied("Not available for your role")
+    return user
+
+
+AE_FILE_TYPES = ("CD", "MA_SA")
+
+
+def ae_work() -> dict[str, dict]:
+    """Per site, what an A&E engineer has to do: its redlines, and the RFIs addressed to the firm that have been sent (not drafts), with how many are
+    still open. Only sites whose newest run finished count, as everywhere else. What 'open' means comes from the workflow reference."""
+    wf = workflow()
+    closed = lambda entity: {s["STATE"] for s in wf.states if s["ENTITY_TYPE"] == entity and s["IS_TERMINAL"] == "Y"}   # noqa: E731
+    redline_done, rfi_done, ready, work = closed("REDLINE"), closed("RFI"), finished_sites(), {}
+    blank = lambda: {"redlines": 0, "open_redlines": 0, "rfis": 0, "open_rfis": 0}   # noqa: E731
+    for x in repo().select("CORE.REDLINE", None):
+        if x["SITE_ID"] in ready:
+            w = work.setdefault(x["SITE_ID"], blank())
+            w["redlines"] += 1
+            w["open_redlines"] += x.get("STATUS") not in redline_done
+    for x in repo().select("CORE.RFI", {"TO_PARTY": "AE_ENGINEER"}):
+        if x["SITE_ID"] in ready and x.get("STATUS") != "DRAFT":
+            w = work.setdefault(x["SITE_ID"], blank())
+            w["rfis"] += 1
+            w["open_rfis"] += x.get("STATUS") not in rfi_done
+    return work
+
+
 def provider_drawings(site_id: str) -> list[dict]:
     """The construction drawings a service provider is given: the current ones, once they are final. That is when the newest run has finished and no
     redline is still open, so a drawing is either correct as it was or the corrected one the A&E issued."""
@@ -179,6 +210,8 @@ def check_document_access(user: dict, doc: dict) -> dict:
     check_site_scope(user, doc["SITE_ID"])
     if user["role"] == "CX_SP" and doc["DOC_ID"] not in {d["DOC_ID"] for d in provider_drawings(doc["SITE_ID"])}:
         raise PermissionDenied("This document is not available to you")
+    if user["role"] == "AE_ENGINEER" and doc.get("DOC_TYPE") not in AE_FILE_TYPES:
+        raise PermissionDenied("An A&E engineer can open CD and SA/MA documents only")
     return doc
 
 

@@ -84,12 +84,12 @@ export default function Site() {
   const d = useApi<SiteDetail>(`/sites/${id}`);
 
   return (
-    <AppShell crumbs={isAe ? [{ label: 'Redlines & RFIs', href: '/(tabs)/rfis' }, { label: id }]
+    <AppShell crumbs={isAe ? [{ label: 'Sites', href: '/(tabs)/sites' }, { label: id }, { label: 'Redlines & RFIs' }]
       : [{ label: 'Sites', href: '/(tabs)/sites' }, { label: id }, { label: activeTab === 'pipeline' ? 'Pipeline run' : tabs.find((t) => t.key === activeTab)?.label ?? '' }]}>
       <View style={[s.screen, { flex: 1 }]}>
         <View style={{ backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: colors.border }}>
           <SiteHeader id={id} d={d.data} />
-          <Tabs tabs={tabs} value={activeTab} onChange={setTab} style={{ paddingHorizontal: space(6), marginTop: space(4), marginBottom: space(4) }} />
+          {tabs.length > 1 ? <Tabs tabs={tabs} value={activeTab} onChange={setTab} style={{ paddingHorizontal: space(6), marginTop: space(4), marginBottom: space(4) }} /> : <View style={{ height: space(4) }} />}
         </View>
         <ScrollView
           contentContainerStyle={[s.content, { maxWidth: activeTab === 'pipeline' ? 1640 : activeTab === 'bom' || activeTab === 'handshake' ? 1440 : 1240, width: '100%', alignSelf: 'center' }]}

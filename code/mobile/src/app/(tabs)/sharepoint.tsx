@@ -1,7 +1,7 @@
 // SharePoint upload. Pick one site, drop or choose files, upload. Files go only into the selected site's folder.
 // Nothing selected -> "Please select one site" and no upload controls.
 import * as DocumentPicker from 'expo-document-picker';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Platform, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { FilePreviewModal, FilePreviewTarget } from '../../components/FilePreviewModal';
@@ -101,7 +101,8 @@ export default function SharePoint() {
       }
     }, [canUseSharePoint, sites.reload]),
   );
-  const [siteId, setSiteId] = useState<string | null>(null);
+  const { site: siteParam } = useLocalSearchParams<{ site?: string }>();
+  const [siteId, setSiteId] = useState<string | null>(siteParam ?? null);
   const [type, setType] = useState<T>('AUTO');
   const [showType, setShowType] = useState(false);
   const [picked, setPicked] = useState<Picked[]>([]);
