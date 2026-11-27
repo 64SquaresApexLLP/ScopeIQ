@@ -165,7 +165,6 @@ export function BomView({ siteId }: { siteId: string }) {
           <Stat label="Install" value={summary.install_lines ?? 0} icon="plus-circle" color={colors.ok} hint={`${num(summary.install_qty)} units`} />
           <Stat label="Remove" value={summary.remove_lines ?? 0} icon="minus-circle" color={summary.remove_lines ? colors.danger : undefined} hint={`${num(summary.remove_qty)} units`} />
           <Stat label="Needs review" value={review} icon="eye" color={review ? colors.warn : undefined} hint={review ? 'Check before export' : 'Nothing to check'} />
-          <Stat label="Rules not applied" value={notApplied.length} icon="slash" color={notApplied.length ? colors.danger : undefined} hint={notApplied.length ? 'See the list below' : 'Every rule was applied'} />
           {summary.total_material_cost ? <Stat label="Material cost" value={money(summary.total_material_cost)} icon="dollar-sign" hint="Install lines" /> : null}
         </View>
       </Card>

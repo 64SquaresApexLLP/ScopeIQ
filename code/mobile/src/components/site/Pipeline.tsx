@@ -17,7 +17,7 @@ import { StageFlow } from './pipeline/StageFlow';
 import { ActivityView, DocumentsView, FindingsView, OverviewView } from './pipeline/Views';
 import { StepDetailView } from './PipelineSteps';
 import { ExtractionStage } from './extraction/Extraction';
-import { RunNotes, RunResult } from './RunResult';
+import { RunResult } from './RunResult';
 
 function Fact({ k, v, mono }: { k: string; v?: string | null; mono?: boolean }) {
   return (
@@ -153,7 +153,7 @@ export function Pipeline({ siteId, siteName, onFinished, onOpenTab }: { siteId: 
         <View style={{ flexShrink: 1, minWidth: 280 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: space(2.5), flexWrap: 'wrap' }}>
             <Text style={{ fontSize: 20, fontWeight: '600', color: colors.text, letterSpacing: -0.3 }}>Pipeline run</Text>
-            <Badge text={rsv.label} color={rsv.color} dot />
+            {rs !== 'FINDINGS' ? <Badge text={rsv.label} color={rsv.color} dot /> : null}
             {running && runningStep ? <Text style={{ fontSize: 12.5, color: STATE.RUNNING.color }}>{`Now: ${runningStep.label}`}</Text> : null}
           </View>
           <View style={{ flexDirection: 'row', gap: space(5), marginTop: space(3), flexWrap: 'wrap' }}>
@@ -224,7 +224,7 @@ export function Pipeline({ siteId, siteName, onFinished, onOpenTab }: { siteId: 
           ) : null}
 
               {steps ? <OverviewView steps={steps} onOpenStage={(k) => { if (k) setSelectedStage(k); setView('stages'); }} /> : null}
-              {!running && rs !== 'FAILED' ? <View style={{ marginTop: space(2) }}><RunNotes run={r} /><RunResult run={r} siteId={siteId} /></View> : null}
+              {!running && rs !== 'FAILED' ? <View style={{ marginTop: space(2) }}><RunResult run={r} siteId={siteId} /></View> : null}
             </>
           ) : null}
           {view === 'stages' ? (

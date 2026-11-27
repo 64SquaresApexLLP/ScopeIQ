@@ -22,12 +22,12 @@ type TabDef = { key: Tab; label: string; icon: IconName };
 const ALL_TABS: TabDef[] = [
   { key: 'overview', label: 'Overview', icon: 'info' },
   { key: 'pipeline', label: 'Pipeline', icon: 'git-commit' },
-  { key: 'handshake', label: 'Handshake & Scope', icon: 'check-circle' },
   { key: 'drawings', label: 'Drawings', icon: 'file-text' },
   { key: 'scope', label: 'Scope of work', icon: 'layers' },
   { key: 'discrepancies', label: 'Discrepancies', icon: 'alert-triangle' },
   { key: 'redlines', label: 'Redlines & RFIs', icon: 'edit-3' },
   { key: 'bom', label: 'Bill of materials', icon: 'list' },
+  { key: 'handshake', label: 'Handshake & Scope', icon: 'check-circle' },
 ];
 // A service provider is given the site, the final drawings, and from the handshake the scope of work and the BOM; none of the scoping work.
 const SP_TABS: Tab[] = ['overview', 'drawings', 'scope', 'bom'];
