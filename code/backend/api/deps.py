@@ -180,15 +180,44 @@ def ae_work() -> dict[str, dict]:
     return work
 
 
-def provider_drawings(site_id: str) -> list[dict]:
-    """The construction drawings a service provider is given: the current ones, once they are final. That is when the newest run has finished and no
-    redline is still open, so a drawing is either correct as it was or the corrected one the A&E issued."""
-    if site_id not in finished_sites():
+def _latest_scoping_run(site_id: str) -> dict | None:
+    """Newest scoping pipeline run for a site (ignoring CDREV- redline application jobs)."""
+    runs = [
+        x for x in repo().select("CORE.PIPELINE_RUN", {"SITE_ID": site_id}, order_by="STARTED_AT DESC")
+        if not str(x.get("RUN_ID") or "").startswith("CDREV-")
+    ]
+    return runs[0] if runs else None
+
+
+def _bom_generated_for_site(site_id: str, run: dict) -> bool:
+    """True when the pipeline run completed BOM generation (not skipped at Stage 4) or BOM output exists."""
+    steps = run.get("STEPS")
+    if isinstance(steps, list) and steps:
+        bom_steps = [s for s in steps if isinstance(s, dict) and s.get("key") in ("BOM", "GENERATE")]
+        if bom_steps:
+            return any(s.get("status") == "DONE" for s in bom_steps)
+    r = repo()
+    if any(x.get("KIND") != "TOOL_REV0" for x in r.select("CORE.BOM_REVISION", {"SITE_ID": site_id})):
+        return True
+    return bool(r.select("CORE.BOM_OUTPUT_LINE", {"SITE_ID": site_id}, limit=1))
+
+
+def provider_drawings(site_id: str, site: dict | None = None) -> list[dict]:
+    """The construction drawings a service provider is given: the current CD drawings once the package is released
+    to the service provider (SP_HANDSHAKE onward), after a finished pipeline run has generated the BOM and no redline is open."""
+    r = repo()
+    site_row = site or r.get("CORE.SITE", SITE_ID=site_id)
+    if not provider_package_released(site_row):
         return []
-    done = {s["STATE"] for s in workflow().states if s["ENTITY_TYPE"] == "REDLINE" and s["IS_TERMINAL"] == "Y"}
-    if any(x.get("STATUS") not in done for x in repo().select("CORE.REDLINE", {"SITE_ID": site_id})):
+    run = _latest_scoping_run(site_id)
+    if not run or run.get("STATUS") not in ("SUCCEEDED", "SUCCEEDED_WITH_WARNINGS"):
         return []
-    return [d for d in repo().select("CORE.DOCUMENT", {"SITE_ID": site_id, "DOC_TYPE": "CD"}, order_by="FILE_NAME") if d.get("STATUS") == "CURRENT"]
+    if not _bom_generated_for_site(site_id, run):
+        return []
+    done = {s["STATE"] for s in workflow().states if s["ENTITY_TYPE"] == "REDLINE" and s["IS_TERMINAL"] == "Y"} | {"INCORPORATED", "CLOSED"}
+    if any(x.get("STATUS") not in done for x in r.select("CORE.REDLINE", {"SITE_ID": site_id})):
+        return []
+    return [d for d in r.select("CORE.DOCUMENT", {"SITE_ID": site_id, "DOC_TYPE": "CD"}, order_by="FILE_NAME") if d.get("STATUS") == "CURRENT"]
 
 
 def provider_package_released(site: dict) -> bool:

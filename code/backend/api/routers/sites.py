@@ -36,7 +36,7 @@ def list_sites(user: dict = Depends(current_user)):
         work = ae_work()
         return [{**{k: s.get(k) for k in _AE_SITE_FIELDS}, **{k.upper(): v for k, v in work[s["SITE_ID"]].items()}} for s in sites if s["SITE_ID"] in work]
     if user["role"] == "CX_SP":           # a service provider's list: the site and what it has been given, nothing of the scoping work
-        return [{**{k: s.get(k) for k in _PROVIDER_SITE_FIELDS}, "DRAWINGS_READY": bool(provider_drawings(s["SITE_ID"])), "PHASE": provider_phase(s)} for s in sites]
+        return [{**{k: s.get(k) for k in _PROVIDER_SITE_FIELDS}, "DRAWINGS_READY": bool(provider_drawings(s["SITE_ID"], s)), "PHASE": provider_phase(s)} for s in sites]
 
     # Document counts: one query for all sites, grouped by SITE_ID + DOC_TYPE
     # NOTE: DOC_COUNT only reflects files processed by the pipeline (CORE.DOCUMENT).
@@ -128,7 +128,7 @@ def provider_view(site_id: str, user: dict = Depends(current_user)):
     return {"site_id": site_id, "site_name": site.get("SITE_NAME"), "phase": phase,
             "requests": [{"when": e.get("EVENT_TS"), "reason": next((c["DESCRIPTION"] for c in ref().rows("reason_codes") if c["REASON_CODE"] == e.get("REASON_CODE")), e.get("REASON_CODE")),
                           "comment": e.get("COMMENT")} for e in reversed(mine)],
-            "drawings": [keep(d, ("DOC_ID", "FILE_NAME", "FILE_FORMAT", "REVISION", "SIZE_BYTES")) for d in provider_drawings(site_id)],
+            "drawings": [keep(d, ("DOC_ID", "FILE_NAME", "FILE_FORMAT", "REVISION", "SIZE_BYTES")) for d in provider_drawings(site_id, site)],
             "scope": {"released": released,
                       "items": [keep(x, ("SECTOR", "POSITION", "KIND", "CATALOG_KEY", "ACTION", "FROM_POSITION"))
                                 for x in bom_revisions.scope_items(r, site_id, site.get("LAST_RUN_ID"))] if released else []},

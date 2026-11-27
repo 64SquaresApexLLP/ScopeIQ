@@ -259,6 +259,23 @@ async def upload(site_id: str, doc_type: str = Form(...), file: UploadFile = Fil
     return out
 
 
+def _resolve_doc_path(doc: dict) -> Path:
+    """Resolve a registered document's disk path, falling back to local SharePoint or upload storage when needed."""
+    st = get_settings()
+    prefix, _, rest = (doc.get("REL_PATH") or "").partition("/")
+    sp_base = st.path("sharepoint.local_root") / st.get("sharepoint.library_root", "Ericsson-Scoping/Sites")
+    if prefix == "sites":
+        candidates = [st.path("paths.sites_dir") / rest, sp_base / rest, st.path("paths.upload_dir") / rest]
+    elif prefix == "sharepoint":
+        candidates = [sp_base / rest]
+    else:
+        candidates = [st.path("paths.upload_dir") / rest]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return candidates[0]
+
+
 @router.get("/documents/{doc_id}/download")
 def download(
     doc_id: str,
@@ -268,15 +285,7 @@ def download(
     import mimetypes
 
     d = check_document_access(user, repo().get("CORE.DOCUMENT", DOC_ID=doc_id))
-    st = get_settings()
-    prefix, _, rest = (d["REL_PATH"] or "").partition("/")
-    if prefix == "sites":
-        base = st.path("paths.sites_dir")
-    elif prefix == "sharepoint":
-        base = st.path("sharepoint.local_root") / st.get("sharepoint.library_root", "Ericsson-Scoping/Sites")
-    else:
-        base = st.path("paths.upload_dir")
-    path = base / rest
+    path = _resolve_doc_path(d)
     if not path.is_file():
         raise NotFound(f"File for {doc_id} is not available on this server")
 
@@ -309,15 +318,7 @@ def preview_document(doc_id: str, user: dict = Depends(current_user)):
     """Return structured preview payload (spreadsheet, pdf, image, video, json, text) for a document."""
     from api.routers.sharepoint import _build_file_preview
     d = check_document_access(user, repo().get("CORE.DOCUMENT", DOC_ID=doc_id))
-    st = get_settings()
-    prefix, _, rest = (d["REL_PATH"] or "").partition("/")
-    if prefix == "sites":
-        base = st.path("paths.sites_dir")
-    elif prefix == "sharepoint":
-        base = st.path("sharepoint.local_root") / st.get("sharepoint.library_root", "Ericsson-Scoping/Sites")
-    else:
-        base = st.path("paths.upload_dir")
-    path = base / rest
+    path = _resolve_doc_path(d)
     if not path.is_file():
         raise NotFound(f"File for {doc_id} is not available on this server")
     download_url = f"/documents/{doc_id}/download"
