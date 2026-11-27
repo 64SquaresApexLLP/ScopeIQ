@@ -243,13 +243,13 @@ function RevisionCheck({ d, counts, filter, setFilter }: { d: SiteDetail; counts
 }
 
 // ------------------------------------------------------------------ document register
-const COLS = { rev: 84, fmt: 130, date: 116, status: 112, act: 112 };
+const COLS = { rev: 84, fmt: 130, date: 168, status: 112, act: 112 };
 
 function DocRow({ x, wide, pickedRev, onPreview }: { x: R; wide: boolean; pickedRev?: string | null; onPreview: () => void }) {
   const stt = statusInfo(x.STATUS);
   const dim = x.STATUS === 'SUPERSEDED' || x.STATUS === 'DUPLICATE';
   const fmt = [x.FILE_FORMAT, size(x.SIZE_BYTES)].filter(Boolean).join(' · ') || 'Not available';
-  const uploaded = fmtDate(x.REGISTERED_AT) ?? fmtDate(x.DOC_DATE) ?? 'Not available';
+  const uploaded = fmtDateTime(x.REGISTERED_AT) ?? fmtDate(x.DOC_DATE) ?? 'Not available';
   const note = x.STATUS === 'SUPERSEDED' ? (pickedRev ? `Replaced by ${pickedRev}` : 'Replaced by a newer revision')
     : x.STATUS === 'DUPLICATE' ? 'Same content as another file in this site' : null;
   const rev = x.REVISION ? (

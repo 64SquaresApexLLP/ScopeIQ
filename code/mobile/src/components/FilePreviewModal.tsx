@@ -1151,7 +1151,13 @@ export function FilePreviewModal({
                   {data?.format ? <Badge text={data.format} color={colors.muted} /> : null}
                 </Row>
                 <Muted style={{ fontSize: 12, marginTop: 2 }}>
-                  {[kb(data?.size || target.size), data?.modified ? `Updated ${data.modified.split('T')[0]}` : null, target.folder ? `Folder: ${target.folder}` : null]
+                  {[
+                    kb(data?.size || target.size),
+                    data?.modified
+                      ? `Updated ${new Date(data.modified).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}, ${new Date(data.modified).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
+                      : null,
+                    target.folder ? `Folder: ${target.folder}` : null,
+                  ]
                     .filter(Boolean)
                     .join(' · ')}
                 </Muted>

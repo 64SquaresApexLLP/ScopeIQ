@@ -431,17 +431,28 @@ def sync_site_documents_to_db(site_id: str, r=None) -> list[dict]:
     upload_dir = Path(st.path("paths.upload_dir")) / site_id
     try:
         docs = register_site_folder(site_dir, site_id, upload_dir=upload_dir if upload_dir.is_dir() else None, paths=doc_paths)
+        existing = {
+            row["DOC_ID"]: (row.get("REGISTERED_AT"), row.get("REGISTERED_BY"))
+            for row in r.select("CORE.DOCUMENT", {"SITE_ID": site_id})
+            if row.get("DOC_ID")
+        }
         r.delete_where("CORE.DOCUMENT", {"SITE_ID": site_id})
         if docs:
             known = {c for t in tables() if t.fqn == "CORE.DOCUMENT" for c in t.column_names}
-            rows = [
-                dict(
-                    {k.upper(): v for k, v in asdict(d).items() if k.upper() in known},
-                    INSERTED_AT=now_iso(),
-                    INSERTED_BY="sharepoint_sync",
+            rows = []
+            for d in docs:
+                prev_at, prev_by = existing.get(d.doc_id, (None, None))
+                if not prev_at:
+                    p = doc_paths.get(d.doc_id)
+                    prev_at = datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc).isoformat() if p and p.is_file() else now_iso()
+                    prev_by = prev_by or "sharepoint_sync"
+                rows.append(
+                    dict(
+                        {k.upper(): v for k, v in asdict(d).items() if k.upper() in known},
+                        REGISTERED_AT=prev_at,
+                        REGISTERED_BY=prev_by,
+                    )
                 )
-                for d in docs
-            ]
             r.insert("CORE.DOCUMENT", rows)
         return [d.__dict__ for d in docs]
     except Exception as exc:
