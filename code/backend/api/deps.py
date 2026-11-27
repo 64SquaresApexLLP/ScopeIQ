@@ -120,6 +120,101 @@ def site_scope(user: dict) -> dict:
     return {}
 
 
+def my_notifications(user: dict, unread_only: bool = False) -> list[dict]:
+    """The caller's inbox (newest first). A CX SP only gets notifications about its own sites, never another provider's."""
+    sql = "SELECT * FROM WF.NOTIFICATION WHERE (ROLE_CODE = %s OR USER_ID = %s)" + (" AND READ_AT IS NULL" if unread_only else "")
+    rows = repo().query(sql + " ORDER BY CREATED_AT DESC", [user["role"], user["sub"]])
+    scope = site_scope(user)
+    if scope:
+        own = {s["SITE_ID"] for s in repo().select("CORE.SITE", scope)}
+        rows = [n for n in rows if n.get("SITE_ID") in own]
+    return rows
+
+
+def provider_companies() -> list[str]:
+    """The service-provider companies: those an admin has created a login for. A provider exists only as an account, never as sample data."""
+    return sorted({x["ORGANISATION"] for x in repo().select("CORE.USER_LOGIN", {"ROLE_CODE": "CX_SP"}) if x.get("ORGANISATION") and x.get("ACTIVE")})
+
+
+def shown_provider(name: str | None, companies=None) -> str | None:
+    """The provider a site is shown with. A name left in tracker data that no account belongs to reads as not assigned."""
+    return name if name and name in (companies if companies is not None else provider_companies()) else None
+
+
+def internal_only(user: dict = Depends(current_user)) -> dict:
+    """Scoping work (pipeline, findings, redlines, estimates, BOM drafts, raw files, reference tables) is for the scoping team. A service provider is
+    given its sites, the final drawings and the approved BOM, through /sites and /documents only."""
+    if user["role"] == "CX_SP":
+        raise PermissionDenied("Not available for your role")
+    return user
+
+
+def scoping_only(user: dict = Depends(current_user)) -> dict:
+    """The scoping workbench (pipeline, findings, BOM, estimates, handshake data) is for the scoping team, Admin and Ericsson. An A&E engineer is given the
+    redlines and RFIs addressed to its firm and the CD and SA/MA files; a service provider its handshake."""
+    if user["role"] in ("CX_SP", "AE_ENGINEER"):
+        raise PermissionDenied("Not available for your role")
+    return user
+
+
+AE_FILE_TYPES = ("CD", "MA_SA")
+
+
+def ae_work() -> dict[str, dict]:
+    """Per site, what an A&E engineer has to do: its redlines, and the RFIs addressed to the firm that have been sent (not drafts), with how many are
+    still open. Only sites whose newest run finished count, as everywhere else. What 'open' means comes from the workflow reference."""
+    wf = workflow()
+    closed = lambda entity: {s["STATE"] for s in wf.states if s["ENTITY_TYPE"] == entity and s["IS_TERMINAL"] == "Y"}   # noqa: E731
+    redline_done, rfi_done, ready, work = closed("REDLINE"), closed("RFI"), finished_sites(), {}
+    blank = lambda: {"redlines": 0, "open_redlines": 0, "rfis": 0, "open_rfis": 0}   # noqa: E731
+    for x in repo().select("CORE.REDLINE", None):
+        if x["SITE_ID"] in ready:
+            w = work.setdefault(x["SITE_ID"], blank())
+            w["redlines"] += 1
+            w["open_redlines"] += x.get("STATUS") not in redline_done
+    for x in repo().select("CORE.RFI", {"TO_PARTY": "AE_ENGINEER"}):
+        if x["SITE_ID"] in ready and x.get("STATUS") != "DRAFT":
+            w = work.setdefault(x["SITE_ID"], blank())
+            w["rfis"] += 1
+            w["open_rfis"] += x.get("STATUS") not in rfi_done
+    return work
+
+
+def provider_drawings(site_id: str) -> list[dict]:
+    """The construction drawings a service provider is given: the current ones, once they are final. That is when the newest run has finished and no
+    redline is still open, so a drawing is either correct as it was or the corrected one the A&E issued."""
+    if site_id not in finished_sites():
+        return []
+    done = {s["STATE"] for s in workflow().states if s["ENTITY_TYPE"] == "REDLINE" and s["IS_TERMINAL"] == "Y"}
+    if any(x.get("STATUS") not in done for x in repo().select("CORE.REDLINE", {"SITE_ID": site_id})):
+        return []
+    return [d for d in repo().select("CORE.DOCUMENT", {"SITE_ID": site_id, "DOC_TYPE": "CD"}, order_by="FILE_NAME") if d.get("STATUS") == "CURRENT"]
+
+
+def provider_package_released(site: dict) -> bool:
+    """The scope of work and the BOM go to a service provider when the locked revision is sent to it for the handshake, and stay with it through
+    final approval. While the package is with the scoping team, or back with it after a change request, the provider is shown none of it."""
+    return workflow().is_out_for_approval(site.get("WORKFLOW_STATE"))
+
+
+def provider_phase(site: dict) -> str:
+    """Where a site stands for its provider: PENDING (being prepared), REVIEW (waiting for its answer), AGREED (it agreed, final approval to come) or
+    APPROVED. Read from who owns the workflow state and whether it is locked."""
+    wf, state = workflow(), site.get("WORKFLOW_STATE")
+    row = wf.state_row("SITE_SCOPING", state) or {}
+    return "APPROVED" if wf.is_locked("SITE_SCOPING", state or "") else "REVIEW" if row.get("OWNER_ROLE") == "CX_SP" else "AGREED" if wf.is_out_for_approval(state) else "PENDING"
+
+
+def check_document_access(user: dict, doc: dict) -> dict:
+    """The document's site must be the caller's own, and a service provider may open only the drawings it has been given."""
+    check_site_scope(user, doc["SITE_ID"])
+    if user["role"] == "CX_SP" and doc["DOC_ID"] not in {d["DOC_ID"] for d in provider_drawings(doc["SITE_ID"])}:
+        raise PermissionDenied("This document is not available to you")
+    if user["role"] == "AE_ENGINEER" and doc.get("DOC_TYPE") not in AE_FILE_TYPES:
+        raise PermissionDenied("An A&E engineer can open CD and SA/MA documents only")
+    return doc
+
+
 def check_site_scope(user: dict, site_id: str) -> dict:
     """Load the site and refuse it when it is outside the caller's scope (a CX SP's own sites only)."""
     site = repo().get("CORE.SITE", SITE_ID=site_id)

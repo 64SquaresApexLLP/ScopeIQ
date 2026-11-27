@@ -1,4 +1,4 @@
-"""Sign-in. Roles in auth.password_roles (SCOPER) sign in with a username + password the admin created (CORE.USER_LOGIN);
+"""Sign-in. Roles in auth.password_roles (SCOPER, AE_ENGINEER, CX_SP, ADMIN) sign in with a username + password the admin created (CORE.USER_LOGIN);
 the other roles still use the demo login (pick an account, any non-empty password). Returns a signed bearer token."""
 from fastapi import APIRouter, Depends
 
@@ -22,9 +22,13 @@ def demo_users():
     """Accounts and personas for the login screen; `password_required` tells the screen to ask for a username + password."""
     personas = {p["ROLE_CODE"]: p for p in ref().rows("personas")}
     protected = password_roles()
-    return [{"user_id": u["USER_ID"], "name": u["DISPLAY_NAME"], "role": u["ROLE_CODE"], "organisation": u["ORGANISATION"],
-             "persona": personas.get(u["ROLE_CODE"], {}).get("PERSONA_NAME"), "password_required": u["ROLE_CODE"] in protected}
-            for u in ref().rows("users") if u.get("ACTIVE", "Y") == "Y"]
+    out = [{"user_id": u["USER_ID"], "name": u["DISPLAY_NAME"], "role": u["ROLE_CODE"], "organisation": u["ORGANISATION"],
+            "persona": personas.get(u["ROLE_CODE"], {}).get("PERSONA_NAME"), "password_required": u["ROLE_CODE"] in protected}
+           for u in ref().rows("users") if u.get("ACTIVE", "Y") == "Y"]
+    for role in sorted(protected - {u["role"] for u in out}):          # a role that signs in with a login needs no demo account to be offered
+        out.append({"user_id": role.lower(), "name": role, "role": role, "organisation": "", "persona": personas.get(role, {}).get("PERSONA_NAME"),
+                    "password_required": True})
+    return out
 
 
 def _credential_user(username: str, password: str, role: str | None = None) -> dict:
@@ -35,8 +39,9 @@ def _credential_user(username: str, password: str, role: str | None = None) -> d
         raise AuthenticationError("Incorrect username or password")
     if role and row["ROLE_CODE"] != role.upper():        # a Scoper login cannot be used on the A&E Engineer card, and so on
         raise AuthenticationError("Incorrect username or password")
+    org = row.get("ORGANISATION") or ""
     return {"USER_ID": row["USERNAME"], "ROLE_CODE": row["ROLE_CODE"], "DISPLAY_NAME": row["DISPLAY_NAME"] or row["USERNAME"],
-            "ORGANISATION": row.get("ORGANISATION") or "", "SERVICE_PROVIDER": ""}
+            "ORGANISATION": org, "SERVICE_PROVIDER": org if row["ROLE_CODE"] == "CX_SP" else ""}
 
 
 def _demo_user(user_id: str | None) -> dict:

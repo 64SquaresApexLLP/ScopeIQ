@@ -3,6 +3,8 @@ export const money = (v: number | null | undefined) =>
 export const num = (v: number | null | undefined, d = 1) => (v == null ? '-' : Number(v).toLocaleString('en-US', { maximumFractionDigits: d }));
 export const when = (iso?: string | null) => (iso ? iso.replace('T', ' ').slice(0, 16) : '-');
 export const label = (s?: string | null) => (s ? s.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase()) : '-');
+/** A name or address as people read it: the demo-data tag is not part of it. Display only; the stored value is what records match on. */
+export const clean = (s?: string | null) => (s ? s.replace(/\s*\(synthetic\)/gi, '').trim() : '');
 export const SECTOR: Record<string, string> = { A: 'Alpha', B: 'Beta', C: 'Gamma', D: 'Delta', SITE: 'Site' };
 export const show = (v: unknown): string => {
   if (v == null || v === '') return '-';
@@ -17,4 +19,12 @@ export const show = (v: unknown): string => {
 
 // Roles are shown by role only (no personal names): SCOPER -> "Scoper", ADMIN -> "Admin", AE_ENGINEER -> "A&E Engineer".
 export const roleLabel = (role?: string | null) =>
-  role === 'ADMIN' || role === 'ERICSSON' ? 'Admin' : role === 'SCOPER' ? 'Scoper' : role === 'AE_ENGINEER' ? 'A&E Engineer' : label(role);
+  role === 'ADMIN' || role === 'ERICSSON'
+    ? 'Admin'
+    : role === 'SCOPER'
+      ? 'Scoper'
+      : role === 'AE_ENGINEER'
+        ? 'A&E Engineer'
+        : role === 'CX_SP'
+          ? 'Service Provider (CX SP)'
+          : label(role);

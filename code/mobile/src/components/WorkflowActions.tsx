@@ -7,12 +7,13 @@ import { api, ApiError } from '../lib/api';
 import { getLogger } from '../lib/logger';
 import { ReasonCode, WorkflowAction } from '../lib/types';
 import { colors, space } from './theme';
-import { Button, ErrorView, Muted, Row, s, Title } from './ui';
+import { Button, ErrorView, humanize, Muted, Row, s, Title } from './ui';
 
 const log = getLogger('workflow');
 let reasonCache: ReasonCode[] | null = null;
 
-export function useReasonCodes(appliesTo?: string) {
+/** `appliesTo` is one tag or several. A code matches when its APPLIES_TO lists a tag, or ALL; "ENTITY:ACTION" tags limit a code to one action. */
+export function useReasonCodes(appliesTo?: string | string[]) {
   const [codes, setCodes] = useState<ReasonCode[]>(reasonCache ?? []);
   useEffect(() => {
     if (reasonCache) return;
@@ -21,18 +22,18 @@ export function useReasonCodes(appliesTo?: string) {
       setCodes(r);
     }).catch((e) => log.warn('reason codes not loaded', { error: String(e) }));
   }, []);
-  return appliesTo ? codes.filter((c) => !c.APPLIES_TO || c.APPLIES_TO.split(';').includes(appliesTo)) : codes;
+  const wanted = appliesTo === undefined ? null : Array.isArray(appliesTo) ? appliesTo : [appliesTo];
+  return wanted ? codes.filter((c) => !c.APPLIES_TO || c.APPLIES_TO.split(';').some((t) => t === 'ALL' || wanted.includes(t))) : codes;
 }
 
-export function ReasonPicker({ value, onChange, appliesTo }: { value: string | null; onChange: (c: string) => void; appliesTo?: string }) {
+export function ReasonPicker({ value, onChange, appliesTo }: { value: string | null; onChange: (c: string) => void; appliesTo?: string | string[] }) {
   const codes = useReasonCodes(appliesTo);
   return (
     <ScrollView style={{ maxHeight: 220 }}>
       {codes.map((c) => (
         <Pressable key={c.REASON_CODE} onPress={() => onChange(c.REASON_CODE)} accessibilityRole="radio" accessibilityState={{ checked: value === c.REASON_CODE }}
           style={{ padding: space(2), borderRadius: 6, backgroundColor: value === c.REASON_CODE ? colors.primary + '18' : undefined }}>
-          <Text style={{ fontWeight: '700', color: colors.text }}>{c.REASON_CODE}</Text>
-          <Muted>{`${c.DESCRIPTION} (${c.FAULT_PARTY})`}</Muted>
+          <Text style={{ fontWeight: '700', color: colors.text }}>{c.DESCRIPTION || c.REASON_CODE}</Text>
         </Pressable>
       ))}
     </ScrollView>
@@ -110,7 +111,7 @@ export function WorkflowActions({ actions, endpoint, entity, onDone, details }: 
     if (entity === 'REDLINE' && u === 'REVIEW_DONE') return 'Review Done';
     if (entity === 'REDLINE' && (u === 'COMPLETE' || u === 'INCORPORATE')) return 'Complete';
     if (entity === 'REDLINE' && u === 'REJECT') return 'Reject';
-    return act.replace(/_/g, ' ');
+    return humanize(act);
   };
 
   if (!defs.length) return <Muted>No actions available for your role in this state.</Muted>;
@@ -137,7 +138,7 @@ export function WorkflowActions({ actions, endpoint, entity, onDone, details }: 
           <View style={{ backgroundColor: colors.card, padding: space(4), borderTopLeftRadius: 16, borderTopRightRadius: 16, gap: space(2) }}>
             <Title>{pending?.action ? getActionTitle(pending.action) : ''}</Title>
             {pending?.description ? <Muted>{pending.description}</Muted> : null}
-            {pending?.requires_reason ? (<><Muted>Reason code (required)</Muted><ReasonPicker value={reason} onChange={setReason} appliesTo={entity} /></>) : null}
+            {pending?.requires_reason ? (<><Muted>Reason (required)</Muted><ReasonPicker value={reason} onChange={setReason} appliesTo={[`${entity}:${pending.action}`, entity]} /></>) : null}
             <TextInput style={[s.input, { minHeight: 70 }]} multiline placeholder={pending?.requires_comment ? 'Comment (required)' : 'Comment (optional)'}
               value={comment} onChangeText={setComment} />
             {error ? <ErrorView error={error} /> : null}

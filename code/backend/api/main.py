@@ -12,12 +12,13 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from api.deps import internal_only, scoping_only
 from api.routers import admin, auth, bom, discrepancies, documents, estimate, pipeline, redlines, sharepoint, sites, workflow
 from scopeiq.common.context import RunContext, current, reset_context, set_context
 from scopeiq.common.errors import AppError, ErrorRecorder
@@ -87,8 +88,10 @@ def create_app() -> FastAPI:
         return JSONResponse({"error": {"code": "SIQ-SYS-500", "message": "Unexpected error - quote the correlation id to support",
                                        "correlation_id": current().correlation_id}}, status_code=500)
 
+    workbench = (pipeline, discrepancies, bom, estimate)        # the scoping workbench: closed to a service provider and to an A&E engineer
+    internal = (redlines, sharepoint)                           # redlines, RFIs and files: closed to a service provider (A&E has its own part of them)
     for r in (auth, sites, documents, pipeline, discrepancies, redlines, bom, estimate, workflow, admin, sharepoint):
-        app.include_router(r.router)
+        app.include_router(r.router, dependencies=[Depends(scoping_only)] if r in workbench else [Depends(internal_only)] if r in internal else [])
 
     out = Path(st.path("paths.output_dir"))
     out.mkdir(parents=True, exist_ok=True)

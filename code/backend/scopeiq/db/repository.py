@@ -206,9 +206,21 @@ class SqliteRepository(Repository):
         return sql.replace("%s", "?")
 
     def init_schema(self) -> None:
-        from scopeiq.db.ddl import sqlite_ddl
+        from scopeiq.db.ddl import sqlite_ddl, LITE_TYPES
+        from scopeiq.db.schema import tables
         with self._lock:
             self.conn.executescript(sqlite_ddl())
+            for t in tables():
+                table_name = f"{t.layer}__{t.name}"
+                try:
+                    cur = self.conn.execute(f"PRAGMA table_info({table_name})")
+                    existing = {row[1] for row in cur.fetchall()}
+                    for col in t.columns:
+                        if col.name not in existing:
+                            col_type = LITE_TYPES.get(col.type, "TEXT")
+                            self.conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {col.name} {col_type}")
+                except Exception:
+                    pass
             self.conn.commit()
 
     def query(self, sql: str, params: Iterable | None = None) -> list[dict]:

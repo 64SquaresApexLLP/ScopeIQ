@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from api.deps import check_site_scope, current_user, repo, require, site_scope
+from api.deps import AE_FILE_TYPES, check_site_scope, current_user, repo, require, site_scope
 from scopeiq.common.audit import AuditTrail
 from scopeiq.common.errors import Conflict, NotFound, ValidationError
 from scopeiq.config import get_settings
@@ -448,6 +448,13 @@ def sync_site_documents_to_db(site_id: str, r=None) -> list[dict]:
         return []
 
 
+def _ae_folder_only(user: dict, folder: str) -> None:
+    """An A&E engineer may open files in the CD and SA/MA folders only."""
+    if user["role"] == "AE_ENGINEER" and folder not in {TYPE_FOLDERS[t] for t in AE_FILE_TYPES}:
+        from scopeiq.common.errors import PermissionDenied
+        raise PermissionDenied("An A&E engineer can open CD and SA/MA files only")
+
+
 def _resolve_sharepoint_file_path(site_id: str, folder: str, file_name: str) -> Path | None:
     st = get_settings()
     sp_local = st.path("sharepoint.local_root")
@@ -577,11 +584,14 @@ def _build_file_preview(
         pdf_pages = []
         total_pages = 0
         try:
-            import fitz
+            try:
+                import pymupdf as fitz
+            except ImportError:
+                import fitz
             doc = fitz.open(str(path))
             total_pages = len(doc)
-            # Render up to 12 pages for instantaneous preview
-            max_render = min(total_pages, 12)
+            # Render up to 50 pages for smooth scrollable preview
+            max_render = min(total_pages, 50)
             for p_idx in range(max_render):
                 page = doc[p_idx]
                 pix = page.get_pixmap(dpi=130)
@@ -622,10 +632,94 @@ def _build_file_preview(
         return {**base, "type": "text", "content": path.read_text(encoding="utf-8", errors="replace")[:100000]}
 
     if ext in ("dxf", "dwg"):
+        cad_pages = []
+        if ext == "dxf":
+            try:
+                import ezdxf
+                import pymupdf
+                from ezdxf.addons.drawing import Frontend, RenderContext, layout
+                from ezdxf.addons.drawing import pymupdf as mupdf_backend
+                from ezdxf.addons.drawing.config import BackgroundPolicy, ColorPolicy, Configuration
+                from ezdxf.math import BoundingBox2d
+
+                doc = ezdxf.readfile(str(path))
+                msp = doc.modelspace()
+                cfg = Configuration(background_policy=BackgroundPolicy.WHITE, color_policy=ColorPolicy.COLOR)
+
+                SHEETS = ["T-1", "A-2", "A-3", "A-4", "E-1"]
+                GAP, W, H = 400, 340, 220
+
+                def _ref_x(e):
+                    try:
+                        t = e.dxftype()
+                        if t in ("TEXT", "MTEXT", "INSERT", "POINT"):
+                            return float(e.dxf.insert[0])
+                        elif t == "LINE":
+                            return float(e.dxf.start[0])
+                        elif t in ("LWPOLYLINE", "POLYLINE"):
+                            return float(e.vertices()[0][0])
+                    except Exception:
+                        pass
+                    return 0.0
+
+                groups = {}
+                for e in msp:
+                    groups.setdefault(int(_ref_x(e) // GAP), []).append(e)
+
+                matched_sheets = [s for i, s in enumerate(SHEETS) if groups.get(i)]
+                if len(matched_sheets) >= 2:
+                    for i, sheet_name in enumerate(SHEETS):
+                        ents = groups.get(i, [])
+                        if not ents:
+                            continue
+                        backend = mupdf_backend.PyMuPdfBackend()
+                        fe = Frontend(RenderContext(doc), backend, config=cfg)
+                        fe.set_background("#ffffff")
+                        fe.draw_entities(ents)
+                        page_layout = layout.Page(17, 11, layout.Units.inch)
+                        data = backend.get_pdf_bytes(
+                            page_layout,
+                            settings=layout.Settings(fit_page=True),
+                            render_box=BoundingBox2d([(i * GAP - 3, -3), (i * GAP + W + 3, H + 3)]),
+                        )
+                        with pymupdf.open("pdf", data) as pdoc:
+                            pix = pdoc[0].get_pixmap(dpi=110)
+                            img_bytes = pix.tobytes("jpeg", jpg_quality=80)
+                            b64 = base64.b64encode(img_bytes).decode("ascii")
+                            cad_pages.append({
+                                "sheet_name": sheet_name,
+                                "page_number": len(cad_pages) + 1,
+                                "width": pix.width,
+                                "height": pix.height,
+                                "image": f"data:image/jpeg;base64,{b64}",
+                            })
+                else:
+                    backend = mupdf_backend.PyMuPdfBackend()
+                    fe = Frontend(RenderContext(doc), backend, config=cfg)
+                    fe.set_background("#ffffff")
+                    fe.draw_layout(msp)
+                    page_layout = layout.Page(17, 11, layout.Units.inch)
+                    data = backend.get_pdf_bytes(page_layout, settings=layout.Settings(fit_page=True))
+                    with pymupdf.open("pdf", data) as pdoc:
+                        pix = pdoc[0].get_pixmap(dpi=110)
+                        img_bytes = pix.tobytes("jpeg", jpg_quality=80)
+                        b64 = base64.b64encode(img_bytes).decode("ascii")
+                        cad_pages.append({
+                            "sheet_name": "Model",
+                            "page_number": 1,
+                            "width": pix.width,
+                            "height": pix.height,
+                            "image": f"data:image/jpeg;base64,{b64}",
+                        })
+            except Exception:
+                pass
+
         return {
             **base,
             "type": "cad",
             "category": "CAD Drawing",
+            "pages": cad_pages,
+            "total_pages": len(cad_pages) if cad_pages else None,
             "note": "CAD drawings can be downloaded for viewing in AutoCAD / DWG TrueView or reviewed via rendered PDF revisions.",
         }
 
@@ -718,6 +812,7 @@ def download_sharepoint_file(
     sid = validate_site_id(site_id)
     if repo().select("CORE.SITE", {"SITE_ID": sid}):
         check_site_scope(user, sid)
+    _ae_folder_only(user, folder)
     path = _resolve_sharepoint_file_path(sid, folder, file_name)
     if not path or not path.is_file():
         raise NotFound(f"File '{file_name}' not found for site {sid}")
@@ -757,6 +852,7 @@ def preview_sharepoint_file(
     sid = validate_site_id(site_id)
     if repo().select("CORE.SITE", {"SITE_ID": sid}):
         check_site_scope(user, sid)
+    _ae_folder_only(user, folder)
     path = _resolve_sharepoint_file_path(sid, folder, file_name)
     if not path or not path.is_file():
         raise NotFound(f"File '{file_name}' not found for site {sid}")
@@ -794,6 +890,8 @@ def site_files(site_id: str, user: dict = Depends(require("ADMIN", "AE_ENGINEER"
     files = store.list_files(sid)
     for f in files:
         f["doc_type"] = detect_doc_type(f["name"])
+    if user["role"] == "AE_ENGINEER":                      # an A&E engineer sees the CD and SA/MA files, not the rest of the site's documents
+        files = [f for f in files if f["doc_type"] in AE_FILE_TYPES]
     return {"site_id": sid, "location": f"{store.location} / {sid}", "files": files}
 
 
@@ -863,7 +961,7 @@ async def check_content(site_id: str, file: UploadFile = File(...), doc_type: st
 
 @router.post("/sharepoint/sites/{site_id}/upload")
 async def upload(site_id: str, file: UploadFile = File(...), doc_type: str | None = Form(default=None),
-                 replace_file: str | None = Form(default=None),
+                 replace_file: str | None = Form(default=None), confirm_duplicate: bool = Form(default=False),
                  user: dict = Depends(require("ADMIN", "AE_ENGINEER"))):
     """Upload one file into the selected site's folder. The site comes from the path, so a file can only go to that one site."""
     sid = validate_site_id(site_id)
@@ -895,6 +993,12 @@ async def upload(site_id: str, file: UploadFile = File(...), doc_type: str | Non
     if doc_type and doc_type not in TYPE_FOLDERS:
         raise ValidationError(f"Unknown document type {doc_type}", details={"allowed": list(TYPE_FOLDERS)})
     data = await file.read()
+    # A file whose content is already on the site is refused here, whatever the screen did, unless it replaces that file or the caller confirms it.
+    already = inspect_file_against_site(sid, file.filename or "", data, doc_type=doc_type, repo=repo()) if data else None
+    if already and already.status == "DUPLICATE" and not (replace_file or confirm_duplicate):
+        raise Conflict(f"Already exists! This file has identical content to '{already.existing_file}'. Upload is not required.",
+                       details={"status": "DUPLICATE", "is_duplicate": True, "already_exists": True, "duplicate_of": already.existing_file,
+                                "file_name": file.filename, "message": f"The content of this file is identical to '{already.existing_file}'."})
     saved = store.upload(sid, file.filename or "", data, doc_type or None, replace_file=replace_file)
     inspection = inspect_file_against_site(sid, file.filename or "", data, doc_type=doc_type, repo=repo(), exclude_filename=file.filename)
     AuditTrail.record(entity_type="SHAREPOINT_FILE", entity_id=f"{sid}/{saved['folder']}/{saved['name']}",

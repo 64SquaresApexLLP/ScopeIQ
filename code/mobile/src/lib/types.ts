@@ -98,3 +98,75 @@ export interface SiteDetail {
   last_run: Row[];
   workflow_history: Row[];
 }
+
+export interface SpQuote {
+  QUOTE_ID: string;
+  SITE_ID: string;
+  SP_NAME: string;
+  QUOTE_AMOUNT: number;
+  BASELINE_AMOUNT: number;
+  VARIANCE_AMOUNT: number;
+  VARIANCE_PCT: number;
+  STATUS: string;
+  NOTES: string;
+  BREAKDOWN: any[];
+  SUBMITTED_BY: string;
+  SUBMITTED_AT: string;
+}
+
+export interface BomRevisionInfo {
+  id: string; label: string; status: string; locked: boolean; created_at?: string | null; created_by?: string | null;
+  approved_at?: string | null; approved_by?: string | null; notes?: string | null; totals: Record<string, number>; is_latest: boolean;
+}
+
+export interface BomChange {
+  CHANGE_ID: string; SECTOR?: string; CATALOG_KEY?: string; ACTION?: string; FROM_QTY: number; TO_QTY: number; DELTA: number;
+  REASONS?: string[]; model?: string; description?: string; from_rev?: string | null;
+}
+
+export interface HandshakeSummary {
+  site_id: string;
+  site_name: string;
+  market: string;
+  cx_sp: string;
+  workflow_state: string;
+  state_description?: string | null;      // from the workflow reference
+  owner_role?: string | null;             // whose turn it is in this state (workflow reference)
+  package_out: boolean;                   // the package has left the scoping team (with the SP, or approved)
+  current_bom_rev?: string;
+  is_fba_locked: boolean;
+  workflow_actions: WorkflowAction[];     // the steps this user's role can take from this state
+  has_bom?: boolean;
+  has_run_pipeline?: boolean;
+  delta: Row[];
+  cd_documents?: Row[];
+  bom_lines?: Row[];
+  revisions: BomRevisionInfo[];           // newest first
+  selected_rev: string | null;
+  selected_rev_status: string | null;
+  is_latest_rev: boolean;
+  bom_editable: boolean;                  // the shown revision is still a draft and this user may change it
+  can_start_next_rev: boolean;            // the latest revision has been sent: the next one can be started from it
+  bom_changes: BomChange[];               // what differs from the revision before
+  bom_summary: null | {
+    lines_count: number;
+    install_count: number;
+    remove_count: number;
+    total_material_cost: number;
+    revision: string;
+    file_name: string;
+    is_locked: boolean;
+  };
+  workflow_history: Row[];
+}
+
+/** What a service provider is given for a site. */
+export interface ProviderView {
+  site_id: string;
+  site_name?: string;
+  drawings: { DOC_ID: string; FILE_NAME: string; FILE_FORMAT?: string; REVISION?: string; SIZE_BYTES?: number }[];
+  requests: { when?: string; reason?: string; comment?: string }[];
+  phase: 'PENDING' | 'REVIEW' | 'AGREED' | 'APPROVED';
+  scope: { released: boolean; items: { SECTOR?: string; POSITION?: string; KIND?: string; CATALOG_KEY?: string; ACTION?: string; FROM_POSITION?: string }[] };
+  bom: { released: boolean; approved: boolean; lines: { SECTOR?: string; CATEGORY?: string; MANUFACTURER?: string; MODEL?: string; DESCRIPTION?: string; UOM?: string; TOTAL_QTY?: number; ACTION?: string; SUPPLY?: string }[] };
+}

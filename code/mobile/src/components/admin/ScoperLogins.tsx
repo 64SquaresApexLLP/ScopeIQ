@@ -1,10 +1,11 @@
-// Admin: create the usernames + passwords Scopers and A&E Engineers sign in with, and disable / enable them. Stored in the
-// local database (CORE.USER_LOGIN) as a salted hash; the password is never shown again after it is created.
+// Admin: create the usernames + passwords Scopers, A&E Engineers and Service Providers sign in with, and disable / enable them.
+// Stored in the local database (CORE.USER_LOGIN) as a salted hash; the password is never shown again after it is created.
+// A Service Provider login belongs to one registered service provider and only ever sees that provider's sites.
 import React, { useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 import { getLogger } from '../../lib/logger';
 import { api, ApiError } from '../../lib/api';
-import { roleLabel } from '../../lib/format';
+import { clean, roleLabel } from '../../lib/format';
 import { Row as R } from '../../lib/types';
 import { useApi } from '../../lib/useApi';
 import { colors, space } from '../theme';
@@ -13,7 +14,7 @@ import { Badge, Button, Card, Chips, ErrorView, Hero, Icon, IconBadge, Muted, s 
 const log = getLogger('admin.logins');
 const PH = '#A9B3C2';
 const MIN_PASSWORD = 8;
-const ROLES = ['SCOPER', 'AE_ENGINEER'] as const;   // roles that sign in with a password (auth.password_roles)
+const ROLES = ['SCOPER', 'AE_ENGINEER', 'CX_SP'] as const;   // roles that sign in with a password (auth.password_roles)
 
 function Field({ label, hint, error, children }: { label: string; hint?: string; error?: string; children: React.ReactNode }) {
   return (
@@ -27,6 +28,9 @@ function Field({ label, hint, error, children }: { label: string; hint?: string;
 
 export function ScoperLogins() {
   const logins = useApi<R[]>('/admin/logins');
+  const providers = useApi<{ user_id: string; name: string; market?: string }[]>('/sites/service-providers');
+  const providerNames = Array.from(new Set((providers.data ?? []).map((p) => p.name).filter(Boolean))).sort();
+  const [provider, setProvider] = useState<string>('');
   const [role, setRole] = useState<(typeof ROLES)[number]>('SCOPER');
   const [username, setUsername] = useState('');
   const [name, setName] = useState('');
@@ -36,17 +40,19 @@ export function ScoperLogins() {
   const [created, setCreated] = useState<string | null>(null);
 
   const userOk = /^[A-Za-z0-9._-]{3,40}$/.test(username);
-  const valid = userOk && name.trim().length >= 2 && password.length >= MIN_PASSWORD;
+  const isSp = role === 'CX_SP';
+  const valid = userOk && name.trim().length >= 2 && password.length >= MIN_PASSWORD && (!isSp || provider.trim().length >= 2);
 
   const create = async () => {
     setBusy(true);
     setError(null);
     setCreated(null);
     try {
-      const res = await api.post<R>('/admin/logins', { username, display_name: name.trim(), password, role });
+      const res = await api.post<R>('/admin/logins', { username, display_name: name.trim(), password, role, ...(isSp ? { service_provider: provider } : {}) });
       setCreated(res.USERNAME);
       log.info(`created login ${res.USERNAME}`);
-      setUsername(''); setName(''); setPassword('');
+      setUsername(''); setName(''); setPassword(''); setProvider('');
+      providers.reload();
       logins.reload();
     } catch (e) {
       setError(e as ApiError);
@@ -67,7 +73,7 @@ export function ScoperLogins() {
 
   return (
     <View>
-      <Hero icon="users" title="User logins" subtitle="Create the username and password a Scoper or A&E Engineer signs in with." />
+      <Hero icon="users" title="User logins" subtitle="Create the username and password a Scoper, A&E Engineer or Service Provider signs in with." />
 
       <Card style={{ padding: space(5) }}>
         <View style={{ gap: space(4) }}>
@@ -75,6 +81,18 @@ export function ScoperLogins() {
             <Text style={{ fontSize: 12.5, fontWeight: '700', color: colors.text, marginBottom: 6 }}>Role</Text>
             <Chips value={role} onChange={setRole} options={ROLES.map((r) => ({ key: r, label: roleLabel(r) }))} />
           </View>
+          {isSp ? (
+            <View>
+              <Text style={{ fontSize: 12.5, fontWeight: '700', color: colors.text, marginBottom: 6 }}>Company</Text>
+              <TextInput style={s.input} placeholder="The company this login belongs to" placeholderTextColor={PH} value={provider} onChangeText={setProvider} maxLength={120} />
+              {providerNames.length ? (
+                <View style={{ marginTop: 8 }}>
+                  <Chips value={provider} onChange={setProvider} options={providerNames.map((n) => ({ key: n, label: n }))} />
+                </View>
+              ) : null}
+              <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>This login only sees the sites assigned to this company.</Text>
+            </View>
+          ) : null}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space(4) }}>
             <Field label="Username" hint="Letters, digits, dot, dash or underscore" error={username && !userOk ? 'Use 3-40 letters, digits, . _ or -' : undefined}>
               <TextInput style={s.input} placeholder="asha.rao" placeholderTextColor={PH} value={username} onChangeText={setUsername}
@@ -115,7 +133,7 @@ export function ScoperLogins() {
           <IconBadge name="user" size={38} />
           <View style={{ flex: 1 }}>
             <Text style={{ fontWeight: '800', color: colors.text }}>{x.USERNAME}</Text>
-            <Muted>{[x.DISPLAY_NAME, roleLabel(x.ROLE_CODE)].filter(Boolean).join(' · ')}</Muted>
+            <Muted>{[x.DISPLAY_NAME, roleLabel(x.ROLE_CODE), x.ROLE_CODE === 'CX_SP' ? clean(x.ORGANISATION) : null].filter(Boolean).join(' · ')}</Muted>
           </View>
           <Badge text={x.ACTIVE ? 'Active' : 'Disabled'} color={x.ACTIVE ? colors.ok : colors.muted} />
           {x.ROLE_CODE === 'ADMIN' ? null : (

@@ -22,7 +22,7 @@ from pathlib import Path
 
 from scopeiq.common.audit import AuditTrail
 from scopeiq.common.context import bind, current
-from scopeiq.common.errors import AppError, ErrorRecorder, NotFound, ValidationError
+from scopeiq.common.errors import AppError, ErrorRecorder, NotFound, ValidationError, WorkflowError
 from scopeiq.common.ids import stable_id
 from scopeiq.common.logging import get_logger, log_call
 from scopeiq.config import get_settings
@@ -46,6 +46,7 @@ from scopeiq.outputs.cd_revision import write_revised_cd
 from scopeiq.outputs.exports import write_bom_xlsx, write_site_package
 from scopeiq.outputs.redline_markup import remove_redlined_cd, render_sheet_previews, write_redlined_cd
 from scopeiq.reference.loader import ReferenceData
+from scopeiq.services import bom_revisions
 from scopeiq.workflow.engine import WorkflowEngine
 
 log = get_logger("pipeline")
@@ -167,17 +168,53 @@ class PipelineService:
         return sorted(p.name for p in self.sites_dir.iterdir() if p.is_dir()) if self.sites_dir.exists() else []
 
     # ------------------------------------------------------------------------------------ run
+    def _check_open_for_run(self, site_id: str) -> None:
+        """A run replaces the BOM, so it never starts while the package is with the SP or Ericsson, or after FBA (the workflow reference
+        says which states are locked and who owns each). Scoping and review states stay open; REWORK reopens an approved site."""
+        site = next(iter(self.repo.select("CORE.SITE", {"SITE_ID": site_id})), None)
+        state = self.wf.state_row("SITE_SCOPING", (site or {}).get("WORKFLOW_STATE"))
+        if state and self.wf.is_out_for_approval(state["STATE"]):
+            raise WorkflowError(f"{site_id} cannot be run again now. {state['DESCRIPTION']} It can be run again once it is back with scoping.",
+                                details={"site_id": site_id, "state": state["STATE"], "owner": state["OWNER_ROLE"]})
+
     def begin_run(self, site_id: str, *, triggered_by: str | None = None) -> str:
         """Create the RUNNING row (with every step PENDING) and return its id. The row is the progress record the app polls."""
         site_dir = self.sites_dir / site_id
         if not site_dir.is_dir():
             raise NotFound(f"Site folder {site_id} not found", details={"sites_dir": str(self.sites_dir)})
+        self._check_open_for_run(site_id)
         run_id = f"RUN-{site_id}-{uuid.uuid4().hex[:10]}"
         ctx = current()
         self.repo.insert("CORE.PIPELINE_RUN", [{"RUN_ID": run_id, "SITE_ID": site_id, "STARTED_AT": now_iso(), "STATUS": "RUNNING",
                                                "TRIGGERED_BY": triggered_by or ctx.user_id, "CORRELATION_ID": ctx.correlation_id,
                                                "STEPS": RunProgress.initial(), "REFERENCE_VERSIONS": self.ref.versions}])
         return run_id
+
+    @staticmethod
+    def is_run_active(run_id: str) -> bool:
+        with _ACTIVE_LOCK:
+            return run_id in _ACTIVE.values()
+
+    @staticmethod
+    def is_site_active(site_id: str) -> bool:
+        with _ACTIVE_LOCK:
+            return site_id in _ACTIVE
+
+    def cancel_site_run(self, site_id: str) -> dict:
+        """Cancel any running job for a site and mark it as CANCELLED."""
+        with _ACTIVE_LOCK:
+            _ACTIVE.pop(site_id, None)
+        rows = self.repo.select("CORE.PIPELINE_RUN", {"SITE_ID": site_id, "STATUS": "RUNNING"})
+        ts = now_iso()
+        for r in rows:
+            steps = r.get("STEPS") or []
+            for s in steps:
+                if s.get("status") == "RUNNING":
+                    s["status"] = "CANCELLED"
+                    s["finished_at"] = ts
+                    s["message"] = "Cancelled by user"
+            self.repo.update("CORE.PIPELINE_RUN", {"STATUS": "CANCELLED", "FINISHED_AT": ts, "STEPS": steps}, {"RUN_ID": r["RUN_ID"]})
+        return {"site_id": site_id, "cancelled": True}
 
     def start_site(self, site_id: str, *, triggered_by: str | None = None) -> dict:
         """Run a site in the background and return at once; poll GET /pipeline/runs/{run_id}. One run per site at a time."""
@@ -260,7 +297,7 @@ class PipelineService:
                             design_summary["documents"] = docs
                         with prog.step("BOM"):
                             res = self._bom_stage(run_id, facts, rb, final_m)
-                            prog.finish("BOM", f"{len(res.lines)} BOM line(s) generated with rules {res.revision}; {len(res.issues)} issue(s) to review",
+                            prog.finish("BOM", f"{len(res.lines)} BOM line(s) saved as {res.rev_label} with rules {res.revision}; {len(res.issues)} issue(s) to review",
                                         {"lines": len(res.lines), "issues": len(res.issues), "needs_review": res.summary()["needs_review"]})
                             design_summary["bom"] = res.summary() | {"issue_list": [i.__dict__ for i in res.issues], "trunk": res.trunk,
                                                                      "rulebook": rb.summary()}
@@ -341,8 +378,8 @@ class PipelineService:
     # ------------------------------------------------------------------------------------ stages 5 and 6
     def _clear_design_outputs(self, site_id: str) -> None:
         """Remove the design items, the BOM rows and the BOM file left by an earlier run, so nothing old can be shown as this run's result."""
-        for table in ("CORE.DESIGN_ITEM", "CORE.BOM_OUTPUT_LINE"):
-            self.repo.delete_where(table, {"SITE_ID": site_id})
+        self.repo.delete_where("CORE.DESIGN_ITEM", {"SITE_ID": site_id})
+        bom_revisions.clear_draft(self.repo, site_id, current().user_id or "system")     # a revision the service provider has seen is never touched
         shutil.rmtree(self.output_dir / "sites" / site_id / "bom", ignore_errors=True)
 
     def _design_stage(self, run_id: str, facts: SiteFacts):
@@ -368,8 +405,14 @@ class PipelineService:
                  "UNIT_COST_USD": l.unit_cost, "TOTAL_COST_USD": l.total_cost, "SUPPLY": l.supply, "ACTION": l.action,
                  "SOURCE": l.source, "DRAWING": l.drawing, "RULE_ID": l.rule_id, "REVISION": l.revision, "STATUS": l.status,
                  "CATALOG_KEY": l.catalog_key, "PARENT_KEY": l.parent_key, "TRACE": l.trace, "CREATED_AT": ts} for i, l in enumerate(res.lines)]
-        self.repo.delete_where("CORE.BOM_OUTPUT_LINE", {"SITE_ID": facts.site_id})
+        rev = bom_revisions.register(self.repo, facts.site_id, run_id, current().user_id or "system")
+        for x in rows:
+            x["BOM_REV_ID"] = rev["BOM_REV_ID"]
+            x["LINE_ID"] = stable_id("BOM", rev["BOM_REV_ID"], x["LINE_ID"])
         self.repo.insert("CORE.BOM_OUTPUT_LINE", rows)
+        bom_revisions.finish(self.repo, facts.site_id, rev)
+        self.repo.update("CORE.SITE", {"CURRENT_BOM_REV": rev["REV_LABEL"]}, {"SITE_ID": facts.site_id})
+        res.rev_label = rev["REV_LABEL"]
         out = self.output_dir / "sites" / facts.site_id / "bom" / f"{facts.site_id}_BOM.xlsx"
         write_bom_workbook(out, facts.site_id, res)
         res.file = _rel(str(out), self.output_dir)
@@ -859,7 +902,7 @@ class PipelineService:
             "PROJECT_NAME": p.get("project_name") or ex.get("PROJECT_NAME"),
             "PROJECT_TYPE": p.get("project_type") or ex.get("PROJECT_TYPE"),
             "SERVICE_LINE": p.get("service_line") or ex.get("SERVICE_LINE"),
-            "CX_SP": p.get("cx_sp") or ex.get("CX_SP"),
+            "CX_SP": ex.get("CX_SP") or p.get("cx_sp"),
             "ASSIGNED_DATE": p.get("assigned_date") or ex.get("ASSIGNED_DATE"),
             "SCOPING_FORECAST": p.get("scoping_forecast") or ex.get("SCOPING_FORECAST"),
             "SCOPING_ACTUAL": p.get("scoping_actual") or ex.get("SCOPING_ACTUAL"),
@@ -1122,7 +1165,7 @@ class PipelineService:
         state = self.repo.get("CORE.SITE", SITE_ID=site_id)["WORKFLOW_STATE"]
         path = {"ASSIGNED": ["INGEST", "EXTRACT", "RECONCILE", "GENERATE"], "DOCS_INGESTED": ["EXTRACT", "RECONCILE", "GENERATE"],
                 "EXTRACTED": ["RECONCILE", "GENERATE"], "IN_RECONCILIATION": ["GENERATE"], "REWORK": ["GENERATE"]}.get(state, [])
-        if not stage_on("GENERATE"):                    # no BOM is generated yet, so the site does not move on to scoping
+        if not (stage_on("GENERATE") or stage_on("BOM")):                    # no BOM is generated yet, so the site does not move on to scoping
             path = [a for a in path if a != "GENERATE"]
         with bind(user_id="system", role="SYSTEM"):
             for action in path:

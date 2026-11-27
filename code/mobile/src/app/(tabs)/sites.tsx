@@ -1,266 +1,185 @@
+// Sites: searchable, filterable list of the sites the signed-in persona can see, with documents and pipeline status.
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, Text, TextInput, View } from 'react-native';
+import { RefreshControl, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { colors, space } from '../../components/theme';
-import { Badge, Card, Empty, ErrorView, Icon, Muted, Row, s, Title } from '../../components/ui';
+import { Badge, Button, Card, Chips, Column, ConfirmDialog, DataTable, EmptyState, ErrorView, Icon, IconButton, Loading, PageHeader, s, SearchBox, Select } from '../../components/ui';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
-import { Row as R } from '../../lib/types';
+import { label, when } from '../../lib/format';
+import { PipelineRun, PipelineStep, Row as R } from '../../lib/types';
 import { mutateApi, useApi } from '../../lib/useApi';
+import { AeSites } from '../../components/AeSites';
+import { ProviderHome } from '../../components/ProviderHome';
 
-// Colour per document category so each pill is distinct
-const DOC_TYPE_COLORS: Record<string, string> = {
-  RFDS: '#7C3AED',
-  CD: '#0369A1',
-  MA_SA: '#0F766E',
-  BOM_REV0: '#B45309',
-  DRONE_META: '#6D28D9',
-  DRONE_IMAGE: '#9333EA',
-  DRONE_VIDEO: '#A21CAF',
-  DRONE_POINTCLOUD: '#0891B2',
-  DRONE_VENDOR: '#7E22CE',
+type RunState = 'NONE' | 'RUNNING' | 'DONE' | 'WARN' | 'STOPPED' | 'FAILED';
+const RUN_STATE: Record<RunState, { text: string; color: string }> = {
+  NONE: { text: 'Not run', color: colors.neutral }, RUNNING: { text: 'Running', color: colors.info }, DONE: { text: 'Completed', color: colors.ok },
+  WARN: { text: 'Done, with warnings', color: colors.warn }, STOPPED: { text: 'Stopped at stage 4', color: colors.warn }, FAILED: { text: 'Failed', color: colors.danger },
 };
-const docColor = (t: string) => DOC_TYPE_COLORS[t] ?? colors.info;
+const FILTERS: { key: 'ALL' | RunState; label: string }[] = [
+  { key: 'ALL', label: 'All' }, { key: 'NONE', label: 'Not run' }, { key: 'RUNNING', label: 'Running' }, { key: 'DONE', label: 'Completed' },
+  { key: 'STOPPED', label: 'Stopped' }, { key: 'FAILED', label: 'Failed' },
+];
 
-export default function Sites() {
+function runState(r?: PipelineRun): RunState {
+  if (!r) return 'NONE';
+  const steps = Array.isArray(r.STEPS) ? (r.STEPS as PipelineStep[]) : [];
+  if (r.STATUS === 'RUNNING') return 'RUNNING';
+  if (r.STATUS === 'FAILED' || steps.some((x) => x.status === 'FAILED')) return 'FAILED';
+  if (steps.some((x) => x.status === 'SKIPPED')) return 'STOPPED';
+  return r.STATUS === 'SUCCEEDED_WITH_WARNINGS' ? 'WARN' : 'DONE';
+}
+const stageText = (r?: PipelineRun) => {
+  const steps = r && Array.isArray(r.STEPS) ? (r.STEPS as PipelineStep[]) : [];
+  if (!steps.length) return '';
+  const failed = steps.findIndex((x) => x.status === 'FAILED');
+  if (failed >= 0) return `Stage ${failed + 1}: ${steps[failed].label}`;
+  return `${steps.filter((x) => x.status === 'DONE').length} of ${steps.length} stages`;
+};
+
+function Docs({ item }: { item: R }) {
+  const byType: Record<string, number> = item.DOC_BY_TYPE ?? {};
+  const n: number = item.DOC_COUNT ?? 0;
+  const sp: number = item.SHAREPOINT_FILES ?? 0;
+  if (n) {
+    return (
+      <View style={{ gap: 4 }}>
+        <Text style={{ fontSize: 13, color: colors.text, fontWeight: '500' }}>{n} registered</Text>
+        <Text style={{ fontSize: 11.5, color: colors.muted }} numberOfLines={1}>{Object.keys(byType).map((t) => t.replace(/_/g, ' ')).join(', ')}</Text>
+      </View>
+    );
+  }
+  if (item.PIPELINE_NEEDED) return <View style={{ gap: 4 }}><Text style={{ fontSize: 13, color: colors.text }}>{sp} uploaded</Text><Text style={{ fontSize: 11.5, color: colors.warn }}>Not processed yet</Text></View>;
+  return <Text style={{ fontSize: 13, color: colors.faint }}>No documents</Text>;
+}
+
+export default function SitesPage() {
+  const { user } = useAuth();
+  return user?.role === 'CX_SP' ? <ProviderHome /> : user?.role === 'AE_ENGINEER' ? <AeSites /> : <Sites />;
+}
+
+function Sites() {
   const { user, can } = useAuth();
+  const { width } = useWindowDimensions();
   const sites = useApi<R[]>('/sites');
+  const runs = useApi<PipelineRun[]>('/pipeline/runs?limit=500');
   const [q, setQ] = useState('');
+  const [filter, setFilter] = useState<'ALL' | RunState>('ALL');
+  const [state, setState] = useState<string>('ALL');
+  const [toDelete, setToDelete] = useState<string | null>(null);
+  const [deleteErr, setDeleteErr] = useState<Error | null>(null);
+  const isAe = user?.role === 'AE_ENGINEER';
 
-  const deleteSite = async (sid: string) => {
-    if (typeof window !== 'undefined' && !window.confirm(`Permanently delete site ${sid} and all its documents, run history, discrepancies, and files?`)) return;
+  const firstFocus = useRef(true);
+  useFocusEffect(useCallback(() => {
+    if (firstFocus.current) { firstFocus.current = false; return; }
+    void sites.reload(true); void runs.reload(true);
+  }, [sites.reload, runs.reload]));
+
+  const latest = useMemo(() => {
+    const m = new Map<string, PipelineRun>();
+    for (const r of runs.data ?? []) if (r.RUN_ID?.startsWith('RUN-') && !m.has(r.SITE_ID)) m.set(r.SITE_ID, r);
+    return m;
+  }, [runs.data]);
+
+  const all = sites.data ?? [];
+  const states = useMemo(() => [...new Set(all.map((x) => x.WORKFLOW_STATE).filter(Boolean))].sort() as string[], [all]);
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { ALL: all.length };
+    for (const x of all) { const k = runState(latest.get(x.SITE_ID)); c[k] = (c[k] ?? 0) + 1; if (k === 'WARN') c.DONE = (c.DONE ?? 0) + 1; }
+    return c;
+  }, [all, latest]);
+  const rows = useMemo(() => all.filter((x) => {
+    const rs = runState(latest.get(x.SITE_ID));
+    if (filter !== 'ALL' && !(rs === filter || (filter === 'DONE' && rs === 'WARN'))) return false;
+    if (state !== 'ALL' && x.WORKFLOW_STATE !== state) return false;
+    return !q || JSON.stringify([x.SITE_ID, x.SITE_NAME, x.CITY, x.STATE, x.CX_SP]).toLowerCase().includes(q.toLowerCase());
+  }), [all, latest, filter, state, q]);
+
+  const open = (sid: string) => router.push({ pathname: '/site/[id]', params: isAe ? { id: sid, tab: 'redlines' } : { id: sid } });
+  const doDelete = async () => {
+    const sid = toDelete;
+    setToDelete(null);
+    if (!sid) return;
     try {
       await api.del(`/sites/${encodeURIComponent(sid)}`);
-      sites.reload();
-      mutateApi('/sites');
-      mutateApi('/sharepoint/sites');
-      mutateApi('/sites/dashboard');
+      void sites.reload();
+      mutateApi('/sites'); mutateApi('/sharepoint/sites'); mutateApi('/sites/dashboard');
     } catch (e: any) {
-      alert(`Could not delete site ${sid}: ${e?.message || e}`);
+      setDeleteErr(new Error(`Could not delete site ${sid}: ${e?.message || e}`));
     }
   };
 
-  // Automatically refresh when navigating back to Sites tab (e.g. after admin creates a site)
-  const firstFocus = useRef(true);
-  useFocusEffect(
-    useCallback(() => {
-      if (firstFocus.current) {
-        firstFocus.current = false;
-        return;
-      }
-      sites.reload(true);
-    }, [sites.reload]),
-  );
+  const columns: Column<R>[] = [
+    { key: 'site', title: 'Site', flex: 1.3, render: (x) => (
+      <View style={{ gap: 2 }}>
+        <Text style={{ fontSize: 13.5, fontWeight: '600', color: colors.text }}>{x.SITE_ID}</Text>
+        <Text style={{ fontSize: 12, color: colors.muted }} numberOfLines={1}>{x.SITE_NAME || '—'}</Text>
+      </View>) },
+    { key: 'loc', title: 'Location', flex: 1, render: (x) => <Text style={{ fontSize: 13, color: x.CITY ? colors.text : colors.faint }} numberOfLines={1}>{[x.CITY, x.STATE].filter(Boolean).join(', ') || 'Not set'}</Text> },
+    { key: 'stream', title: 'Stream', width: 128, render: (x) => <View style={{ gap: 4 }}>{x.STREAM ? <Badge text={x.STREAM} color={colors.neutral} /> : <Text style={{ color: colors.faint }}>—</Text>}{x.STRUCTURE_TYPE ? <Text style={{ fontSize: 11.5, color: colors.muted }} numberOfLines={1}>{x.STRUCTURE_TYPE}</Text> : null}</View> },
+    { key: 'docs', title: 'Documents', flex: 1.2, render: (x) => <Docs item={x} /> },
+    { key: 'pipe', title: 'Pipeline', flex: 1.5, render: (x) => {
+      const r = latest.get(x.SITE_ID); const st = RUN_STATE[runState(r)];
+      return <View style={{ gap: 4 }}><Badge text={st.text} color={st.color} dot />{r ? <Text style={{ fontSize: 11.5, color: colors.muted }} numberOfLines={1}>{stageText(r)}</Text> : null}</View>;
+    } },
+    { key: 'last', title: 'Last run', width: 130, render: (x) => <Text style={{ fontSize: 12.5, color: latest.get(x.SITE_ID) ? colors.text : colors.faint }}>{latest.get(x.SITE_ID) ? when(latest.get(x.SITE_ID)!.STARTED_AT) : 'Never'}</Text> },
+    { key: 'open', title: 'Open findings', width: 124, align: 'right', render: (x) => <Text style={{ fontSize: 13.5, fontWeight: '600', color: x.OPEN_DISCREPANCIES ? colors.danger : colors.faint }}>{x.OPEN_DISCREPANCIES ?? 0}</Text> },
+    { key: 'act', title: '', width: can('ADMIN') ? 132 : 92, align: 'right', render: (x) => (
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        <Button small kind="secondary" title="View" onPress={() => open(x.SITE_ID)} />
+        {can('ADMIN') ? <IconButton icon="trash-2" label={`Delete site ${x.SITE_ID}`} danger onPress={() => setToDelete(x.SITE_ID)} /> : null}
+      </View>) },
+  ];
 
-  const rows = useMemo(
-    () =>
-      (sites.data ?? []).filter(
-        (x) =>
-          !q ||
-          JSON.stringify([x.SITE_ID, x.SITE_NAME, x.CITY, x.CX_SP])
-            .toLowerCase()
-            .includes(q.toLowerCase()),
-      ),
-    [sites.data, q],
-  );
-
+  const narrow = width < 900;
   return (
-    <View style={s.screen}>
-      <View style={{ padding: space(4), paddingBottom: 0 }}>
-        <TextInput
-          style={s.input}
-          placeholder="Search site, city or service provider"
-          value={q}
-          onChangeText={setQ}
-        />
+    <ScrollView style={s.screen} contentContainerStyle={[s.content, { maxWidth: 1440, width: '100%', alignSelf: 'center' }]}
+      refreshControl={<RefreshControl refreshing={sites.loading} onRefresh={() => { void sites.reload(); void runs.reload(); }} />}>
+      <PageHeader title="Sites" subtitle="Cell sites in scope, their documents and the state of their latest pipeline run."
+        actions={can('ADMIN') ? <Button small icon="plus" title="Create site" onPress={() => router.push('/(tabs)/admin')} /> : undefined} />
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space(3), flexWrap: 'wrap', marginBottom: space(3), zIndex: 5 }}>
+        <SearchBox value={q} onChangeText={setQ} placeholder="Search by site ID, name, city or service provider" style={{ flex: 1, minWidth: 260 }} />
+        {states.length > 1 ? <Select value={state} onChange={setState} width={220} options={[{ key: 'ALL', label: 'All workflow states' }, ...states.map((k) => ({ key: k, label: label(k) }))]} /> : null}
       </View>
-      {sites.error ? (
-        <View style={s.content}>
-          <ErrorView error={sites.error} onRetry={sites.reload} />
-        </View>
-      ) : null}
-      <FlatList
-        data={rows}
-        keyExtractor={(x) => x.SITE_ID}
-        contentContainerStyle={s.content}
-        refreshControl={<RefreshControl refreshing={sites.loading} onRefresh={sites.reload} />}
-        ListEmptyComponent={sites.loading ? null : <Empty text="No sites assigned to you." />}
-        renderItem={({ item }) => {
-          const byType: Record<string, number> = item.DOC_BY_TYPE ?? {};
-          const docCount: number = item.DOC_COUNT ?? 0;
-          const spFiles: number = item.SHAREPOINT_FILES ?? 0;
-          const pipelineNeeded: boolean = item.PIPELINE_NEEDED ?? false;
-          const pendingUploads: number = item.PENDING_UPLOADS ?? 0;
-          const typeEntries = Object.entries(byType);
+      <View style={{ marginBottom: space(3) }}>
+        <Chips value={filter} onChange={setFilter} options={FILTERS.map((f) => ({ key: f.key, label: f.label, count: counts[f.key] ?? 0 }))} />
+      </View>
 
+      {sites.error ? <ErrorView error={sites.error} onRetry={sites.reload} /> : null}
+      {deleteErr ? <ErrorView error={deleteErr} onRetry={() => setDeleteErr(null)} /> : null}
+      {!sites.data ? <Loading rows={6} /> : narrow ? (
+        rows.length === 0 ? <Card><EmptyState icon="map-pin" title="No sites match" text={all.length ? 'Change the search or filters.' : 'No sites are assigned to you.'} /></Card> : rows.map((x) => {
+          const r = latest.get(x.SITE_ID); const st = RUN_STATE[runState(r)];
           return (
-            <Card
-              onPress={() =>
-                router.push({
-                  pathname: '/site/[id]',
-                  params: user?.role === 'AE_ENGINEER' ? { id: item.SITE_ID, tab: 'redlines' } : { id: item.SITE_ID },
-                })
-              }
-            >
-              {/* Header row — Site ID + workflow state */}
-              <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                <Title>{item.SITE_ID}</Title>
-                <Row style={{ gap: space(2), alignItems: 'center' }}>
-                  <Badge text={item.WORKFLOW_STATE} color={colors.primary} />
-                  {can('ADMIN') ? (
-                    <Pressable
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        deleteSite(item.SITE_ID);
-                      }}
-                      style={({ pressed }) => ({
-                        padding: 6,
-                        borderRadius: 6,
-                        backgroundColor: '#FEE2E2',
-                        opacity: pressed ? 0.7 : 1,
-                      })}
-                      accessibilityLabel={`Delete site ${item.SITE_ID}`}
-                    >
-                      <Icon name="trash-2" size={14} color={colors.danger} />
-                    </Pressable>
-                  ) : null}
-                </Row>
-              </Row>
-
-              {/* Location */}
-              <Muted>
-                {[
-                  item.SITE_NAME,
-                  [item.CITY, item.STATE].filter(Boolean).join(', '),
-                ]
-                  .filter(Boolean)
-                  .join(' · ') || 'No location details'}
-              </Muted>
-
-              {/* Stream / structure / discrepancies */}
-              <Row style={{ marginTop: space(2) }}>
-                <Badge text={item.STREAM} color={colors.info} />
-                <Badge text={item.STRUCTURE_TYPE} color={colors.muted} />
-                {item.OPEN_DISCREPANCIES ? (
-                  <Badge text={`${item.OPEN_DISCREPANCIES} open`} color={colors.danger} />
-                ) : (
-                  <Badge text="no open findings" color={colors.ok} />
-                )}
-              </Row>
-
-              {/* CX SP / BOM */}
-              <Muted style={{ marginTop: space(1) }}>
-                {`CX SP: ${item.CX_SP ?? '-'}  |  BOM ${item.CURRENT_BOM_REV ?? '-'}`}
-              </Muted>
-
-              {/* ── Document count summary ── */}
-              <View
-                style={{
-                  marginTop: space(3),
-                  paddingTop: space(3),
-                  borderTopWidth: 1,
-                  borderTopColor: colors.border,
-                }}
-              >
-                {/* Total count + pending uploads */}
-                <Row style={{ justifyContent: 'space-between', marginBottom: space(2) }}>
-                  <Row style={{ gap: space(1.5) }}>
-                    <Icon name="file-text" size={14} color={colors.accent} />
-                    <Text
-                      style={{ fontSize: 13, fontWeight: '700', color: colors.text }}
-                    >
-                      {docCount > 0
-                        ? `${docCount} document${docCount !== 1 ? 's' : ''} registered`
-                        : pipelineNeeded
-                        ? `${spFiles} file${spFiles !== 1 ? 's' : ''} in SharePoint`
-                        : 'No documents registered'}
-                    </Text>
-                  </Row>
-                  {pendingUploads > 0 ? (
-                    <Row style={{ gap: space(1) }}>
-                      <Icon name="upload-cloud" size={12} color={colors.warn} />
-                      <Text style={{ fontSize: 11, color: colors.warn, fontWeight: '600' }}>
-                        {`${pendingUploads} pending`}
-                      </Text>
-                    </Row>
-                  ) : null}
-                </Row>
-
-                {/* Category pills */}
-                {typeEntries.length > 0 ? (
-                  <Row style={{ flexWrap: 'wrap', gap: space(1.5) }}>
-                    {typeEntries.map(([type, count]) => (
-                      <View
-                        key={type}
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 4,
-                          backgroundColor: docColor(type) + '15',
-                          borderRadius: 999,
-                          paddingHorizontal: 9,
-                          paddingVertical: 3,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 11,
-                            fontWeight: '700',
-                            color: docColor(type),
-                            letterSpacing: 0.2,
-                          }}
-                        >
-                          {type.replace(/_/g, ' ')}
-                        </Text>
-                        <View
-                          style={{
-                            backgroundColor: docColor(type),
-                            borderRadius: 999,
-                            minWidth: 16,
-                            height: 16,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            paddingHorizontal: 4,
-                          }}
-                        >
-                          <Text style={{ fontSize: 10, fontWeight: '800', color: '#fff' }}>
-                            {count}
-                          </Text>
-                        </View>
-                      </View>
-                    ))}
-                  </Row>
-                ) : pipelineNeeded ? (
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: space(1.5),
-                      backgroundColor: '#FFF7ED',
-                      borderRadius: 8,
-                      paddingHorizontal: space(2.5),
-                      paddingVertical: space(1.5),
-                      borderWidth: 1,
-                      borderColor: '#FED7AA',
-                    }}
-                  >
-                    <Icon name="zap" size={12} color="#EA580C" />
-                    <Text style={{ fontSize: 11, color: '#EA580C', fontWeight: '600', flex: 1 }}>
-                      {`${spFiles} file${spFiles !== 1 ? 's' : ''} uploaded · Run pipeline to register documents`}
-                    </Text>
-                  </View>
-                ) : (
-                  <Row style={{ gap: space(1.5) }}>
-                    <Icon name="alert-circle" size={12} color={colors.muted} />
-                    <Muted style={{ fontSize: 11 }}>No documents uploaded yet</Muted>
-                  </Row>
-                )}
+            <Card key={x.SITE_ID} onPress={() => open(x.SITE_ID)}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space(2) }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text }}>{x.SITE_ID}</Text>
+                  <Text style={s.muted} numberOfLines={1}>{[x.SITE_NAME, [x.CITY, x.STATE].filter(Boolean).join(', ')].filter(Boolean).join('  ·  ') || 'No location details'}</Text>
+                </View>
+                <Icon name="chevron-right" size={16} />
               </View>
+              <View style={{ flexDirection: 'row', gap: space(2), marginTop: space(3), flexWrap: 'wrap', alignItems: 'center' }}>
+                <Badge text={st.text} color={st.color} dot />
+                {x.STREAM ? <Badge text={x.STREAM} color={colors.neutral} /> : null}
+                {x.OPEN_DISCREPANCIES ? <Badge text={`${x.OPEN_DISCREPANCIES} open findings`} color={colors.danger} /> : null}
+              </View>
+              <View style={{ marginTop: space(3) }}><Docs item={x} /></View>
             </Card>
           );
-        }}
-      />
-    </View>
+        })
+      ) : (
+        <DataTable columns={columns} rows={rows} keyFor={(x) => x.SITE_ID} onRowPress={(x) => open(x.SITE_ID)} minWidth={1100}
+          empty={<EmptyState icon="map-pin" title="No sites match" text={all.length ? 'Change the search or filters.' : 'No sites are assigned to you.'} />} />
+      )}
+      {sites.data ? <Text style={[s.muted, { fontSize: 12, marginTop: space(2) }]}>{`Showing ${rows.length} of ${all.length} site${all.length === 1 ? '' : 's'}`}</Text> : null}
+
+      <ConfirmDialog open={!!toDelete} danger title={`Delete site ${toDelete ?? ''}?`} confirmText="Delete site"
+        message="This permanently removes the site with all its documents, run history, findings and files. It cannot be undone."
+        onConfirm={doDelete} onCancel={() => setToDelete(null)} />
+    </ScrollView>
   );
 }
-

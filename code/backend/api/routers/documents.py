@@ -9,7 +9,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import FileResponse
 
-from api.deps import current_user, repo, require
+from api.deps import AE_FILE_TYPES, check_document_access, check_site_scope, current_user, provider_drawings, repo, require
 from scopeiq.common.audit import AuditTrail
 from scopeiq.common.errors import Conflict, NotFound, ValidationError
 from scopeiq.config import get_settings
@@ -27,15 +27,18 @@ MAX_BYTES = 400 * 1024 * 1024
 
 @router.get("/sites/{site_id}/documents")
 def list_documents(site_id: str, user: dict = Depends(current_user)):
-    docs = repo().select("CORE.DOCUMENT", {"SITE_ID": site_id}, order_by="DOC_TYPE, REVISION_RANK")
-    uploads = repo().select("CORE.UPLOAD", {"SITE_ID": site_id}, order_by="UPLOADED_AT")
+    check_site_scope(user, site_id)
+    docs = provider_drawings(site_id) if user["role"] == "CX_SP" else repo().select("CORE.DOCUMENT", {"SITE_ID": site_id}, order_by="DOC_TYPE, REVISION_RANK")
+    if user["role"] == "AE_ENGINEER":
+        docs = [d for d in docs if d.get("DOC_TYPE") in AE_FILE_TYPES]
+    uploads = [] if user["role"] == "CX_SP" else repo().select("CORE.UPLOAD", {"SITE_ID": site_id}, order_by="UPLOADED_AT")
     return {"documents": docs, "uploads": uploads, "upload_types": list(UPLOAD_FOLDERS)}
 
 
 @router.get("/sites/{site_id}/documents/check-hash")
 def check_hash(site_id: str, hash: str, user: dict = Depends(current_user)):
     """Pre-upload check: detects if a document with the exact same SHA-256 hash exists on the site."""
-    repo().get("CORE.SITE", SITE_ID=site_id)
+    check_site_scope(user, site_id)
     h = hash.strip().lower()
     dup_docs = repo().select("CORE.DOCUMENT", {"SITE_ID": site_id, "FILE_HASH": h})
     dup_uploads = repo().select("CORE.UPLOAD", {"SITE_ID": site_id, "FILE_HASH": h})
@@ -264,7 +267,7 @@ def download(
 ):
     import mimetypes
 
-    d = repo().get("CORE.DOCUMENT", DOC_ID=doc_id)
+    d = check_document_access(user, repo().get("CORE.DOCUMENT", DOC_ID=doc_id))
     st = get_settings()
     prefix, _, rest = (d["REL_PATH"] or "").partition("/")
     if prefix == "sites":
@@ -305,7 +308,7 @@ def download(
 def preview_document(doc_id: str, user: dict = Depends(current_user)):
     """Return structured preview payload (spreadsheet, pdf, image, video, json, text) for a document."""
     from api.routers.sharepoint import _build_file_preview
-    d = repo().get("CORE.DOCUMENT", DOC_ID=doc_id)
+    d = check_document_access(user, repo().get("CORE.DOCUMENT", DOC_ID=doc_id))
     st = get_settings()
     prefix, _, rest = (d["REL_PATH"] or "").partition("/")
     if prefix == "sites":

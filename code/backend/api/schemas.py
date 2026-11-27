@@ -16,6 +16,7 @@ class LoginCreateIn(BaseModel):
     display_name: str = Field(min_length=2, max_length=80)
     password: str = Field(max_length=200)
     role: str = "SCOPER"
+    service_provider: str | None = Field(default=None, max_length=120)   # CX_SP only: the registered service provider of this login
 
 
 class LoginUpdateIn(BaseModel):
@@ -27,6 +28,12 @@ class TransitionIn(BaseModel):
     action: str
     reason_code: str | None = None
     comment: str | None = None
+
+
+class SpQuoteIn(BaseModel):
+    quote_amount: float = Field(ge=0, description="Total construction quote amount in USD")
+    notes: str | None = Field(default=None, max_length=1000, description="Explanatory notes from the CX SP")
+    breakdown: list[dict] | None = Field(default=None, description="Optional line-item driver breakdown")
 
 
 class CommentIn(BaseModel):

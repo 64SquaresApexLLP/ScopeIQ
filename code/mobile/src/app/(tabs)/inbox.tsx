@@ -1,19 +1,39 @@
+// Inbox: notifications for the signed-in role. Opening one marks it read and goes to the item it is about.
 import { router } from 'expo-router';
 import React, { useState } from 'react';
-import { RefreshControl, ScrollView } from 'react-native';
-import { colors } from '../../components/theme';
-import { Badge, Button, Card, Chips, Empty, ErrorView, Muted, Row, s } from '../../components/ui';
+import { RefreshControl, ScrollView, Text, View } from 'react-native';
+import { colors, space } from '../../components/theme';
+import { Badge, Button, Card, Chips, EmptyState, ErrorView, IconName, ListItem, Loading, PageHeader, s } from '../../components/ui';
 import { api } from '../../lib/api';
-import { when } from '../../lib/format';
+import { useAuth } from '../../lib/auth';
+import { label, when } from '../../lib/format';
 import { Row as R } from '../../lib/types';
 import { useApi } from '../../lib/useApi';
 
+function kindOf(n: R): { text: string; color: string; icon: IconName } {
+  if (n.ENTITY_TYPE === 'PIPELINE_RUN') {
+    const failed = n.MESSAGE?.includes('FAILED');
+    return { text: failed ? 'Pipeline failed' : 'Pipeline finished', color: failed ? colors.danger : n.MESSAGE?.includes('WITH_WARNINGS') ? colors.warn : colors.ok, icon: failed ? 'alert-octagon' : 'check-circle' };
+  }
+  if (n.ENTITY_TYPE === 'RFI') return { text: 'RFI', color: colors.info, icon: 'help-circle' };
+  if (n.ENTITY_TYPE === 'REDLINE') return { text: 'Redline', color: colors.warn, icon: 'edit-3' };
+  if (n.ENTITY_TYPE === 'DISCREPANCY') return { text: 'Finding', color: colors.danger, icon: 'alert-triangle' };
+  if (n.ENTITY_TYPE === 'BOM_REVISION') return { text: 'BOM revision', color: colors.ok, icon: 'list' };
+  return { text: label(n.ENTITY_TYPE ?? 'Notice'), color: colors.neutral, icon: 'bell' };
+}
+
 export default function Inbox() {
+  const { user } = useAuth();
   const [unread, setUnread] = useState<'unread' | 'all'>('unread');
+  const limited = user?.role === 'CX_SP' || user?.role === 'AE_ENGINEER';      // these roles see their site page only, never the scoping screens
   const inbox = useApi<R[]>(`/workflow/inbox?unread_only=${unread === 'unread'}`);
   const open = async (n: R) => {
     if (!n.READ_AT) await api.post(`/workflow/inbox/${n.NOTIFICATION_ID}/read`).catch(() => undefined);
-    if (n.ENTITY_TYPE === 'DISCREPANCY') router.push({ pathname: '/discrepancy/[id]', params: { id: n.ENTITY_ID } });
+    if (limited) {
+      if (n.SITE_ID) router.push({ pathname: '/site/[id]', params: { id: n.SITE_ID, ...(user?.role === 'AE_ENGINEER' ? { tab: 'redlines' } : {}) } });
+    }
+    else if (n.ENTITY_TYPE === 'DISCREPANCY') router.push({ pathname: '/discrepancy/[id]', params: { id: n.ENTITY_ID } });
+    else if (n.ENTITY_TYPE === 'BOM_REVISION' && n.SITE_ID) router.push({ pathname: '/site/[id]', params: { id: n.SITE_ID, tab: 'handshake' } });
     else if (n.ENTITY_TYPE === 'BOM_REVISION') router.push({ pathname: '/bom/[revId]', params: { revId: n.ENTITY_ID } });
     else if (n.SITE_ID && (n.ENTITY_TYPE === 'RFI' || n.ENTITY_TYPE === 'REDLINE')) {
       router.push({ pathname: '/site/[id]', params: { id: n.SITE_ID, tab: 'redlines' } });
@@ -26,29 +46,31 @@ export default function Inbox() {
     await Promise.all((inbox.data ?? []).filter((n) => !n.READ_AT).map((n) => api.post(`/workflow/inbox/${n.NOTIFICATION_ID}/read`)));
     void inbox.reload();
   };
+  const list = inbox.data ?? [];
   return (
-    <ScrollView style={s.screen} contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={inbox.loading} onRefresh={inbox.reload} />}>
-      <Row style={{ justifyContent: 'space-between' }}>
-        <Chips value={unread} onChange={setUnread} options={[{ key: 'unread', label: 'Unread' }, { key: 'all', label: 'All' }]} />
-        {unread === 'unread' && inbox.data?.length ? <Button small kind="secondary" title="Mark all read" onPress={markAll} /> : null}
-      </Row>
+    <ScrollView style={s.screen} contentContainerStyle={[s.content, { maxWidth: 1100, width: '100%', alignSelf: 'center' }]} refreshControl={<RefreshControl refreshing={inbox.loading} onRefresh={inbox.reload} />}>
+      <PageHeader title="Inbox" subtitle="Notifications for your role: pipeline results, findings, redlines and RFIs."
+        actions={unread === 'unread' && list.length ? <Button small kind="secondary" icon="check" title="Mark all as read" onPress={markAll} /> : undefined} />
+      <View style={{ marginBottom: space(3) }}>
+        <Chips value={unread} onChange={setUnread} options={[{ key: 'unread', label: 'Unread', count: unread === 'unread' ? list.length : undefined }, { key: 'all', label: 'All' }]} />
+      </View>
       {inbox.error ? <ErrorView error={inbox.error} onRetry={inbox.reload} /> : null}
-      {!inbox.loading && !inbox.data?.length ? <Empty text="No notifications for your role." /> : null}
-      {(inbox.data ?? []).map((n) => (
-        <Card key={n.NOTIFICATION_ID} onPress={() => open(n)} style={n.READ_AT ? { opacity: 0.6 } : undefined}>
-          <Row>
-            <Badge
-              text={n.ENTITY_TYPE === 'PIPELINE_RUN' ? (n.MESSAGE?.includes('FAILED') ? 'PIPELINE FAILED' : 'PIPELINE COMPLETE') : n.ENTITY_TYPE}
-              color={n.ENTITY_TYPE === 'PIPELINE_RUN'
-                ? (n.MESSAGE?.includes('FAILED') ? colors.danger : n.MESSAGE?.includes('WITH_WARNINGS') ? colors.warn : colors.ok)
-                : colors.primary}
-            />
-            {n.SITE_ID ? <Badge text={n.SITE_ID} color={colors.muted} /> : null}
-          </Row>
-          <Muted style={{ marginTop: 4, color: colors.text }}>{n.MESSAGE}</Muted>
-          <Muted>{when(n.CREATED_AT)}</Muted>
+      {inbox.loading && !inbox.data ? <Loading rows={5} /> : (
+        <Card padded={false} style={{ overflow: 'hidden' }}>
+          {!list.length ? <EmptyState icon="inbox" title={unread === 'unread' ? 'You are all caught up' : 'No notifications'} text="New notifications for your role appear here." /> : list.map((n, i) => {
+            const k = kindOf(n);
+            return (
+              <ListItem key={n.NOTIFICATION_ID} icon={k.icon} iconColor={k.color} dim={!!n.READ_AT} last={i === list.length - 1} onPress={() => open(n)}
+                title={<View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <Badge text={k.text} color={k.color} />
+                  {n.SITE_ID ? <Text style={{ fontSize: 12.5, fontWeight: '600', color: colors.accent }}>{n.SITE_ID}</Text> : null}
+                  {!n.READ_AT ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: colors.accent }} /> : null}
+                </View>}
+                subtitle={n.MESSAGE} meta={when(n.CREATED_AT)} />
+            );
+          })}
         </Card>
-      ))}
+      )}
     </ScrollView>
   );
 }

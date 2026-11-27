@@ -47,7 +47,9 @@ def client(env):
 
 TEST_PASSWORD = "test-password-1"
 ADMIN_TEST_PASSWORD = "admin-test-password-1"
-PASSWORD_USERS = {"scoper": "SCOPER", "ae": "AE_ENGINEER"}      # demo user id prefix -> role that signs in with a password
+SP_COMPANIES = {"sp_prairie": "Prairie Tower Services (synthetic)", "sp_brazos": "Brazos Wireless Construction (synthetic)",
+                "sp_redline": "Redline Constructors (synthetic)"}      # the companies the sample sites are assigned to; each login is created for one
+PASSWORD_USERS = {"scoper": "SCOPER", "ae": "AE_ENGINEER", "sp_": "CX_SP"}      # demo user id prefix -> role that signs in with a password
 
 
 def login(client, user_id):
@@ -62,7 +64,10 @@ def login(client, user_id):
         r = client.post("/auth/login", json={"username": "admin", "password": ADMIN_TEST_PASSWORD})
     elif role:
         admin = login(client, "admin")
-        client.post("/admin/logins", json={"username": user_id, "display_name": user_id, "password": TEST_PASSWORD, "role": role}, headers=admin)
+        body = {"username": user_id, "display_name": user_id, "password": TEST_PASSWORD, "role": role}
+        if role == "CX_SP":                 # a service-provider login is created for a company
+            body["service_provider"] = SP_COMPANIES[user_id]
+        client.post("/admin/logins", json=body, headers=admin)
         r = client.post("/auth/login", json={"username": user_id, "password": TEST_PASSWORD})
     else:
         r = client.post("/auth/login", json={"user_id": user_id, "password": "demo"})
@@ -135,7 +140,7 @@ def test_upload_goes_to_the_selected_site_only(client, env):
     # type is detected from the name for each kind of document
     for name, folder in (("TXZZ0001_RFDS_R4.xlsx", "rfds"), ("TXZZ0001_MA_SA_R0.pdf", "ma_sa"), ("TXZZ0001_BOM_REV0_preliminary.xlsx", "bom"),
                          ("TXZZ0001_pointcloud.laz", "drone"), ("TXZZ0001_sector_alpha.jpg", "drone/imagery")):
-        assert client.post("/sharepoint/sites/TXZZ0001/upload", files={"file": (name, b"x" * 10)}, headers=s).json()["folder"] == folder
+        assert client.post("/sharepoint/sites/TXZZ0001/upload", files={"file": (name, name.encode())}, headers=s).json()["folder"] == folder      # each file has its own content
     files = client.get("/sharepoint/sites/TXZZ0001/files", headers=s).json()["files"]
     assert len(files) == 6 and {f["folder"] for f in files} >= {"cds", "rfds", "drone/imagery"}
 
@@ -153,11 +158,19 @@ def test_upload_validation(client):
     assert client.post("/sharepoint/sites/TXZZ0001/upload", files={"file": ("a.pdf", b"a")}, data={"doc_type": "WRONG"}, headers=s).status_code == 400
 
 
-def test_duplicate_content_is_flagged_not_blocked(client):
+def test_a_duplicate_is_refused_by_the_server_unless_it_replaces_or_is_confirmed(client, env):
+    """The browser warns first, but the server enforces the rule too, so a file with content the site already has cannot slip in by another route."""
     s = login(client, "admin")
-    a = client.post("/sharepoint/sites/TXZZ0002/upload", files={"file": ("TXZZ0002_RFDS_R3.xlsx", b"same-bytes")}, headers=s).json()
-    b = client.post("/sharepoint/sites/TXZZ0002/upload", files={"file": ("TXZZ0002_RFDS_R3_copy.xlsx", b"same-bytes")}, headers=s).json()
-    assert a["duplicate_of"] is None and b["duplicate_of"] == "TXZZ0002_RFDS_R3.xlsx"
+    up = lambda name, **data: client.post("/sharepoint/sites/TXZZ0002/upload", files={"file": (name, b"same-bytes")}, data=data, headers=s)
+    folder = env["root"] / "Ericsson-Scoping/Sites/TXZZ0002/rfds"
+    assert up("TXZZ0002_RFDS_R3.xlsx").status_code == 200
+    r = up("TXZZ0002_RFDS_R4.xlsx")                                                  # same content, newer revision name
+    assert r.status_code == 409 and r.json()["error"]["details"]["duplicate_of"] == "TXZZ0002_RFDS_R3.xlsx"
+    assert not (folder / "TXZZ0002_RFDS_R4.xlsx").exists()                           # refused before anything was written
+    assert up("TXZZ0002_RFDS_R4.xlsx", confirm_duplicate="true").status_code == 200  # confirmed on purpose
+    assert (folder / "TXZZ0002_RFDS_R4.xlsx").exists()
+    assert up("TXZZ0002_RFDS_R5.xlsx", replace_file="TXZZ0002_RFDS_R3.xlsx").status_code == 200   # replacing the file it duplicates is allowed
+    assert not (folder / "TXZZ0002_RFDS_R3.xlsx").exists()
 
 
 def test_non_admin_cannot_access_sharepoint_sites(client):
@@ -166,7 +179,7 @@ def test_non_admin_cannot_access_sharepoint_sites(client):
 
 def test_path_traversal_is_refused(client, env):
     s = login(client, "admin")
-    r = client.post("/sharepoint/sites/TXZZ0001/upload", files={"file": ("../../evil_CD_REV1.pdf", b"x")}, headers=s)
+    r = client.post("/sharepoint/sites/TXZZ0001/upload", files={"file": ("../../evil_CD_REV1.pdf", b"a traversal attempt")}, headers=s)
     assert r.status_code in (200, 400)
     assert not list(env["root"].rglob("evil_CD_REV1.pdf")) or all(env["root"] in p.parents for p in env["root"].rglob("evil_CD_REV1.pdf"))
     assert not (env["root"].parent / "evil_CD_REV1.pdf").exists()
@@ -286,7 +299,7 @@ def test_ae_engineer_permissions_and_restrictions(client, env):
 
     # A&E CAN upload CD documents with auto-detection (e.g. TXZZ0001_CD.pdf)
     cd_auto_res = client.post("/sharepoint/sites/TXZZ0001/upload",
-                              files={"file": ("TXZZ0001_CD.pdf", b"%PDF-1.4 CD by AE")}, headers=ae)
+                              files={"file": ("TXZZ0001_CD.pdf", b"%PDF-1.4 CD detected from its name, by AE")}, headers=ae)
     assert cd_auto_res.status_code == 200, cd_auto_res.text
     assert cd_auto_res.json()["doc_type"] == "CD"
 

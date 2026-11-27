@@ -50,7 +50,7 @@ export function RunNotes({ run }: { run: PipelineRun }) {
         <IconBadge name="alert-triangle" color={colors.warn} size={32} />
         <View style={{ flex: 1 }}>
           <Title style={{ fontSize: 15 }}>{`Notes from this run (${notes.length})`}</Title>
-          <Muted>Every stage finished. These are things to check, not failures.</Muted>
+          <Muted>Things to check from this run. They are not failures.</Muted>
         </View>
       </Row>
       <View style={{ marginTop: space(2), gap: space(1) }}>

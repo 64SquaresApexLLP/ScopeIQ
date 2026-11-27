@@ -1,14 +1,25 @@
 """Sites: list (scoped per persona), detail with everything the site screen needs, dashboard counts."""
 from collections import Counter
+from pydantic import BaseModel, Field
 
 from fastapi import APIRouter, Depends
 
-from api.deps import current_user, finished_sites, repo, require, site_scope, workflow
-from scopeiq.common.errors import NotFound, PermissionDenied
+from api.deps import ae_work, current_user, finished_sites, scoping_only, my_notifications, provider_companies, provider_drawings, provider_package_released, provider_phase, ref, repo, require, shown_provider, site_scope, workflow
+from scopeiq.common.audit import AuditTrail
+from scopeiq.common.errors import NotFound, PermissionDenied, ValidationError
+from scopeiq.db.repository import now_iso
 from scopeiq.integrations.sharepoint import get_store
+from scopeiq.services import bom_revisions
 from scopeiq.services.site_management import delete_site_cascade
 
 router = APIRouter(prefix="/sites", tags=["sites"])
+
+# what an A&E engineer is told about a site: where it is and what kind of structure, with its redline and RFI counts
+_AE_SITE_FIELDS = ("SITE_ID", "SITE_NAME", "ADDRESS", "CITY", "STATE", "ZIP", "MARKET", "STRUCTURE_TYPE", "HEIGHT_FT")
+
+# what a service provider is told about a site
+_PROVIDER_SITE_FIELDS = ("SITE_ID", "SITE_NAME", "ADDRESS", "CITY", "STATE", "ZIP", "MARKET", "LATITUDE", "LONGITUDE", "STRUCTURE_TYPE", "HEIGHT_FT",
+                         "STRUCTURE_OWNER", "PROJECT_NAME", "PROJECT_TYPE", "CX_SP")
 
 
 def _check_scope(user: dict, site: dict) -> None:
@@ -21,6 +32,11 @@ def _check_scope(user: dict, site: dict) -> None:
 def list_sites(user: dict = Depends(current_user)):
     r = repo()
     sites = r.select("CORE.SITE", site_scope(user) or None, order_by="SITE_ID")
+    if user["role"] == "AE_ENGINEER":     # an A&E engineer's list: the sites that have redlines or RFIs for the firm, with the counts
+        work = ae_work()
+        return [{**{k: s.get(k) for k in _AE_SITE_FIELDS}, **{k.upper(): v for k, v in work[s["SITE_ID"]].items()}} for s in sites if s["SITE_ID"] in work]
+    if user["role"] == "CX_SP":           # a service provider's list: the site and what it has been given, nothing of the scoping work
+        return [{**{k: s.get(k) for k in _PROVIDER_SITE_FIELDS}, "DRAWINGS_READY": bool(provider_drawings(s["SITE_ID"])), "PHASE": provider_phase(s)} for s in sites]
 
     # Document counts: one query for all sites, grouped by SITE_ID + DOC_TYPE
     # NOTE: DOC_COUNT only reflects files processed by the pipeline (CORE.DOCUMENT).
@@ -53,8 +69,10 @@ def list_sites(user: dict = Depends(current_user)):
     except Exception:
         sp_files_by_site = {}
 
+    companies = provider_companies()
     for s in sites:
         sid = s["SITE_ID"]
+        s["CX_SP"] = shown_provider(s.get("CX_SP"), companies)
         doc_types = doc_by_site.get(sid, [])
         by_type = Counter(doc_types)
         sp_files = sp_files_by_site.get(sid, 0)
@@ -73,10 +91,12 @@ def list_sites(user: dict = Depends(current_user)):
 def dashboard(user: dict = Depends(current_user)):
     r = repo()
     sites = r.select("CORE.SITE", site_scope(user) or None)
+    if user["role"] in ("CX_SP", "AE_ENGINEER"):
+        return {"sites": len(sites)}
     ids, ready = {s["SITE_ID"] for s in sites}, finished_sites()
     d = [x for x in r.query("SELECT SITE_ID, STATUS, SEVERITY, OUTCOME, RULE_ID FROM CORE.DISCREPANCY") if x["SITE_ID"] in ids]
     est = [x for x in r.query("SELECT SITE_ID, CYCLE_DAYS, TOTAL_USD FROM CORE.ESTIMATE") if x["SITE_ID"] in ids]
-    inbox = r.query("SELECT COUNT(*) AS N FROM WF.NOTIFICATION WHERE ROLE_CODE = %s AND READ_AT IS NULL", [user["role"]])[0]["N"]
+    inbox = len(my_notifications(user, unread_only=True))
     return {"sites": len(sites), "by_state": Counter(s["WORKFLOW_STATE"] for s in sites), "by_stream": Counter(s["STREAM"] for s in sites),
             "discrepancies": {"total": len(d), "by_status": Counter(x["STATUS"] for x in d), "by_outcome": Counter(x["OUTCOME"] for x in d),
                               "by_severity": Counter(x["SEVERITY"] for x in d)},
@@ -86,11 +106,46 @@ def dashboard(user: dict = Depends(current_user)):
             "estimate_total_usd": round(sum(x["TOTAL_USD"] or 0 for x in est), 2), "inbox_unread": inbox}
 
 
+@router.get("/service-providers")
+def list_service_providers(user: dict = Depends(scoping_only)):
+    """The service-provider companies an admin has created a login for."""
+    return [{"name": n} for n in provider_companies()]
+
+
+@router.get("/{site_id}/provider")
+def provider_view(site_id: str, user: dict = Depends(current_user)):
+    """What a service provider is given for a site: the final construction drawings, and from the handshake on the scope of work and the BOM."""
+    if user["role"] == "AE_ENGINEER":
+        raise PermissionDenied("Not available for your role")
+    r = repo()
+    site = r.get("CORE.SITE", SITE_ID=site_id)
+    _check_scope(user, site)
+    released = provider_package_released(site)
+    phase = provider_phase(site)
+    keep = lambda row, fields: {k: row.get(k) for k in fields}      # noqa: E731
+    bom_rev, bom_lines = bom_revisions.current(r, site_id) if released else (None, [])     # the revision the provider is given, never an older one
+    mine = [e for e in workflow().history("SITE_SCOPING", site_id) if e.get("ACTION") in ("REQUEST_CHANGES", "SP_REQUEST_CHANGES")]
+    return {"site_id": site_id, "site_name": site.get("SITE_NAME"), "phase": phase,
+            "requests": [{"when": e.get("EVENT_TS"), "reason": next((c["DESCRIPTION"] for c in ref().rows("reason_codes") if c["REASON_CODE"] == e.get("REASON_CODE")), e.get("REASON_CODE")),
+                          "comment": e.get("COMMENT")} for e in reversed(mine)],
+            "drawings": [keep(d, ("DOC_ID", "FILE_NAME", "FILE_FORMAT", "REVISION", "SIZE_BYTES")) for d in provider_drawings(site_id)],
+            "scope": {"released": released,
+                      "items": [keep(x, ("SECTOR", "POSITION", "KIND", "CATALOG_KEY", "ACTION", "FROM_POSITION"))
+                                for x in bom_revisions.scope_items(r, site_id, site.get("LAST_RUN_ID"))] if released else []},
+            "bom": {"released": released, "approved": phase == "APPROVED", "revision": (bom_rev or {}).get("REV_LABEL") if released else None,
+                    "lines": [keep(b, ("SECTOR", "CATEGORY", "MANUFACTURER", "MODEL", "DESCRIPTION", "UOM", "TOTAL_QTY", "ACTION", "SUPPLY"))
+                              for b in bom_lines] if released else []}}
+
+
 @router.get("/{site_id}")
 def site_detail(site_id: str, user: dict = Depends(current_user)):
     r = repo()
     site = r.get("CORE.SITE", SITE_ID=site_id)
     _check_scope(user, site)
+    site["CX_SP"] = shown_provider(site.get("CX_SP"))
+    if user["role"] in ("CX_SP", "AE_ENGINEER"):
+        empty = {k: [] for k in ("actions", "milestones", "documents", "sectors", "trunks", "analyses", "delta", "requirements", "estimate", "ehs_alerts", "last_run", "workflow_history")}
+        return {**empty, "site": {k: site.get(k) for k in (_AE_SITE_FIELDS if user["role"] == "AE_ENGINEER" else _PROVIDER_SITE_FIELDS)}, "revision_check": None}
     run_id = site.get("LAST_RUN_ID")
     by_run = lambda t: r.select(t, {"SITE_ID": site_id, "RUN_ID": run_id}) if run_id else []  # noqa: E731
     docs = r.select("CORE.DOCUMENT", {"SITE_ID": site_id}, order_by="DOC_TYPE, REVISION_RANK DESC")
@@ -146,7 +201,7 @@ def site_detail(site_id: str, user: dict = Depends(current_user)):
 
 
 @router.get("/{site_id}/config")
-def config_lines(site_id: str, source: str | None = None, user: dict = Depends(current_user)):
+def config_lines(site_id: str, source: str | None = None, user: dict = Depends(scoping_only)):
     r = repo()
     site = r.get("CORE.SITE", SITE_ID=site_id)
     _check_scope(user, site)
@@ -157,7 +212,7 @@ def config_lines(site_id: str, source: str | None = None, user: dict = Depends(c
 
 
 @router.get("/{site_id}/evidence")
-def evidence(site_id: str, selected_only: bool = False, user: dict = Depends(current_user)):
+def evidence(site_id: str, selected_only: bool = False, user: dict = Depends(scoping_only)):
     r = repo()
     _check_scope(user, r.get("CORE.SITE", SITE_ID=site_id))
     where = {"SITE_ID": site_id}
@@ -170,7 +225,7 @@ def evidence(site_id: str, selected_only: bool = False, user: dict = Depends(cur
 
 
 @router.get("/{site_id}/fields")
-def extracted_fields(site_id: str, needs_review: bool | None = None, user: dict = Depends(current_user)):
+def extracted_fields(site_id: str, needs_review: bool | None = None, user: dict = Depends(scoping_only)):
     r = repo()
     site = r.get("CORE.SITE", SITE_ID=site_id)
     where = {"SITE_ID": site_id, "RUN_ID": site["LAST_RUN_ID"]}
@@ -189,3 +244,25 @@ def delete_site(site_id: str, user: dict = Depends(require("ADMIN"))):
         raise NotFound(f"Site {sid} not found")
     res = delete_site_cascade(r, sid, delete_files=True, deleted_by=user.get("sub", "admin"))
     return {"status": "ok", "site_id": sid, **res}
+
+
+class AssignSpIn(BaseModel):
+    cx_sp: str = Field(min_length=1, max_length=120)
+
+
+@router.post("/{site_id}/assign-sp")
+def assign_sp(site_id: str, body: AssignSpIn, user: dict = Depends(require("ADMIN", "SCOPER", "REVIEWER"))):
+    """Assign or change the Construction Service Provider (CX_SP) for a site."""
+    sid = site_id.strip().upper()
+    r = repo()
+    site = r.select("CORE.SITE", {"SITE_ID": sid})
+    if not site:
+        raise NotFound(f"Site {sid} not found")
+    sp = body.cx_sp.strip()
+    if workflow().is_out_for_approval(site[0].get("WORKFLOW_STATE")):
+        raise PermissionDenied("The package is with the service provider or approved; return it to scoping before changing the provider")
+    if sp not in provider_companies():
+        raise ValidationError("Choose a service provider that has a login. An admin creates one under User logins.")
+    r.update("CORE.SITE", {"CX_SP": sp, "UPDATED_AT": now_iso(), "UPDATED_BY": user.get("sub", "admin")}, {"SITE_ID": sid})
+    AuditTrail.record(entity_type="SITE", entity_id=sid, action="ASSIGN_SP", after={"cx_sp": sp}, site_id=sid, source="api")
+    return {"site_id": sid, "cx_sp": sp}
