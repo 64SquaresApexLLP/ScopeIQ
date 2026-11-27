@@ -1,5 +1,5 @@
-// What a service provider is given for a site: the final construction drawings, and from the handshake on the scope of work and the BOM, which it
-// agrees to or asks to change. Nothing else of the scoping work.
+// What a service provider is given for a site: from the handshake onward (once the BOM is generated, all redlines are resolved,
+// and the package is sent for review), the final construction drawings, scope of work, and BOM, which it agrees to or asks to change.
 import React, { useMemo, useState } from 'react';
 import { Linking, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { authedUrl } from '../../lib/api';
@@ -35,7 +35,13 @@ export function ProviderDrawings({ siteId }: { siteId: string }) {
         <Text style={{ fontSize: 15.5, fontWeight: '700', color: colors.text }}>Construction drawings</Text>
       </View>
       {drawings.length === 0 ? (
-        <EmptyState icon="file-text" title="Drawings are not available yet" text="They appear here once they are final." />
+        <EmptyState
+          icon="file-text"
+          title="Drawings are not available yet"
+          text={data?.requests.length
+            ? 'Updated drawings appear here once your change request is processed and ready for your review.'
+            : 'They appear here once the BOM is approved and sent for your review.'}
+        />
       ) : (
         drawings.map((d) => (
           <View key={d.DOC_ID} style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space(3), paddingHorizontal: space(5), paddingVertical: space(3), borderTopWidth: 1, borderTopColor: colors.border }}>

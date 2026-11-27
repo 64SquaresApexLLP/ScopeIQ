@@ -99,8 +99,8 @@ def test_each_role_is_offered_only_its_own_steps_and_the_provider_is_kept_out_of
 
 
 def test_a_provider_is_given_final_drawings_and_from_the_handshake_the_scope_and_bom(client):
-    """Drawings are given once they are final: the run has finished and no redline is open, so a drawing is either right as it was or the corrected
-    one. The scope of work and the BOM come with the handshake (no prices or rules in them), and go back out of sight when changes are requested."""
+    """Drawings, scope of work and the BOM are given from the handshake onward (SP_HANDSHAKE through FBA_APPROVED), only after a finished
+    pipeline run generated the BOM and no redline is open (including INCORPORATED redlines), and go back out of sight when changes are requested."""
     from scopeiq.db.repository import get_repository, now_iso
     r, site = get_repository(), "TXPV0001"
     sp, other, admin = login(client, "sp_prairie"), login(client, "sp_brazos"), login(client, "admin")
@@ -115,34 +115,55 @@ def test_a_provider_is_given_final_drawings_and_from_the_handshake_the_scope_and
     names = lambda v: sorted(d["FILE_NAME"] for d in v["drawings"])
     state = lambda s: r.update("CORE.SITE", {"WORKFLOW_STATE": s}, {"SITE_ID": site})
 
-    assert names(view(sp)) == []                                                            # no run has finished: nothing is known to be correct
+    assert names(view(sp)) == []                                                            # no run has finished and still in IN_REVIEW: nothing shown yet
     r.insert("CORE.PIPELINE_RUN", [{"RUN_ID": "RUN-PV", "SITE_ID": site, "STARTED_AT": now_iso(), "STATUS": "SUCCEEDED"}])
     r.insert("CORE.REDLINE", [{"REDLINE_ID": "RL-PV", "SITE_ID": site, "STATUS": "WORK_QUEUE"}])
-    assert names(view(sp)) == []                                                            # a redline is still open: the drawing is not final
+    assert names(view(sp)) == []                                                            # still in IN_REVIEW with an open redline
     r.update("CORE.REDLINE", {"STATUS": "COMPLETED"}, {"REDLINE_ID": "RL-PV"})
-    assert names(view(sp)) == [f"{site}_cd2.pdf"]                                           # the current drawing only: no superseded or duplicate, no RFDS
     v = view(sp)
-    assert v["phase"] == "PENDING" and v["scope"] == {"released": False, "items": []} and v["bom"]["released"] is False and v["bom"]["lines"] == []   # still with the scoping team
+    assert names(v) == [] and v["phase"] == "PENDING" and v["scope"] == {"released": False, "items": []} and v["bom"]["released"] is False   # still in IN_REVIEW (Option B: wait for SP_HANDSHAKE)
     assert client.get(f"/sites/{site}/provider", headers=other).status_code == 403          # nor to another provider
 
-    state("SP_HANDSHAKE")                                                                   # sent for the handshake: scope of work and BOM are given
+    state("SP_HANDSHAKE")                                                                   # sent for the handshake: drawings, scope of work and BOM are given
     v = view(sp)
+    assert names(v) == [f"{site}_cd2.pdf"]                                                  # the current drawing only: no superseded or duplicate, no RFDS
     assert v["phase"] == "REVIEW" and v["scope"]["released"] and [x["CATALOG_KEY"] for x in v["scope"]["items"]] == ["ANT-1"]
     assert v["bom"]["released"] and not v["bom"]["approved"] and len(v["bom"]["lines"]) == 1 and v["bom"]["lines"][0]["MODEL"] == "ANT-1"
     assert not {"UNIT_COST_USD", "TOTAL_COST_USD", "RULE_ID", "TRACE"} & set(v["bom"]["lines"][0])    # what to build, not what it costs or how it was derived
     assert not {"BASIS", "SOURCE_REF", "RUN_ID"} & set(v["scope"]["items"][0])
+
+    # An incorporated redline counts as resolved and still reveals the corrected CD once BOM is generated
+    r.update("CORE.REDLINE", {"STATUS": "INCORPORATED"}, {"REDLINE_ID": "RL-PV"})
+    assert names(view(sp)) == [f"{site}_cd2.pdf"]
+
+    # An open redline blocks drawings even in SP_HANDSHAKE; restoring INCORPORATED unblocks it
+    r.update("CORE.REDLINE", {"STATUS": "WORK_QUEUE"}, {"REDLINE_ID": "RL-PV"})
+    assert names(view(sp)) == []
+    r.update("CORE.REDLINE", {"STATUS": "INCORPORATED"}, {"REDLINE_ID": "RL-PV"})
+
+    # A pipeline run that skipped the BOM stage (e.g. stopped at Stage 4) does not release drawings
+    r.update("CORE.PIPELINE_RUN", {"STEPS": [{"key": "BOM", "status": "SKIPPED"}]}, {"RUN_ID": "RUN-PV"})
+    assert names(view(sp)) == []
+    r.update("CORE.PIPELINE_RUN", {"STEPS": [{"key": "BOM", "status": "DONE"}]}, {"RUN_ID": "RUN-PV"})
+    assert names(view(sp)) == [f"{site}_cd2.pdf"]
+
     state("SUBMITTED_FBA")
-    assert view(sp)["phase"] == "AGREED" and view(sp)["bom"]["released"]
+    assert view(sp)["phase"] == "AGREED" and view(sp)["bom"]["released"] and names(view(sp)) == [f"{site}_cd2.pdf"]
     state("FBA_APPROVED")
-    assert view(sp)["phase"] == "APPROVED" and view(sp)["bom"]["approved"]
-    state("IN_SCOPING")                                                                     # changes requested: it goes back out of sight until the next revision
+    assert view(sp)["phase"] == "APPROVED" and view(sp)["bom"]["approved"] and names(view(sp)) == [f"{site}_cd2.pdf"]
+    state("IN_SCOPING")                                                                     # changes requested: drawings, scope & BOM go back out of sight until the next revision
     v = view(sp)
-    assert v["phase"] == "PENDING" and not v["bom"]["released"] and v["bom"]["lines"] == [] and v["scope"]["items"] == []
+    assert names(v) == [] and v["phase"] == "PENDING" and not v["bom"]["released"] and v["bom"]["lines"] == [] and v["scope"]["items"] == []
 
     mine = {s["SITE_ID"]: s for s in client.get("/sites", headers=sp).json()}               # all of its own company's sites, and no one else's
     assert site in mine and all(s["CX_SP"] == SP_COMPANIES["sp_prairie"] for s in mine.values())
-    assert mine[site]["DRAWINGS_READY"] and mine[site]["PHASE"] == "PENDING"
+    assert not mine[site]["DRAWINGS_READY"] and mine[site]["PHASE"] == "PENDING"
     assert not {"WORKFLOW_STATE", "STREAM", "OPEN_DISCREPANCIES", "DOC_COUNT", "ACTIONS", "LAST_RUN_ID"} & set(mine[site])
+
+    state("SP_HANDSHAKE")
+    mine = {s["SITE_ID"]: s for s in client.get("/sites", headers=sp).json()}
+    assert mine[site]["DRAWINGS_READY"] and mine[site]["PHASE"] == "REVIEW"
+
     detail = client.get(f"/sites/{site}", headers=sp).json()
     assert detail["documents"] == [] and detail["revision_check"] is None and detail["last_run"] == [] and "WORKFLOW_STATE" not in detail["site"]
     assert len(client.get(f"/sites/{site}", headers=admin).json()["documents"]) == 4        # the scoping team still sees every file
