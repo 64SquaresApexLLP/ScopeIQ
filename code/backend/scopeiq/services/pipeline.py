@@ -916,10 +916,35 @@ class PipelineService:
         }])
         r.upsert("CORE.MILESTONE", [{"MILESTONE_SF_ID": m["milestone_sf_id"], "SITE_ID": sid, "NAME": m["name"], "SEQ": m["seq"],
                                      "FORECAST": m["forecast"], "ACTUAL": m["actual"], "STATUS": m["status"]} for m in f.milestones])
+        existing_docs = {
+            row["DOC_ID"]: (row.get("REGISTERED_AT"), row.get("REGISTERED_BY"))
+            for row in r.select("CORE.DOCUMENT", {"SITE_ID": sid})
+            if row.get("DOC_ID")
+        }
+        upload_times = {
+            row["FILE_HASH"]: (row.get("UPLOADED_AT"), row.get("UPLOADED_BY"))
+            for row in r.select("CORE.UPLOAD", {"SITE_ID": sid})
+            if row.get("FILE_HASH") and row.get("UPLOADED_AT")
+        }
         r.delete_where("CORE.DOCUMENT", {"SITE_ID": sid})
-        r.insert("CORE.DOCUMENT", [dict({k.upper(): v for k, v in asdict(d).items() if k.upper() in
-                                         {"DOC_ID", "SITE_ID", "DOC_TYPE", "FILE_NAME", "REL_PATH", "FILE_FORMAT", "REVISION", "REVISION_RANK", "FILE_HASH",
-                                          "SIZE_BYTES", "DOC_DATE", "SOURCE", "STATUS"}}, REGISTERED_AT=ts, REGISTERED_BY=user) for d in f.documents])
+        r.insert("CORE.DOCUMENT", [
+            dict(
+                {k.upper(): v for k, v in asdict(d).items() if k.upper() in
+                 {"DOC_ID", "SITE_ID", "DOC_TYPE", "FILE_NAME", "REL_PATH", "FILE_FORMAT", "REVISION", "REVISION_RANK", "FILE_HASH",
+                  "SIZE_BYTES", "DOC_DATE", "SOURCE", "STATUS"}},
+                REGISTERED_AT=(
+                    upload_times.get(d.file_hash, (None, None))[0]
+                    or existing_docs.get(d.doc_id, (None, None))[0]
+                    or ts
+                ),
+                REGISTERED_BY=(
+                    upload_times.get(d.file_hash, (None, None))[1]
+                    or existing_docs.get(d.doc_id, (None, None))[1]
+                    or user
+                ),
+            )
+            for d in f.documents
+        ])
         r.delete_where("CORE.EXTRACTED_FIELD", {"SITE_ID": sid, "RUN_ID": run_id})
         r.insert("CORE.EXTRACTED_FIELD", [{"FIELD_ID": stable_id("FLD", run_id, i), "RUN_ID": run_id, "SITE_ID": sid, "DOC_ID": x.doc_id, "PAGE": x.page,
                                            "FIELD_NAME": x.field_name, "VALUE": {"v": x.value}, "CONFIDENCE": x.confidence, "METHOD": x.method,
